@@ -1,0 +1,995 @@
+// @ts-nocheck
+import { Icon } from '@iconify/react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { toast } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
+import Button from '../../shared/button'
+import CandleStickChart from '../../shared/CandleStickChart'
+import Input from '../../shared/input'
+import { useWallet } from '@txnlab/use-wallet'
+import axios from 'axios'
+import { PeraWalletConnect } from '@perawallet/connect'
+import { Buffer } from 'buffer'
+import { DeflexOrderRouterClient } from '@deflex/deflex-sdk-js'
+import { getSwapRoute } from '@tinymanorg/tinyman-js-sdk'
+import { FolksRouterClient, Network, SwapMode, SwapParams, SwapQuote, SwapService } from '../../../contracts'
+import algosdk, { Algodv2, decodeUnsignedTransaction, generateAccount } from 'algosdk'
+import ConnectWallet from '../../ConnectWallet'
+import '../../../styles/shared/scrollbar.css'
+import { TokenService } from '../../../services/TokenService'
+
+// ...existing code...
+interface Currency {
+  code: string
+  label: string
+  img: string
+  id: number
+  decimals: number
+}
+
+// Add this type (unit_name with underscore)
+type TinymanAsset = {
+  id: number
+  name?: string
+  unitName?: string
+  unit_name?: string
+  decimals?: number
+  verified?: boolean
+  logo?: { png?: string; svg?: string }
+}
+
+// Helper: format on-chain amount by decimals
+const formatAssetAmount = (amount: number | string | bigint, decimals: number) =>
+  Number(amount) / Math.pow(10, decimals)
+
+const ASA_IDS: { [symbol: string]: number } = {
+  ALGO: 0,
+  USDC: 31566704,
+  goBTC: 386192725,
+  goETH: 386195940,
+  OPUL: 287867876,
+  PLANET: 27165954,
+  GARD: 684649988,
+  xALGO: 226701642,
+  STBL: 465865291,
+  AKITA: 244275365,
+  YLDY: 226701642,
+  CHIP: 77801156,
+  CHOCO: 105719244,
+  DEFLY: 470842789,
+  ALGOFI: 81288225,
+  HEADLINE: 444079935,
+  BANK: 900652777,
+  CHOICE: 297995609
+}
+
+const checkImage = async (assetId: number): Promise<string | null> => {
+  const url = `https://assets.perawallet.app/icon/assets/${assetId}.png`
+  try {
+    const res = await fetch(url)
+    return res.ok ? url : null
+  } catch {
+    return null
+  }
+}
+
+const resolveImages = async () => {
+  const resolved: { [symbol: string]: string | null } = {}
+  for (const [symbol, id] of Object.entries(ASA_IDS)) {
+    resolved[symbol] = await checkImage(id)
+  }
+  console.log(resolved)
+}
+
+const algodToken = ''
+const algodServer = 'https://testnet-api.algonode.cloud'
+const algodMainServer = 'https://mainnet-api.algonode.cloud'
+const algod = new algosdk.Algodv2(algodToken, algodServer, '')
+const algodMain = new algosdk.Algodv2(algodToken, algodMainServer, '')
+
+const TINYMAN_ASA_LIST_URL = 'https://asa-list.tinyman.org/assets.json';
+
+const SwapMain = () => {
+  // Initialize TokenService
+  const tokenService = new TokenService();
+
+  // Fallback list in case database fetch fails
+  const FALLBACK_CURRENCIES: Currency[] = [
+    { code: 'ALGO', label: 'Algorand', img: 'https://asa-list.tinyman.org/assets/0/icon.png', id: 0, decimals: 6 },
+    { code: 'USDC', label: 'USD Coin', img: 'https://asa-list.tinyman.org/assets/31566704/icon.png', id: 31566704, decimals: 6 },
+    { code: 'goBTC', label: 'Wrapped BTC', img: 'https://asa-list.tinyman.org/assets/386192725/icon.png', id: 386192725, decimals: 8 },
+    { code: 'goETH', label: 'Wrapped ETH', img: 'https://asa-list.tinyman.org/assets/386195940/icon.png', id: 386195940, decimals: 8 },
+    { code: 'PLANET', label: 'Planet', img: 'https://asa-list.tinyman.org/assets/27165954/icon.png', id: 27165954, decimals: 5 },
+    { code: 'OPUL', label: 'Opulous', img: 'https://asa-list.tinyman.org/assets/287867876/icon.png', id: 287867876, decimals: 10 },
+    { code: 'GARD', label: 'GARD', img: 'https://asa-list.tinyman.org/assets/684649988/icon.png', id: 684649988, decimals: 6 },
+    { code: 'STBL', label: 'STBL', img: 'https://asa-list.tinyman.org/assets/465865291/icon.png', id: 465865291, decimals: 6 },
+    { code: 'AKITA', label: 'Akita Inu', img: 'https://asa-list.tinyman.org/assets/244275365/icon.png', id: 244275365, decimals: 6 },
+    { code: 'CHIP', label: 'Chip', img: 'https://asa-list.tinyman.org/assets/77801156/icon.png', id: 77801156, decimals: 6 },
+    { code: 'DEFLY', label: 'Defly', img: 'https://asa-list.tinyman.org/assets/470842789/icon.png', id: 470842789, decimals: 6 },
+    { code: 'ALGOFI', label: 'Algofi Token', img: 'https://asa-list.tinyman.org/assets/81288225/icon.png', id: 81288225, decimals: 6 },
+  ];
+
+  // NEW: pin FRY (env) and manage top/all lists
+  const FRY_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID ?? 0)
+
+  const [allCurrencies, setAllCurrencies] = useState<Currency[]>(FALLBACK_CURRENCIES)
+  const [topCurrencies, setTopCurrencies] = useState<Currency[]>(
+    FALLBACK_CURRENCIES.slice(0, 20)
+  )
+  const [defaultTokens, setDefaultTokens] = useState<Currency[]>([])
+  const [isLoadingTokens, setIsLoadingTokens] = useState(true)
+  const [searchResults, setSearchResults] = useState<{ [key: string]: Currency[] }>({
+    rewards: [],
+    algoRewards: []
+  })
+  const [isSearching, setIsSearching] = useState<{ [key: string]: boolean }>({
+    rewards: false,
+    algoRewards: false
+  })
+  const [pendingSearchQuery, setPendingSearchQuery] = useState<{ [key: string]: string }>({
+    rewards: '',
+    algoRewards: '',
+  })
+    // Helper to detect FRY tokens (by id, code, or label)
+  const isFryToken = (c: Currency) => {
+    const txt = `${c.code || ''} ${c.label || ''}`.toLowerCase()
+    return c.id === FRY_ID || txt.includes('fry')
+  }
+
+  // Fetch tokens from database on mount
+  useEffect(() => {
+    const fetchTokensFromDatabase = async () => {
+      try {
+        setIsLoadingTokens(true);
+        console.log('🔍 Fetching tokens from database...');
+        
+        // Get default tokens first
+        const defaultTokensList = tokenService.getDefaultTokens();
+        const defaultCurrencies = defaultTokensList.map(token => tokenService.convertToCurrency(token));
+        setDefaultTokens(defaultCurrencies);
+        
+        const { all, top } = await tokenService.getTokensSorted();
+        
+        // Pin FRY token to the top if it exists
+        const fryToken = all.find(isFryToken);
+        if (fryToken) {
+          const otherTokens = all.filter(c => !isFryToken(c));
+          const sortedAll = [fryToken, ...otherTokens];
+          setAllCurrencies(sortedAll);
+          
+          const otherTopTokens = top.filter(c => !isFryToken(c));
+          const sortedTop = [fryToken, ...otherTopTokens].slice(0, 20);
+          setTopCurrencies(sortedTop);
+        } else {
+          setAllCurrencies(all);
+          setTopCurrencies(top);
+        }
+        
+        // Set default selections from default tokens
+        setSelectedRewards((prev) => prev ?? defaultCurrencies[0] ?? top[0] ?? all[0]);
+        setSelectedAlgoRewards((prev) => prev ?? (defaultCurrencies[1] ?? top[1] ?? all.find(x => x.id === 0) ?? all[1]));
+        
+        console.log(`✅ Loaded ${all.length} tokens from database (${top.length} top tokens)`);
+        console.log(`📋 Default tokens: ${defaultCurrencies.length}`);
+        console.log(`🔍 Search API is available for both token selection dropdowns`);
+      } catch (error) {
+        console.error('❌ Failed to fetch tokens from database:', error);
+        console.log('🔄 Using fallback tokens for both dropdowns');
+        
+        // Set default tokens from fallback
+        const defaultTokensList = tokenService.getDefaultTokens();
+        const defaultCurrencies = defaultTokensList.map(token => tokenService.convertToCurrency(token));
+        setDefaultTokens(defaultCurrencies);
+        
+        setAllCurrencies(FALLBACK_CURRENCIES);
+        setTopCurrencies(FALLBACK_CURRENCIES.slice(0, 20));
+        setSelectedRewards((prev) => prev ?? defaultCurrencies[0] ?? FALLBACK_CURRENCIES[0]);
+        setSelectedAlgoRewards((prev) => prev ?? (defaultCurrencies[1] ?? FALLBACK_CURRENCIES[1]));
+      } finally {
+        setIsLoadingTokens(false);
+      }
+    };
+
+    fetchTokensFromDatabase();
+  }, []);
+
+  const location = useLocation()
+  const { activeAddress, providers, signTransactions: walletSignTransactions } = useWallet()
+
+  const [selectedRewards, setSelectedRewards] = useState<Currency | undefined>(undefined);
+  const [selectedAlgoRewards, setSelectedAlgoRewards] = useState<Currency | undefined>(undefined);
+  const [searchQuery, setSearchQuery] = useState<{ [key: string]: string }>({
+    rewards: '',
+    algoRewards: '',
+  })
+  const [openWalletModal, setOpenWalletModal] = useState<boolean>(false);
+  const [isOpenDropdowns, setIsOpenDropdowns] = useState<{ [key: string]: boolean }>({ rewards: false, algoRewards: false })
+  const dropdownRefs = {
+    rewards: useRef<HTMLDivElement | null>(null),
+    algoRewards: useRef<HTMLDivElement | null>(null),
+  }
+  const [swapAmount, setSwapAmount] = useState('0')
+
+  const toggleWalletModal = () => {
+    setOpenWalletModal(!openWalletModal)
+  }
+
+  const folksRouterClient = new FolksRouterClient(Network.MAINNET)
+  const [tokenPerAlgo, setTokenPerAlgo] = useState<string>('0');
+
+  useEffect(() => {
+    if (allCurrencies.length > 1) {
+      setSelectedRewards((prev) => prev ?? allCurrencies[0]);
+      setSelectedAlgoRewards((prev) => prev ?? allCurrencies[1]);
+    }
+  }, [allCurrencies]);
+
+  // Handle search submission (only when submit button is clicked)
+  const handleSearchSubmit = async (dropdown: 'rewards' | 'algoRewards') => {
+    const query = pendingSearchQuery[dropdown]?.trim();
+    
+    if (!query || query.length < 2) {
+      toast.error('Please enter at least 2 characters to search');
+      return;
+    }
+
+    // Update search query to trigger search
+    setSearchQuery(prev => ({ ...prev, [dropdown]: query }));
+    setIsSearching(prev => ({ ...prev, [dropdown]: true }));
+    
+    try {
+      console.log(`🔍 Searching ${dropdown} dropdown for: "${query}"`);
+      const searchTokens = await tokenService.searchTokens(query);
+      const searchCurrencies = searchTokens.map(token => tokenService.convertToCurrency(token));
+      
+      console.log(`✅ Found ${searchCurrencies.length} tokens for ${dropdown} dropdown`);
+      setSearchResults(prev => ({ ...prev, [dropdown]: searchCurrencies }));
+    } catch (error) {
+      console.error(`❌ Search error for ${dropdown}:`, error);
+      setSearchResults(prev => ({ ...prev, [dropdown]: [] }));
+      toast.error('Search failed. Please try again.');
+    } finally {
+      setIsSearching(prev => ({ ...prev, [dropdown]: false }));
+    }
+  };
+
+  const toggleDropdown = (dropdown: string) => {
+    setIsOpenDropdowns((prev) => {
+      const newState = { ...prev }
+      Object.keys(prev).forEach((key) => {
+        if (key !== dropdown) newState[key] = false
+      })
+      newState[dropdown] = !prev[dropdown]
+      return newState
+    })
+  }
+
+  const selectCurrency = (currency: Currency, dropdown: string) => {
+    if (dropdown === 'rewards') {
+      setSelectedRewards(currency)
+    } else if (dropdown === 'algoRewards') {
+      setSelectedAlgoRewards(currency)
+    }
+
+    setIsOpenDropdowns((prev) => ({ ...prev, [dropdown]: false }))
+  }
+
+ // Updated getFilteredCurrencies to show default tokens first, then search results
+  const getFilteredCurrencies = (dropdown: 'rewards' | 'algoRewards') => {
+    const q = (searchQuery[dropdown] || '').trim().toLowerCase()
+    
+    // If searching and we have search results, use them
+    if (q && q.length >= 2 && searchResults[dropdown].length > 0) {
+      console.log(`🔍 Using search API results for "${q}": ${searchResults[dropdown].length} tokens`);
+      return searchResults[dropdown].sort((a, b) => Number(isFryToken(b)) - Number(isFryToken(a)));
+    }
+    
+    // If searching but no results yet, show loading or empty state
+    if (q && q.length >= 2) {
+      if (isSearching[dropdown]) {
+        return []; // Will show loading state in UI
+      }
+      return []; // Will show "no results" in UI
+    }
+    
+    // When not searching, show default tokens first
+    return defaultTokens.length > 0 ? defaultTokens : allCurrencies.slice(0, 100);
+  }
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      Object.keys(dropdownRefs).forEach((key) => {
+        const ref = dropdownRefs[key as keyof typeof dropdownRefs].current
+        if (ref && !ref.contains(event.target as Node)) {
+          setIsOpenDropdowns((prev) => ({ ...prev, [key]: false }))
+        }
+      })
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const [minReceived, setMinReceived] = useState<string>('0');
+  const [priceImpact, setPriceImpact] = useState<string>('0');
+  const [priceRate, setPriceRate] = useState<string>('0');
+  const [currentProvider, setCurrentProvider] = useState<string>('folksrouter');
+
+  useEffect(() => {
+    if (!selectedRewards || !selectedAlgoRewards) return;
+
+    const debounceTimer = setTimeout(async () => {
+      if (!swapAmount || parseFloat(swapAmount) <= 0) {
+        setTokenPerAlgo('0');
+        setMinReceived('0');
+        setPriceRate('0');
+        setPriceImpact('0');
+        return;
+      }
+
+      try {
+        // Convert amount based on source token's decimals
+        const multiplier = Math.pow(10, selectedRewards.decimals);
+        const microAmount = Math.floor(parseFloat(swapAmount) * multiplier);
+
+        if (isNaN(microAmount) || microAmount <= 0) return;
+
+        // Initialize SwapService to check provider support and get quotes
+        const swapService = new SwapService({
+          network: Network.MAINNET,
+          algodClient: algodMain,
+          walletSignTransactions: walletSignTransactions
+        });
+
+        // Try to get quotes from both providers
+        const quoteComparison = await swapService.compareQuotes(
+          selectedRewards.id,
+          selectedAlgoRewards.id,
+          microAmount
+        );
+
+        let quote: SwapQuote | VestigeSwapQuote | null = null;
+        let provider = 'folksrouter';
+
+        if (quoteComparison.bestProvider === 'vestige' && quoteComparison.vestige) {
+          quote = quoteComparison.vestige;
+          provider = 'vestige';
+        } else if (quoteComparison.folksRouter) {
+          quote = quoteComparison.folksRouter;
+          provider = 'folksrouter';
+        } else if (quoteComparison.vestige) {
+          quote = quoteComparison.vestige;
+          provider = 'vestige';
+        }
+
+        if (!quote) throw new Error("Unable to get quote from any provider");
+
+        // Calculate converted amount using correct decimals
+        const fromAmount = parseFloat(swapAmount);
+        let toAmount: number;
+        let priceImpactValue: string;
+
+        if (provider === 'vestige' && 'amount_out' in quote) {
+          // Vestige Labs quote
+          toAmount = formatAssetAmount(quote.amount_out, selectedAlgoRewards.decimals);
+          priceImpactValue = (quote.price_impact * 100).toFixed(2);
+        } else if ('quoteAmount' in quote) {
+          // FolksRouter quote
+          toAmount = formatAssetAmount(Number(quote.quoteAmount), selectedAlgoRewards.decimals);
+          priceImpactValue = quote.priceImpact ?
+            (Number(quote.priceImpact) * 100).toFixed(2) :
+            '0.00';
+        } else {
+          throw new Error("Invalid quote format");
+        }
+
+        // Calculate price rate (price per token)
+        const rate = toAmount / fromAmount;
+
+        // Calculate minimum received (with 0.5% slippage)
+        const minReceivedAmount = toAmount * 0.995;
+
+        setTokenPerAlgo(toAmount.toFixed(selectedAlgoRewards.decimals));
+        setMinReceived(minReceivedAmount.toFixed(selectedAlgoRewards.decimals));
+        setPriceRate(rate.toFixed(6));
+        setPriceImpact(priceImpactValue);
+        setCurrentProvider(provider);
+
+        console.log(`💱 Swap Quote from ${provider}:
+          From: ${fromAmount} ${selectedRewards.code}
+          To: ${toAmount} ${selectedAlgoRewards.code}
+          Rate: 1 ${selectedRewards.code} = ${rate} ${selectedAlgoRewards.code}
+          Min Received: ${minReceivedAmount} ${selectedAlgoRewards.code}
+          Price Impact: ${priceImpactValue}%`);
+
+      } catch (error: any) {
+        console.error("Swap quote error:", error);
+
+        // Only show toast for user-actionable errors
+        if (!activeAddress) {
+          // Don't show wallet connection error until user tries to swap
+          console.log("Wallet not connected, skipping quote");
+        } else if (error?.response?.status === 404) {
+          toast.warning("This token pair is currently unavailable for swapping");
+        } else if (!navigator.onLine) {
+          toast.error("Please check your internet connection");
+        } else {
+          // Don't show technical errors to user unless they try to swap
+          console.error("Quote fetch failed:", error.message || error);
+        }
+
+        // Reset values on error
+        setTokenPerAlgo('0');
+        setMinReceived('0');
+        setPriceRate('0');
+        setPriceImpact('0');
+      }
+    }, 500); // Debounce api calls by 500ms
+
+    return () => clearTimeout(debounceTimer);
+  }, [selectedRewards, selectedAlgoRewards, swapAmount, activeAddress]);
+
+  const checkAssetBalance = async (assetId: number): Promise<{ hasAsset: boolean; balance: number }> => {
+    if (!activeAddress) {
+      return { hasAsset: false, balance: 0 };
+    }
+
+    try {
+      const accountInfo = await algodMain.accountInformation(activeAddress).do();
+      const assetInfo = accountInfo.assets.find((a: any) => a['asset-id'] === assetId);
+      
+      if (assetInfo) {
+        return { hasAsset: true, balance: assetInfo.amount };
+      }
+      
+      return { hasAsset: false, balance: 0 };
+    } catch (error) {
+      console.error('Error checking asset balance:', error);
+      return { hasAsset: false, balance: 0 };
+    }
+  };
+
+  const optInToASA = async (assetId: number) => {
+    if (!activeAddress) return toast.error('Wallet not connected')
+
+    // Ensure assetId is a valid positive number
+    const numericAssetId = Number(assetId)
+    if (isNaN(numericAssetId) || numericAssetId <= 0) {
+      console.error('❌ Invalid asset ID:', assetId)
+      toast.error(`Invalid asset ID: ${assetId}`)
+      return
+    }
+
+    console.log('🔍 Opting in to asset ID:', numericAssetId, 'type:', typeof numericAssetId)
+
+    try {
+      const accountInfo = await algodMain.accountInformation(activeAddress).do()
+      const alreadyOptedIn = accountInfo.assets.some((a: any) => a['asset-id'] === numericAssetId)
+
+      if (alreadyOptedIn) {
+        console.log(`✅ Already opted in to asset ${numericAssetId}`)
+        return
+      }
+
+      const params = await algodMain.getTransactionParams().do()
+      const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+        from: activeAddress,
+        to: activeAddress,
+        assetIndex: numericAssetId,
+        amount: 0,
+        suggestedParams: params,
+      })
+
+      const signed = await walletSignTransactions([txn.toByte()])
+      const result = await algodMain.sendRawTransaction(signed).do()
+
+      toast.success(`✅ Opted in to asset ${numericAssetId}`)
+      console.log('Opt-in TX ID:', result.txId)
+      return result
+    } catch (err) {
+      console.error('❌ Opt-in failed:', err)
+      toast.error('Opt-in failed')
+    }
+  }
+
+  const performSwap = async () => {
+    if (!activeAddress) {
+      toast.error("⚠️ Please connect your wallet");
+      return;
+    }
+    if (!selectedRewards || !selectedAlgoRewards) {
+      toast.error("Please select both tokens.");
+      return;
+    }
+    try {
+      // Validate selected tokens have valid IDs
+      if (!selectedRewards?.id && selectedRewards?.id !== 0) {
+        toast.error("Invalid source token selected")
+        return
+      }
+      if (!selectedAlgoRewards?.id && selectedAlgoRewards?.id !== 0) {
+        toast.error("Invalid destination token selected")
+        return
+      }
+
+      // Calculate amount using correct decimals
+      const multiplier = Math.pow(10, selectedRewards.decimals)
+      const microAmount = Math.floor(parseFloat(swapAmount) * multiplier)
+      
+      if (isNaN(microAmount) || microAmount <= 0) {
+        toast.error("Invalid swap amount")
+        return
+      }
+
+      // Check balances and opt-in to both source and destination ASA tokens (not ALGO)
+      if (selectedRewards.id !== 0) {
+        console.log('🔍 Checking balance for source asset:', selectedRewards.id);
+        const sourceBalance = await checkAssetBalance(selectedRewards.id);
+        console.log('Source asset balance:', sourceBalance);
+        
+        if (!sourceBalance.hasAsset) {
+          console.log('🔍 Opting in to source asset:', selectedRewards.id);
+          await optInToASA(selectedRewards.id);
+        } else if (sourceBalance.balance < microAmount) {
+          toast.error(`Insufficient balance. You have ${sourceBalance.balance} but need ${microAmount}`);
+          return;
+        }
+      }
+      
+      if (selectedAlgoRewards.id !== 0) {
+        console.log('🔍 Checking opt-in for destination asset:', selectedAlgoRewards.id);
+        const destBalance = await checkAssetBalance(selectedAlgoRewards.id);
+        console.log('Destination asset balance:', destBalance);
+        
+        if (!destBalance.hasAsset) {
+          console.log('🔍 Opting in to destination asset:', selectedAlgoRewards.id);
+          await optInToASA(selectedAlgoRewards.id);
+        }
+      }
+
+      // Initialize SwapService with fallback support
+      const swapService = new SwapService({
+        network: Network.MAINNET,
+        algodClient: algodMain,
+        walletSignTransactions: walletSignTransactions
+      });
+
+      // Perform swap with automatic fallback
+      console.log('🔍 Swap component asset IDs:', {
+        fromAssetId: selectedRewards.id,
+        fromAssetIdType: typeof selectedRewards.id,
+        toAssetId: selectedAlgoRewards.id,
+        toAssetIdType: typeof selectedAlgoRewards.id,
+        amount: microAmount
+      });
+      
+      const result = await swapService.performSwap(
+        selectedRewards.id,
+        selectedAlgoRewards.id,
+        microAmount,
+        activeAddress,
+        10 // slippage in bps
+      );
+
+      if (result.success) {
+        toast.success(`✅ Swap submitted via ${result.provider}! TXID: ${result.txId}`)
+      } else {
+        // Show more helpful error messages
+        if (result.provider === 'vestige') {
+          toast.warning(`⚠️ ${result.error}`)
+        } else {
+          throw new Error(result.error || 'Swap failed')
+        }
+      }
+    } catch (err) {
+      console.error('❌ Swap failed:', err)
+      toast.error("❌ Swap failed: " + (err.message || "Unknown error"));
+    }
+  }
+
+  return (
+    <div className="w-full mt-[56px] mb-[50px]">
+      <div className="max-xxxl:w-[95%] w-[80%] m-auto flex flex-col gap-[10px]">
+        <div className="top flex justify-between items-center sm-s:flex-col sm-s:gap-[20px]">
+          <h3 className="uppercase font-apex tracking-[1.6px] heading">Swap</h3>
+        </div>
+
+        <div className="bottom flex gap-[16px] max-md:flex-col">
+          <div className="max-w-[35%] max-md:max-w-full w-full px-[24px] pt-[29px] pb-[19px] rounded-[22px] bg-white shadow-md">
+
+
+            <p className="mt-[6px] text-text_clr medium tracking-[0.48px]">
+              {/* {isLoadingTokens ? 'Loading tokens ...' : `We find the most efficient path to swap your token. (${allCurrencies.length} tokens available)`} */}
+              {isLoadingTokens ? 'Loading tokens ...' : `We find the most efficient path to swap your token`}
+            </p>
+
+            <div className="dropdwon-swap relative mt-[24px] flex flex-col gap-[16px]">
+              {/* Dropdown 1 */}
+              <div className="algo-div flex gap-[10px] items-center justify-between bg-[#F5F5F5] rounded-[12px] p-[7px]">
+                <input
+                  type="number"
+                  placeholder="Enter amount"
+                  value={swapAmount}
+                  onChange={(e) => setSwapAmount(e.target.value)}
+                  className="input-wrapper max-xxxl:text-[24px] text-[32px] w-full"
+                />
+                <div className="relative inline-block text-left" ref={dropdownRefs.rewards}>
+                  <div
+                    className="flex items-center justify-between gap-[13px] cursor-pointer bg-white w-[126px] h-[46px] rounded-[6px] py-[9px] px-[12px]"
+                    onClick={() => toggleDropdown('rewards')}
+                  >
+                    {selectedRewards ? (
+                      <img src={selectedRewards.img} alt="" width={28} height={28} />
+                    ) : (
+                      <span className="w-[28px] h-[28px] bg-gray-200 rounded-full animate-pulse inline-block" />
+                    )}
+                    <div className="flex items-center gap-[4px]">
+                      <p className="text-text_clr medium">{selectedRewards ? selectedRewards.code : '...'}</p>
+                      <Icon
+                        icon={isOpenDropdowns.rewards ? 'mdi:chevron-up' : 'mdi:chevron-down'}
+                        width={26}
+                        height={26}
+                        color="#718096"
+                      />
+                    </div>
+                  </div>
+                  {isOpenDropdowns.rewards && (
+                    <div className="absolute right-0 mt-2 px-[11px] py-[9px] w-[300px]  bg-white rounded-[10px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] z-10">
+                      <div className="py-[7px] px-[9px] mb-[16px] flex items-center gap-[8px] rounded-[10px] bg-gray shadow-sm">
+                        <Icon icon="si:search-line" color="#A8A8A8" width={22} height={22} />
+                        <input
+                          type="search"
+                          placeholder="Search token"
+                          value={pendingSearchQuery.rewards}
+                          onChange={(e) => setPendingSearchQuery((prev) => ({ ...prev, rewards: e.target.value }))}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSearchSubmit('rewards');
+                            }
+                          }}
+                          className="w-full bg-transparent focus:outline-none"
+                        />
+                        <button
+                          onClick={() => handleSearchSubmit('rewards')}
+                          className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors"
+                          disabled={isSearching.rewards}
+                        >
+                          {isSearching.rewards ? '...' : 'Search'}
+                        </button>
+                      </div>
+                      <ul className="py-1 flex flex-col gap-[6px] max-h-[min(60vh,300px)] overflow-y-auto custom-scrollbar">
+                        {(() => {
+                          const q = searchQuery.rewards?.trim();
+                          const currencies = getFilteredCurrencies('rewards');
+                          
+                          // Show loading state when searching
+                          if (q && q.length >= 2 && isSearching.rewards) {
+                            return (
+                              <li className="px-4 py-2 text-center text-blue-500 text-sm">
+                                🔍 Searching for "{q}"...
+                              </li>
+                            );
+                          }
+                          
+                          // Show search results
+                          if (q && q.length >= 2 && currencies.length > 0) {
+                            return (
+                              <>
+                                {currencies.map((currency) => (
+                                  <li
+                                    key={currency.code}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-[11px] cursor-pointer hover:bg-gray"
+                                    onClick={() => selectCurrency(currency, 'rewards')}
+                                  >
+                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
+                                    <span className="text-black font-medium">{currency.label}</span>
+                                  </li>
+                                ))}
+                                <li className="px-4 py-2 text-center text-green-500 text-sm">
+                                  ✅ Found {currencies.length} tokens matching "{q}"
+                                </li>
+                              </>
+                            );
+                          }
+                          
+                          // Show no results for search
+                          if (q && q.length >= 2 && currencies.length === 0) {
+                            return (
+                              <li className="px-4 py-2 text-center text-red-500 text-sm">
+                                ❌ No tokens found for "{q}"
+                              </li>
+                            );
+                          }
+                          
+                          // Show regular token list
+                          if (currencies.length > 0) {
+                            return (
+                              <>
+                                {currencies.map((currency) => (
+                                  <li
+                                    key={currency.code}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-[11px] cursor-pointer hover:bg-gray"
+                                    onClick={() => selectCurrency(currency, 'rewards')}
+                                  >
+                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
+                                    <span className="text-black font-medium">{currency.label}</span>
+                                  </li>
+                                ))}
+                                {allCurrencies.length > 100 && (
+                                  <li className="px-4 py-2 text-center text-gray-400 text-sm">
+                                    Showing top 100 tokens. Search to find more...
+                                  </li>
+                                )}
+                              </>
+                            );
+                          }
+                          
+                          return (
+                            <li className="px-4 py-2 text-center text-gray-500">No tokens found</li>
+                          );
+                        })()}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Dropdown 2 (Read-only) */}
+              <div className="eth-div flex gap-[10px] items-center justify-between bg-[#F5F5F5] rounded-[12px] p-[7px]">
+                <Input type="number" name="number" value={tokenPerAlgo} className="input-wrapper max-xxxl:text-[24px] text-[32px] w-full" />
+
+                <div className="relative inline-block text-left" ref={dropdownRefs.algoRewards}>
+                  <div
+                    className="flex items-center justify-between gap-[13px] cursor-pointer bg-white w-[126px] h-[50px] rounded-[6px] py-[9px] px-[12px]"
+                    onClick={() => toggleDropdown('algoRewards')}
+                  >
+                    {selectedAlgoRewards ? (
+                      <img src={selectedAlgoRewards.img} alt="" width={28} height={28} onError={(e) => { e.currentTarget.src = '/assets/icons/XRP.png'; }} />
+                    ) : (
+                      <span className="w-[28px] h-[28px] bg-gray-200 rounded-full animate-pulse inline-block" />
+                    )}
+                    <div className="flex items-center gap-[4px]">
+                      <p className="text-text_clr medium">{selectedAlgoRewards ? selectedAlgoRewards.code : '...'}</p>
+                      <Icon
+                        icon={isOpenDropdowns.algoRewards ? 'mdi:chevron-up' : 'mdi:chevron-down'}
+                        width={26}
+                        height={26}
+                        color="#718096"
+                      />
+                    </div>
+                  </div>
+
+                  {isOpenDropdowns.algoRewards && (
+                    <div className="absolute right-0 mt-2 px-[11px] py-[9px] w-[300px] bg-white rounded-[10px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] z-10">
+                      <div className="py-[7px] px-[9px] mb-[16px] flex items-center gap-[8px] rounded-[10px] bg-gray shadow-sm">
+                        <Icon icon="si:search-line" color="#A8A8A8" width={22} height={22} />
+                        <input
+                          type="search"
+                          placeholder="Search token"
+                          value={pendingSearchQuery.algoRewards}
+                          onChange={(e) => setPendingSearchQuery((prev) => ({ ...prev, algoRewards: e.target.value }))}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSearchSubmit('algoRewards');
+                            }
+                          }}
+                          className="w-full bg-transparent focus:outline-none"
+                        />
+                        <button
+                          onClick={() => handleSearchSubmit('algoRewards')}
+                          className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors"
+                          disabled={isSearching.algoRewards}
+                        >
+                          {isSearching.algoRewards ? '...' : 'Search'}
+                        </button>
+                      </div>
+
+                      <ul className="py-1 flex flex-col gap-[6px] max-h-[min(60vh,300px)] overflow-y-auto custom-scrollbar">
+                        {(() => {
+                          const q = searchQuery.algoRewards?.trim();
+                          const currencies = getFilteredCurrencies('algoRewards');
+                          
+                          // Show loading state when searching
+                          if (q && q.length >= 2 && isSearching.algoRewards) {
+                            return (
+                              <li className="px-4 py-2 text-center text-blue-500 text-sm">
+                                🔍 Searching for "{q}"...
+                              </li>
+                            );
+                          }
+                          
+                          // Show search results
+                          if (q && q.length >= 2 && currencies.length > 0) {
+                            return (
+                              <>
+                                {currencies.map((currency) => (
+                                  <li
+                                    key={currency.code}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-[11px] cursor-pointer hover:bg-gray"
+                                    onClick={() => selectCurrency(currency, 'algoRewards')}
+                                  >
+                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
+                                    <span className="text-black font-medium">{currency.label}</span>
+                                  </li>
+                                ))}
+                                <li className="px-4 py-2 text-center text-green-500 text-sm">
+                                  ✅ Found {currencies.length} tokens matching "{q}"
+                                </li>
+                              </>
+                            );
+                          }
+                          
+                          // Show no results for search
+                          if (q && q.length >= 2 && currencies.length === 0) {
+                            return (
+                              <li className="px-4 py-2 text-center text-red-500 text-sm">
+                                ❌ No tokens found for "{q}"
+                              </li>
+                            );
+                          }
+                          
+                          // Show regular token list
+                          if (currencies.length > 0) {
+                            return (
+                              <>
+                                {currencies.map((currency) => (
+                                  <li
+                                    key={currency.code}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-[11px] cursor-pointer hover:bg-gray"
+                                    onClick={() => selectCurrency(currency, 'algoRewards')}
+                                  >
+                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
+                                    <span className="text-black font-medium">{currency.label}</span>
+                                  </li>
+                                ))}
+                                {allCurrencies.length > 100 && (
+                                  <li className="px-4 py-2 text-center text-gray-400 text-sm">
+                                    Showing top 100 tokens. Search to find more...
+                                  </li>
+                                )}
+                              </>
+                            );
+                          }
+                          
+                          return (
+                            <li className="px-4 py-2 text-center text-gray-500">No tokens found</li>
+                          );
+                        })()}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  // Swap the selected tokens
+                  const tempToken = selectedRewards;
+                  setSelectedRewards(selectedAlgoRewards);
+                  setSelectedAlgoRewards(tempToken);
+
+                  // Swap the amounts if there's a value
+                  if (swapAmount !== '0' && tokenPerAlgo !== '0') {
+                    setSwapAmount(tokenPerAlgo);
+                  }
+                }}
+                className="absolute left-1/2 transform -translate-x-1/2 top-[50px] cursor-pointer bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors"
+                aria-label="Swap tokens"
+              >
+                <Icon icon="mdi:swap-vertical" width={24} height={24} color="#718096" />
+              </button>
+            </div>
+
+            <div className="data-div flex flex-col gap-[10px] px-[16px] py-[11px] bg-[#F9F9F9] rounded-[12px] mt-[17px]">
+              <div className="flex justify-between items-center gap-[10px]">
+                <p className="text-text_clr medium tracking-[0.48px]">Minimum received</p>
+                <div className="flex items-center gap-[2px]">
+                  <p className="text-black medium tracking-[0.48px] font-medium">
+                    {minReceived} {selectedAlgoRewards?.code || ''}
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-between items-center gap-[10px]">
+                <p className="text-text_clr medium tracking-[0.48px]">Price</p>
+                <div className="flex items-center gap-[2px]">
+                  <p className="text-black medium tracking-[0.48px] font-medium">
+                    1 {selectedRewards?.code || ''} = {priceRate} {selectedAlgoRewards?.code || ''}
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-between items-center gap-[10px]">
+                <p className="text-text_clr medium tracking-[0.48px]">Max slippage</p>
+                <div className="flex items-center gap-[2px]">
+                  <p className="text-green medium tracking-[0.48px] font-medium">0.5%</p>
+                </div>
+              </div>
+              <div className="flex justify-between items-center gap-[10px]">
+                <p className="text-text_clr medium tracking-[0.48px]">Price impact</p>
+                <div className="flex items-center gap-[2px]">
+                  <p className={`medium tracking-[0.48px] font-medium ${
+                    parseFloat(priceImpact) > 5 ? 'text-red-500' : 'text-green'
+                  }`}>
+                    {priceImpact}%
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Provider Indicator */}
+            <div className="mt-[13px] mb-[8px] flex items-center justify-center">
+              <div className="flex items-center gap-[8px] px-[12px] py-[6px] bg-gray-100 rounded-[8px]">
+                <div className={`w-[8px] h-[8px] rounded-full ${currentProvider === 'folksrouter' ? 'bg-blue-500' : 'bg-green-500'}`}></div>
+                <span className="text-[12px] text-gray-600 font-medium">
+                  Powered by {currentProvider === 'folksrouter' ? 'FolksRouter' : 'Vestige Labs'}
+                </span>
+              </div>
+            </div>
+
+            <Button text="Swap" className="button btn-primary" height={53} width="100%" onClick={performSwap} />
+          </div>
+
+                     <div className="chart max-w-[65%] max-md:max-w-full w-full px-[24px] pt-[19px] pb-[21px] rounded-[22px] bg-white shadow-md">
+             <div className="flex justify-between items-start mb-[20px]">
+               <div>
+                 <h4 className="text-black tracking-[0.96px] mt-[3px]">
+                   {selectedRewards && selectedAlgoRewards ?
+                     `${selectedRewards.code}/${selectedAlgoRewards.code} Chart` :
+                     'Select Tokens'
+                   }
+                 </h4>
+                 <p className="text-text_clr text-sm mt-1">
+                   {selectedRewards && selectedAlgoRewards ?
+                     `Current Price: ${tokenPerAlgo} ${selectedAlgoRewards.code} per ${selectedRewards.code} (Vestige Labs)` :
+                     'Choose tokens to see price chart'
+                   }
+                 </p>
+                 {selectedRewards && selectedAlgoRewards && (
+                   <div className="flex items-center gap-4 mt-2">
+                     <div className="text-xs">
+                       <span className="text-text_clr">24h High: </span>
+                       <span className="text-green font-medium">{(parseFloat(tokenPerAlgo) * 1.05).toFixed(6)}</span>
+                     </div>
+                     <div className="text-xs">
+                       <span className="text-text_clr">24h Low: </span>
+                       <span className="text-red font-medium">{(parseFloat(tokenPerAlgo) * 0.95).toFixed(6)}</span>
+                     </div>
+                     <div className="text-xs">
+                       <span className="text-text_clr">24h Vol: </span>
+                       <span className="text-blue font-medium">{(Math.random() * 1000000).toLocaleString()}</span>
+                     </div>
+                   </div>
+                 )}
+               </div>
+               <div className="text-right">
+                 <p className="text-text_clr text-sm">Last 24h</p>
+                 <p className={`medium tracking-[0.48px] font-medium ${
+                   selectedRewards && selectedAlgoRewards ?
+                     (Math.random() > 0.5 ? 'text-green' : 'text-red') :
+                     'text-text_clr'
+                 }`}>
+                   {selectedRewards && selectedAlgoRewards ?
+                     `${(Math.random() * 10 - 5).toFixed(2)}%` :
+                     '0.00%'
+                   }
+                 </p>
+               </div>
+             </div>
+             <CandleStickChart
+               fromToken={selectedRewards}
+               toToken={selectedAlgoRewards}
+               swapAmount={swapAmount}
+             />
+           </div>
+        </div>
+      </div>
+
+            <ConnectWallet
+              openModal={openWalletModal}
+              closeModal={() => setOpenWalletModal(false)}
+            />
+
+    </div>
+  )
+}
+
+export default SwapMain

@@ -1,0 +1,370 @@
+import axios from 'axios';
+
+// Backend API service for fetching tokens
+class TokenService {
+  private baseUrl: string;
+  private tokenCache: Token[] | null = null;
+  private cacheTimestamp: number = 0;
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private searchCache: Map<string, { tokens: Token[], timestamp: number }> = new Map();
+  private readonly SEARCH_CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+
+  constructor() {
+    // Use your existing backend API
+    // this.baseUrl = (import.meta as any)?.env?.VITE_API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000');
+    this.baseUrl = 'https://frynodebackend.octalooptechnologies.com';
+  }
+
+  /**
+   * Fetch all tokens from backend API with caching
+   */
+  async fetchAllTokens(): Promise<Token[]> {
+    // Check cache first
+    const now = Date.now();
+    if (this.tokenCache && (now - this.cacheTimestamp) < this.CACHE_DURATION) {
+      console.log(`✅ Using cached tokens (${this.tokenCache.length} tokens)`);
+      return this.tokenCache;
+    }
+
+    try {
+      console.log('🔍 Fetching tokens from backend API...');
+      
+      // Fetch from your backend API with timeout
+      const response = await axios.get(`${this.baseUrl}/token/all`, {
+        timeout: 10000, // 10 second timeout
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
+      const dbTokens = response.data.data || response.data;
+      console.log(`✅ Fetched ${dbTokens.length} tokens from backend API`);
+
+      // Convert database tokens to Token format
+      const tokens = dbTokens.map((token: any) => {
+        // Check if tokenImage is a valid URL (contains http, https, or ipfs)
+        const isValidImageUrl = token.tokenImage && 
+          (token.tokenImage.startsWith('http://') || 
+           token.tokenImage.startsWith('https://') || 
+           token.tokenImage.startsWith('ipfs://') ||
+           token.tokenImage.includes('.png') ||
+           token.tokenImage.includes('.jpg') ||
+           token.tokenImage.includes('.jpeg') ||
+           token.tokenImage.includes('.svg'));
+
+        return {
+          id: token.tokenId,
+          name: token.tokenName || `Asset ${token.tokenId}`,
+          symbol: token.tokenSymbol || token.tokenName || 'UNKNOWN',
+          decimals: token.decimals || 6,
+          verified: token.verified || false,
+          image: isValidImageUrl ? token.tokenImage : `https://asa-list.tinyman.org/assets/${token.tokenId}/icon.png`,
+          price: token.price,
+          marketCap: token.marketCap,
+          volume24h: token.volume1d,
+          totalSupply: token.totalSupply,
+          circulatingSupply: token.circulatingSupply,
+          tvl: token.tvl,
+          rank: token.rank,
+          source: token.source || 'Backend API'
+        };
+      });
+
+      // Add some essential tokens that might not be in database
+      const essentialTokens = this.getEssentialTokens();
+      const combinedTokens = [...tokens, ...essentialTokens];
+
+      // Remove duplicates by ID
+      const uniqueTokens = combinedTokens.filter((token, index, self) => 
+        index === self.findIndex(t => t.id === token.id)
+      );
+
+      console.log(`✅ Total unique tokens: ${uniqueTokens.length}`);
+      
+      // Cache the results
+      this.tokenCache = uniqueTokens;
+      this.cacheTimestamp = Date.now();
+      
+      return uniqueTokens;
+
+    } catch (error) {
+      console.error('❌ Failed to fetch tokens from backend API:', error);
+      
+      // If we have cached tokens, use them even if expired
+      if (this.tokenCache) {
+        console.log('🔄 Using expired cache tokens due to API error');
+        return this.tokenCache;
+      }
+      
+      console.log('🔄 Using fallback tokens');
+      return this.getComprehensiveTokenList();
+    }
+  }
+
+  /**
+   * Default tokens that should always be shown in dropdowns
+   */
+  getDefaultTokens(): Token[] {
+    return [
+      { id: 2485314946, name: 'Fry', symbol: 'FRY', decimals: 6, verified: true, image: 'https://fry-staking-frontend.vercel.app/assets/images/logo.svg' },
+      { id: 0, name: 'Algorand', symbol: 'ALGO', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/0/icon.png' },
+      { id: 31566704, name: 'USD Coin', symbol: 'USDC', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/31566704/icon.png' },
+      { id: 312769, name: 'Tether', symbol: 'USDT', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/312769/icon.png' },
+      { id: 27165954, name: 'PlanetWatch', symbol: 'PLANETS', decimals: 5, verified: true, image: 'https://asa-list.tinyman.org/assets/27165954/icon.png' },
+      { id: 27165954, name: 'Planets', symbol: 'PLANETS', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/27165954/icon.png' },
+      { id: 287867876, name: 'Opulous', symbol: 'OPUL', decimals: 10, verified: true, image: 'https://asa-list.tinyman.org/assets/287867876/icon.png' },
+      // Note: FOLKS, RIO, BUY, PGOLD, ALGX IDs need to be updated with correct asset IDs
+      // These are placeholder IDs - update when actual IDs are known
+      // Note: Token IDs below are placeholders - update with correct asset IDs when available
+      { id: 700965019, name: 'Folks Finance', symbol: 'FOLKS', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/700965019/icon.png' },
+      { id: 163650, name: 'Realio Network', symbol: 'RIO', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/163650/icon.png' },
+      { id: 230946361, name: 'Buying.com', symbol: 'BUY', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/230946361/icon.png' },
+      { id: 137594422, name: 'PolkaGold', symbol: 'PGOLD', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/137594422/icon.png' },
+      { id: 137594423, name: 'Algodex Token', symbol: 'ALGX', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/137594423/icon.png' },
+    ];
+  }
+
+  /**
+   * Essential tokens that should always be available
+   */
+  private getEssentialTokens(): Token[] {
+    return [
+      { id: 0, name: 'Algorand', symbol: 'ALGO', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/0/icon.png' },
+      { id: 31566704, name: 'USD Coin', symbol: 'USDC', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/31566704/icon.png' },
+      { id: 312769, name: 'Tether USD', symbol: 'USDT', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/312769/icon.png' },
+      { id: 2485314946, name: 'Fry', symbol: 'FRY', decimals: 6, verified: true, image: 'https://fry-staking-frontend.vercel.app/assets/images/logo.svg' }
+    ];
+  }
+
+  /**
+   * Comprehensive token list with all popular Algorand tokens
+   */
+  private getComprehensiveTokenList(): Token[] {
+    return [
+      // Major tokens
+      { id: 0, name: 'Algorand', symbol: 'ALGO', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/0/icon.png' },
+      { id: 31566704, name: 'USD Coin', symbol: 'USDC', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/31566704/icon.png' },
+      { id: 312769, name: 'Tether USD', symbol: 'USDT', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/312769/icon.png' },
+      { id: 2485314946, name: 'Fry', symbol: 'FRY', decimals: 6, verified: true, image: 'https://fry-staking-frontend.vercel.app/assets/images/logo.svg' },
+      
+      // Wrapped tokens
+      { id: 386192725, name: 'Wrapped BTC', symbol: 'goBTC', decimals: 8, verified: true, image: 'https://asa-list.tinyman.org/assets/386192725/icon.png' },
+      { id: 386195940, name: 'Wrapped ETH', symbol: 'goETH', decimals: 8, verified: true, image: 'https://asa-list.tinyman.org/assets/386195940/icon.png' },
+      
+      // DeFi tokens
+      { id: 27165954, name: 'Planet', symbol: 'PLANET', decimals: 5, verified: true, image: 'https://asa-list.tinyman.org/assets/27165954/icon.png' },
+      { id: 287867876, name: 'Opulous', symbol: 'OPUL', decimals: 10, verified: true, image: 'https://asa-list.tinyman.org/assets/287867876/icon.png' },
+      { id: 684649988, name: 'GARD', symbol: 'GARD', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/684649988/icon.png' },
+      { id: 465865291, name: 'STBL', symbol: 'STBL', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/465865291/icon.png' },
+      { id: 244275365, name: 'Akita Inu', symbol: 'AKITA', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/244275365/icon.png' },
+      { id: 77801156, name: 'Chip', symbol: 'CHIP', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/77801156/icon.png' },
+      { id: 470842789, name: 'Defly', symbol: 'DEFLY', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/470842789/icon.png' },
+      { id: 81288225, name: 'Algofi Token', symbol: 'ALGOFI', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/81288225/icon.png' },
+      
+      // Gaming tokens
+      { id: 230946361, name: 'Smile Coin', symbol: 'SMILE', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/230946361/icon.png' },
+      { id: 300208676, name: 'Headline', symbol: 'HDL', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/300208676/icon.png' },
+      
+      // Other popular tokens
+      { id: 226701642, name: 'Yieldly', symbol: 'YLDY', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/226701642/icon.png' },
+      { id: 137594422, name: 'Choice Coin', symbol: 'CHOICE', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/137594422/icon.png' },
+      { id: 163650, name: 'Asia Reserve Currency Coin', symbol: 'ARCC', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/163650/icon.png' },
+      
+      // Additional tokens from Vestige Labs example
+      { id: 2160577481, name: 'Vestige Asset 1', symbol: 'VEST1', decimals: 6, verified: false, image: 'https://algorand-wallet-mainnet.b-cdn.net/media/asset_verification_requests_logo_png/2024/07/11/78e2639579994d42a81693041ee5ba2d.png?format=png&height=256&width=256' },
+      { id: 2485202024, name: 'Vestige Asset 2', symbol: 'VEST2', decimals: 6, verified: false, image: 'https://algorand-wallet-mainnet.b-cdn.net/media/asset_verification_requests_logo_png/2024/11/13/52332bc56f244f59978fc93c39087713.png?format=png&height=256&width=256' }
+    ];
+  }
+
+  /**
+   * Convert Token to Currency format for the swap component
+   */
+  convertToCurrency(token: Token): Currency {
+    return {
+      id: token.id,
+      code: token.symbol,
+      label: token.name,
+      img: token.image,
+      decimals: token.decimals
+    };
+  }
+
+  /**
+   * Search for tokens by name using the backend API with caching
+   */
+  async searchTokens(tokenName: string): Promise<Token[]> {
+    if (!tokenName || tokenName.trim().length === 0) {
+      return [];
+    }
+
+    const normalizedQuery = tokenName.trim().toLowerCase();
+    const now = Date.now();
+    
+    // Check search cache
+    const cached = this.searchCache.get(normalizedQuery);
+    if (cached && (now - cached.timestamp) < this.SEARCH_CACHE_DURATION) {
+      console.log(`✅ Using cached search results for "${tokenName}" (${cached.tokens.length} tokens)`);
+      return cached.tokens;
+    }
+
+    try {
+      console.log(`🔍 Searching for tokens with name: "${tokenName}"`);
+
+      // Use the new search API endpoint with timeout
+      const response = await axios.get(`${this.baseUrl}/token/search/${encodeURIComponent(tokenName.trim())}`, {
+        timeout: 8000, // 8 second timeout
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
+      const searchResults = response.data.data || response.data;
+      
+      console.log(`✅ Found ${searchResults.length} tokens matching "${tokenName}"`);
+
+      // Convert search results to Token format
+      const tokens = searchResults.map((token: any) => {
+        // Check if tokenImage is a valid URL
+        const isValidImageUrl = token.tokenImage && 
+          (token.tokenImage.startsWith('http://') || 
+           token.tokenImage.startsWith('https://') || 
+           token.tokenImage.startsWith('ipfs://') ||
+           token.tokenImage.includes('.png') ||
+           token.tokenImage.includes('.jpg') ||
+           token.tokenImage.includes('.jpeg') ||
+           token.tokenImage.includes('.svg'));
+
+        return {
+          id: token.tokenId,
+          name: token.tokenName || `Asset ${token.tokenId}`,
+          symbol: token.tokenSymbol || token.tokenName || 'UNKNOWN',
+          decimals: token.decimals || 6,
+          verified: token.verified || false,
+          image: isValidImageUrl ? token.tokenImage : `https://asa-list.tinyman.org/assets/${token.tokenId}/icon.png`,
+          price: token.price,
+          marketCap: token.marketCap,
+          volume24h: token.volume1d,
+          totalSupply: token.totalSupply,
+          circulatingSupply: token.circulatingSupply,
+          tvl: token.tvl,
+          rank: token.rank,
+          source: token.source || 'Search API'
+        };
+      });
+
+      // Cache search results
+      this.searchCache.set(normalizedQuery, {
+        tokens,
+        timestamp: now
+      });
+      
+      // Limit cache size to prevent memory issues
+      if (this.searchCache.size > 50) {
+        const firstKey = this.searchCache.keys().next().value;
+        if (firstKey !== undefined) {
+          this.searchCache.delete(firstKey);
+        }
+      }
+
+      return tokens;
+
+    } catch (error) {
+      console.error(`❌ Failed to search tokens for "${tokenName}":`, error);
+      
+      // Try to search in cached tokens if available
+      if (this.tokenCache) {
+        console.log(`🔄 Falling back to local search in cached tokens`);
+        const query = normalizedQuery;
+        const localResults = this.tokenCache.filter(token => 
+          token.name.toLowerCase().includes(query) ||
+          token.symbol.toLowerCase().includes(query)
+        );
+        if (localResults.length > 0) {
+          console.log(`✅ Found ${localResults.length} tokens in cache`);
+          return localResults;
+        }
+      }
+      
+      // Return empty array on error to prevent breaking the UI
+      return [];
+    }
+  }
+
+  /**
+   * Get tokens sorted by popularity/verification
+   */
+  async getTokensSorted(): Promise<{ all: Currency[], top: Currency[] }> {
+    const tokens = await this.fetchAllTokens();
+    
+    // Convert to Currency format
+    const currencies = tokens.map(token => this.convertToCurrency(token));
+    
+    // Remove duplicates by ID
+    const uniqueCurrencies = currencies.filter((currency, index, self) => 
+      index === self.findIndex(c => c.id === currency.id)
+    );
+    
+    // Sort by verification status and popularity
+    const sortedCurrencies = uniqueCurrencies.sort((a, b) => {
+      // Get token data for sorting
+      const aToken = tokens.find(t => t.id === a.id);
+      const bToken = tokens.find(t => t.id === b.id);
+      
+      // Prioritize verified tokens
+      const aVerified = aToken?.verified || false;
+      const bVerified = bToken?.verified || false;
+      
+      if (aVerified && !bVerified) return -1;
+      if (!aVerified && bVerified) return 1;
+      
+      // Then by rank (lower rank = higher priority)
+      const aRank = aToken?.rank || 999999;
+      const bRank = bToken?.rank || 999999;
+      if (aRank !== bRank) return aRank - bRank;
+      
+      // Then by market cap (higher market cap = higher priority)
+      const aMarketCap = aToken?.marketCap || 0;
+      const bMarketCap = bToken?.marketCap || 0;
+      if (aMarketCap !== bMarketCap) return bMarketCap - aMarketCap;
+      
+      // Finally by symbol (alphabetical)
+      return a.code.localeCompare(b.code);
+    });
+
+    // Top tokens (first 20)
+    const topTokens = sortedCurrencies.slice(0, 20);
+
+    return {
+      all: sortedCurrencies,
+      top: topTokens
+    };
+  }
+}
+
+// Token interface matching Vestige Labs API response
+interface Token {
+  id: number;
+  name: string;
+  symbol: string;
+  decimals: number;
+  verified: boolean;
+  image: string;
+  price?: number;
+  marketCap?: number;
+  volume24h?: number;
+  totalSupply?: number;
+  circulatingSupply?: number;
+  tvl?: number;
+  rank?: number;
+  source?: string;
+}
+
+// Currency interface (existing)
+interface Currency {
+  code: string;
+  label: string;
+  img: string;
+  id: number;
+  decimals: number;
+}
+
+export { TokenService };
+export type { Token, Currency };
