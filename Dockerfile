@@ -1,35 +1,22 @@
-# Stage 1: Build the frontend with Vite
-FROM node:18 AS build
+FROM node:18-slim AS build
 
-# Set the working directory inside the container
+# Step 2: Set the working directory
 WORKDIR /app
 
-# Copy package.json, yarn.lock, and package-lock.json
-COPY package.json yarn.lock ./
+# Step 3: Copy package.json and package-lock.json
+COPY package*.json ./
 
-# Install dependencies (using yarn)
-RUN yarn install --frozen-lockfile
+# Step 4: Install dependencies
+RUN npm install
 
-# Copy the rest of the application files
+# Step 5: Copy the rest of the application code
 COPY . .
 
-# Build the project for production
-RUN yarn build
+# Step 6: Build the app
+RUN npm run build
 
-# Stage 2: Serve the frontend with Nginx
-FROM nginx:alpine
+# Step 7: Expose port
+EXPOSE 3000
 
-# Set the working directory for Nginx
-WORKDIR /usr/share/nginx/html
-
-# Remove the default nginx index.html
-RUN rm -rf ./*
-
-# Copy the built assets from the previous stage
-COPY --from=build /app/dist .
-
-# Expose port 80 for the frontend
-EXPOSE 80
-
-# Start Nginx to serve the app
-CMD ["nginx", "-g", "daemon off;"]
+# Step 8: Start the Next.js app (SSR or SSG)
+CMD ["npm", "run", "start"]
