@@ -42,7 +42,7 @@ interface STableProps {
   showExpandable: string
 }
 
-const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID);
+const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 
 // Define the columns for the table
 // const STable: React.FC<STableProps> = memo(({ stacks, fetchData }) => {

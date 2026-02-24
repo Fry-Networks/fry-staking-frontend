@@ -10,9 +10,7 @@ class TokenService {
   private readonly SEARCH_CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
 
   constructor() {
-    // Use your existing backend API
-    // this.baseUrl = (import.meta as any)?.env?.VITE_API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000');
-    this.baseUrl = 'https://frynodebackend.octalooptechnologies.com';
+    this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://frynodebackend.octalooptechnologies.com';
   }
 
   /**

@@ -97,10 +97,7 @@ export const initStaking = async (
         lockPeriod: lockPeriod,
         poolTime: poolTime,
       })
-      .then((res) => {
-        console.log(res)
-        return res
-      })
+      .then((res) => res)
       .catch((e) => {
         console.error('Error in initStaking creation:', e)
         // Throw the error so it can be caught by the outer try-catch
@@ -150,17 +147,13 @@ export const initStaking = async (
           assetTwo: stakeTokenId,
           mbrPay: mbrPay,
         })
-        .then((res) => {
-          console.log(res)
-        })
+        .then((res) => res)
 
       await stakingClient
         .assetReceive({
           rewardTokenTransfer: rewardtx,
         })
-        .then((res) => {
-          console.log(res)
-        })
+        .then((res) => res)
 
       await algorandClient.send.assetTransfer({
         sender,
@@ -170,8 +163,6 @@ export const initStaking = async (
         assetId: BigInt(rewardTokenId),
       })
     }
-    console.log(initStake)
-    
     if (!initStake?.appId) {
       throw new Error('Failed to create staking pool. Please try again.')
     }
@@ -287,15 +278,13 @@ export const stakeTokens = async (stakingId: number, stakeAmount: number, sender
       (globalState.rewardTokenAmount?.asNumber() / (globalState.totalStaked?.asNumber() + stakeAmount)) *
       100 *
       ((86400 * 360) / globalState.poolTime.asNumber())
-    console.log(updatedApr)
-
     const tx = await stakingClient
       .stakeTokens({ stakeAmount, boxTx, updatedApr: Math.floor(updatedApr * 100), stakeAxfer: assetTransfer })
       .then((res) => res)
       .catch((e) => e)
     return tx
   } catch (e) {
-    console.log(e)
+    console.error('Error in stakeTokens:', e)
     return e
   }
 }
@@ -347,7 +336,7 @@ export const unstakeTokens = async (
 
     return tx
   } catch (e) {
-    console.log('Error in unstakeTokens:', e)
+    console.error('Error in unstakeTokens:', e)
     return e
   }
 }
@@ -439,7 +428,7 @@ export const claimTokens = async (
       stakedTime: stakeTime,
     }
   } catch (e) {
-    console.log('Error in claimTokens:', e)
+    console.error('Error in claimTokens:', e)
     return { error: e }
   }
 }
@@ -453,7 +442,7 @@ export const getApr = async (stakingID: number, sender: string, signer: Transact
 
     return true
   } catch (e) {
-    console.log(e)
+    console.error('Error in getApr:', e)
     throw e
   }
 }
@@ -487,7 +476,9 @@ export const getUserData = async (stakingId: number, staker: string) => {
   const algod = await getAlgodClient()
   const boxes = await algokit.getAppBoxNames(stakingId, algod)
   let stakerData: any = boxes?.filter((item) => algosdk.encodeAddress(item.nameRaw) === staker)[0]
-  console.log(boxes)
+  if (!stakerData) {
+    throw new Error(`Staker ${staker} not found in staking pool ${stakingId}`)
+  }
   let box = await algokit.getAppBoxValue(stakingId, stakerData.nameRaw, algod)
   const stakerId = algosdk.encodeAddress(stakerData.nameRaw)
   const stakedAmount = algosdk.decodeUint64(box.slice(0, 8), 'mixed')
@@ -519,7 +510,7 @@ export const getStakingData = async (stakingId: number, sender: string, signer: 
       totalStaked: globalState?.totalStaked?.asNumber(),
     }
   } catch (e) {
-    console.log('error', e)
-    return e
+    console.error('getStakingData error:', e)
+    throw e
   }
 }

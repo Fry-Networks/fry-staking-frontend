@@ -43,46 +43,8 @@ type TinymanAsset = {
 const formatAssetAmount = (amount: number | string | bigint, decimals: number) =>
   Number(amount) / Math.pow(10, decimals)
 
-const ASA_IDS: { [symbol: string]: number } = {
-  ALGO: 0,
-  USDC: 31566704,
-  goBTC: 386192725,
-  goETH: 386195940,
-  OPUL: 287867876,
-  PLANET: 27165954,
-  GARD: 684649988,
-  xALGO: 226701642,
-  STBL: 465865291,
-  AKITA: 244275365,
-  YLDY: 226701642,
-  CHIP: 77801156,
-  CHOCO: 105719244,
-  DEFLY: 470842789,
-  ALGOFI: 81288225,
-  HEADLINE: 444079935,
-  BANK: 900652777,
-  CHOICE: 297995609
-}
-
-const checkImage = async (assetId: number): Promise<string | null> => {
-  const url = `https://assets.perawallet.app/icon/assets/${assetId}.png`
-  try {
-    const res = await fetch(url)
-    return res.ok ? url : null
-  } catch {
-    return null
-  }
-}
-
-const resolveImages = async () => {
-  const resolved: { [symbol: string]: string | null } = {}
-  for (const [symbol, id] of Object.entries(ASA_IDS)) {
-    resolved[symbol] = await checkImage(id)
-  }
-}
-
-const algodToken = ''
-const algodMainServer = 'https://mainnet-api.algonode.cloud'
+const algodToken = import.meta.env.VITE_ALGOD_TOKEN || ''
+const algodMainServer = import.meta.env.VITE_ALGOD_SERVER || 'https://mainnet-api.algonode.cloud'
 const algodMain = new algosdk.Algodv2(algodToken, algodMainServer, '')
 
 const TINYMAN_ASA_LIST_URL = 'https://asa-list.tinyman.org/assets.json';
