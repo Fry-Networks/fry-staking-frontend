@@ -6,56 +6,12 @@ import axios from 'axios';
 
 const BOX_PRICE = 2500 + 400 * 64
 
-// Configure Algorand client logging
-algokit.Config.configure({
-  logger: {
-    info: (...args) => console.info(...args),
-    warn: (...args) => console.warn(...args),
-    error: (...args) => console.error(...args),
-    debug: (...args) => console.debug(...args),
-    verbose: (...args) => console.debug('[verbose]', ...args),
-  },
-});
-algokit.Config.configure({ populateAppCallResources: true, debug: true });
+algokit.Config.configure({ populateAppCallResources: true });
 
-// Shared client configuration with logging
-// Enhanced Algod client configuration with proper typing
+// Shared Algod client configuration
 const getConfiguredAlgodClient = () => {
-  console.log('🛠️ Creating configured Algod client...');
   const baseConfig = getAlgodConfigFromViteEnvironment();
-  console.log('🔧 Base Algod config:', baseConfig);
-
-  // Create a fetch wrapper with logging
-  const fetchWithLogging = async (input: RequestInfo | URL, init?: RequestInit) => {
-    console.log('🌐 Fetch request to:', input);
-    try {
-      const response = await fetch(input, init);
-      console.log(`✅ Fetch success (${response.status}):`, response.url);
-      return response;
-    } catch (error) {
-      console.error('❌ Fetch failed:', error);
-      throw error;
-    }
-  };
-
-  // Create the client with our custom fetch
-  const client = algokit.getAlgoClient({
-    ...baseConfig,
-    // Algokit actually picks up the fetch from global scope automatically
-    // So we'll override global fetch temporarily instead
-  });
-
-  // Store original fetch
-  const originalFetch = globalThis.fetch;
-
-  try {
-    // Override global fetch temporarily
-    globalThis.fetch = fetchWithLogging;
-    return client;
-  } finally {
-    // Restore original fetch
-    globalThis.fetch = originalFetch;
-  }
+  return algokit.getAlgoClient(baseConfig);
 };
 
 export const initFarming = async (

@@ -122,7 +122,7 @@ const FarmingList: React.FC = () => {
         <p
           className="text-red small flex items-center cursor-pointer"
           onClick={() => {
-            navigate('/farming')
+            navigate('/admin/farming')
           }}
         >
           View All <Icon icon="lsicon:right-filled" color="red" className="cursor-pointer" width={24} height={24} />

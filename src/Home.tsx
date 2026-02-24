@@ -2,13 +2,13 @@ import { createBrowserRouter, Outlet, RouterProvider } from 'react-router-dom'
 import AdminDashboard from './adminDashboard/admindashboard'
 import AdminDashboardoutlet from './adminDashboard/dashboardoutlet'
 import Farming from './adminDashboard/Farming/farming'
-// import FarmingStatistics from './adminDashboard/Farming/farmingStatistics'
+import FarmingStatistics from './adminDashboard/Farming/farmingStatistics'
 import Home from './adminDashboard/Home/home'
 import GeneralSetting from './adminDashboard/Settings/generalSetting'
 import ProfileSetting from './adminDashboard/Settings/profileSetting'
 import Settings from './adminDashboard/Settings/settings'
-// import Staking from './adminDashboard/Staking/staking'
-// import StakingStatistics from './adminDashboard/Staking/stakingStatistics'
+import Staking from './adminDashboard/Staking/staking'
+import StakingStatistics from './adminDashboard/Staking/stakingStatistics'
 import UserDetail from './adminDashboard/Users/userDetail/userDetail'
 import UserDetailFarming from './adminDashboard/Users/userDetail/userDetailFarming'
 import UserDetailStaking from './adminDashboard/Users/userDetail/userDetailStaking'
@@ -28,13 +28,6 @@ const AppLayout = () => {
   return (
     <>
       <RouterProvider router={appRouter} />
-    </>
-  )
-}
-const AppNew = () => {
-  return (
-    <>
-      <Outlet />
     </>
   )
 }
@@ -73,25 +66,25 @@ const appRouter = createBrowserRouter([
     element: <AdminLogin />,
   },
   {
-    path: '/',
+    path: '/admin',
     element: <AdminDashboard />,
     children: [
       {
-        path: '/admin-dashboard',
+        path: '/admin/dashboard',
         element: <AdminDashboardoutlet />,
         children: [
           {
-            path: '/admin-dashboard',
+            index: true,
             element: <Home />,
           },
         ],
       },
       {
-        path: '/users',
+        path: '/admin/users',
         element: <Users />,
       },
       {
-        path: '/user-detail',
+        path: '/admin/user-detail',
         element: <UserDetail />,
         children: [
           {
@@ -105,27 +98,27 @@ const appRouter = createBrowserRouter([
         ],
       },
       {
-        path: '/user-transactions-history',
+        path: '/admin/user-transactions-history',
         element: <UserDetailTransactionHistory />,
       },
-      // {
-      //   path: '/staking',
-      //   element: <Staking />,
-      // },
-      // {
-      //   path: '/staking-statistics',
-      //   element: <StakingStatistics />,
-      // },
-      // {
-      //   path: '/farming',
-      //   element: <Farming />,
-      // },
-      // {
-      //   path: '/farming-statistics',
-      //   element: <FarmingStatistics />,
-      // },
       {
-        path: '/setting',
+        path: '/admin/staking',
+        element: <Staking />,
+      },
+      {
+        path: '/admin/staking-statistics',
+        element: <StakingStatistics />,
+      },
+      {
+        path: '/admin/farming',
+        element: <Farming />,
+      },
+      {
+        path: '/admin/farming-statistics',
+        element: <FarmingStatistics />,
+      },
+      {
+        path: '/admin/setting',
         element: <Settings />,
         children: [
           {

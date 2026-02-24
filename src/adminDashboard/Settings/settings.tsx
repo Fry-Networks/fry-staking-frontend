@@ -11,12 +11,12 @@ const Settings = () => {
       <div className="flex flex-col gap-[28px] py-[27px] px-[32px] sm-s:px-[20px] bg-white rounded-[24px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]">
         <p className="elarge text-primary font-semibold">Settings</p>
         <div className="flex gap-[16px]">
-          <NavLink to="/setting/profile" className={({ isActive }) => `${baseClass}  ${isActive ? activeClass : inactiveClass}`}>
+          <NavLink to="/admin/setting/profile" className={({ isActive }) => `${baseClass}  ${isActive ? activeClass : inactiveClass}`}>
             <Icon icon="iconamoon:profile-circle-light" height={22} width={22} />
             Profile settings
           </NavLink>
 
-          <NavLink to="/setting/general" className={({ isActive }) => `${baseClass} ${isActive ? activeClass : inactiveClass}`}>
+          <NavLink to="/admin/setting/general" className={({ isActive }) => `${baseClass} ${isActive ? activeClass : inactiveClass}`}>
             <Icon icon="weui:setting-outlined" height={22} width={22} />
             General settings
           </NavLink>

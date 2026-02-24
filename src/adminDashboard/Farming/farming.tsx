@@ -258,7 +258,7 @@ const Farming: React.FC = () => {
               height={38}
               width={99}
               onClick={() => {
-                navigate('/farming-statistics')
+                navigate('/admin/farming-statistics')
               }}
             />
           </div>

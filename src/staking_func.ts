@@ -3,7 +3,7 @@ import { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/type
 import { AppDetails } from '@algorandfoundation/algokit-utils/types/app-client'
 import algosdk, { TransactionSigner } from 'algosdk'
 import { FryStakingClient } from './contracts/FryStaking'
-import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
+import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 import axios from 'axios'
 
 export const getAlgodClient = async (): Promise<algosdk.Algodv2> => {
@@ -18,11 +18,11 @@ export const getAlgodClient = async (): Promise<algosdk.Algodv2> => {
 }
 
 const getIndexerClient = async (): Promise<algosdk.Indexer> => {
-  const algodConfig = getAlgodConfigFromViteEnvironment()
+  const indexerConfig = getIndexerConfigFromViteEnvironment()
   const indexer = algokit.getAlgoIndexerClient({
-    server: algodConfig.server,
-    port: algodConfig.port,
-    token: algodConfig.token,
+    server: indexerConfig.server,
+    port: indexerConfig.port,
+    token: indexerConfig.token,
   })
 
   return indexer

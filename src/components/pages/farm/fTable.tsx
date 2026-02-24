@@ -409,7 +409,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                             width={156}
                             onClick={() => {
                               // Redirect to Pera Wallet (mobile/web compatible)
-                              window.open('https://testnet.explorer.perawallet.app/application/' + record.appId, '_blank')
+                              window.open('https://explorer.perawallet.app/application/' + record.appId, '_blank')
                             }}
                           />
                         </div>

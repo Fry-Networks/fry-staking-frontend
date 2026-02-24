@@ -22,12 +22,10 @@ class TokenService {
     // Check cache first
     const now = Date.now();
     if (this.tokenCache && (now - this.cacheTimestamp) < this.CACHE_DURATION) {
-      console.log(`✅ Using cached tokens (${this.tokenCache.length} tokens)`);
       return this.tokenCache;
     }
 
     try {
-      console.log('🔍 Fetching tokens from backend API...');
       
       // Fetch from your backend API with timeout
       const response = await axios.get(`${this.baseUrl}/token/all`, {
@@ -37,7 +35,6 @@ class TokenService {
         }
       });
       const dbTokens = response.data.data || response.data;
-      console.log(`✅ Fetched ${dbTokens.length} tokens from backend API`);
 
       // Convert database tokens to Token format
       const tokens = dbTokens.map((token: any) => {
@@ -78,8 +75,6 @@ class TokenService {
         index === self.findIndex(t => t.id === token.id)
       );
 
-      console.log(`✅ Total unique tokens: ${uniqueTokens.length}`);
-      
       // Cache the results
       this.tokenCache = uniqueTokens;
       this.cacheTimestamp = Date.now();
@@ -87,15 +82,13 @@ class TokenService {
       return uniqueTokens;
 
     } catch (error) {
-      console.error('❌ Failed to fetch tokens from backend API:', error);
+      console.error('Failed to fetch tokens from backend API:', error);
       
       // If we have cached tokens, use them even if expired
       if (this.tokenCache) {
-        console.log('🔄 Using expired cache tokens due to API error');
         return this.tokenCache;
       }
-      
-      console.log('🔄 Using fallback tokens');
+
       return this.getComprehensiveTokenList();
     }
   }
@@ -109,8 +102,7 @@ class TokenService {
       { id: 0, name: 'Algorand', symbol: 'ALGO', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/0/icon.png' },
       { id: 31566704, name: 'USD Coin', symbol: 'USDC', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/31566704/icon.png' },
       { id: 312769, name: 'Tether', symbol: 'USDT', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/312769/icon.png' },
-      { id: 27165954, name: 'PlanetWatch', symbol: 'PLANETS', decimals: 5, verified: true, image: 'https://asa-list.tinyman.org/assets/27165954/icon.png' },
-      { id: 27165954, name: 'Planets', symbol: 'PLANETS', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/27165954/icon.png' },
+      { id: 27165954, name: 'PlanetWatch', symbol: 'PLANETS', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/27165954/icon.png' },
       { id: 287867876, name: 'Opulous', symbol: 'OPUL', decimals: 10, verified: true, image: 'https://asa-list.tinyman.org/assets/287867876/icon.png' },
       // Note: FOLKS, RIO, BUY, PGOLD, ALGX IDs need to be updated with correct asset IDs
       // These are placeholder IDs - update when actual IDs are known
@@ -202,14 +194,11 @@ class TokenService {
     // Check search cache
     const cached = this.searchCache.get(normalizedQuery);
     if (cached && (now - cached.timestamp) < this.SEARCH_CACHE_DURATION) {
-      console.log(`✅ Using cached search results for "${tokenName}" (${cached.tokens.length} tokens)`);
       return cached.tokens;
     }
 
     try {
-      console.log(`🔍 Searching for tokens with name: "${tokenName}"`);
-
-      // Use the new search API endpoint with timeout
+      // Use the search API endpoint with timeout
       const response = await axios.get(`${this.baseUrl}/token/search/${encodeURIComponent(tokenName.trim())}`, {
         timeout: 8000, // 8 second timeout
         headers: {
@@ -217,8 +206,6 @@ class TokenService {
         }
       });
       const searchResults = response.data.data || response.data;
-      
-      console.log(`✅ Found ${searchResults.length} tokens matching "${tokenName}"`);
 
       // Convert search results to Token format
       const tokens = searchResults.map((token: any) => {
@@ -267,18 +254,16 @@ class TokenService {
       return tokens;
 
     } catch (error) {
-      console.error(`❌ Failed to search tokens for "${tokenName}":`, error);
-      
+      console.error(`Failed to search tokens for "${tokenName}":`, error);
+
       // Try to search in cached tokens if available
       if (this.tokenCache) {
-        console.log(`🔄 Falling back to local search in cached tokens`);
         const query = normalizedQuery;
-        const localResults = this.tokenCache.filter(token => 
+        const localResults = this.tokenCache.filter(token =>
           token.name.toLowerCase().includes(query) ||
           token.symbol.toLowerCase().includes(query)
         );
         if (localResults.length > 0) {
-          console.log(`✅ Found ${localResults.length} tokens in cache`);
           return localResults;
         }
       }
