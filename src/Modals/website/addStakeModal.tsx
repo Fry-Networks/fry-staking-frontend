@@ -105,7 +105,6 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
     setIsSearching(prev => ({ ...prev, [dropdown]: true }));
     
     try {
-      console.log(`🔍 Searching ${dropdown} dropdown for: "${query}"`);
       const searchTokens = await tokenService.searchTokens(query);
       const searchCurrencies = searchTokens.map(token => ({
         tokenId: token.id,
@@ -114,11 +113,10 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
         tokenImage: token.image,
         decimals: token.decimals
       }));
-      
-      console.log(`✅ Found ${searchCurrencies.length} tokens for ${dropdown} dropdown`);
+
       setSearchResults(prev => ({ ...prev, [dropdown]: searchCurrencies }));
     } catch (error) {
-      console.error(`❌ Search error for ${dropdown}:`, error);
+      console.error(`Search error for ${dropdown}:`, error);
       setSearchResults(prev => ({ ...prev, [dropdown]: [] }));
       toast.error('Search failed. Please try again.');
     } finally {
@@ -128,8 +126,6 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
 
    const fetchTokens = async () => {
     try {
-      console.log('🔍 Fetching tokens from database for AddStake modal...');
-      
       // Get default tokens first
       const defaultTokensList = tokenService.getDefaultTokens();
       const defaultCurrencies: Currency[] = defaultTokensList.map(token => ({
@@ -183,11 +179,8 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
         setSelectedAlgoRewards(defaultCurrencies.find(t => t.tokenId === 0) || currencies.find(t => t.tokenId === 0) || currencies[1] || null);
       }
       
-      console.log(`✅ Loaded ${currencies.length} tokens from database for AddStake modal`);
-      console.log(`📋 Default tokens: ${defaultCurrencies.length}`);
     } catch (error) {
-      console.error('❌ Failed to fetch tokens from database:', error);
-      console.log('🔄 Using fallback tokens for AddStake modal');
+      console.error('Failed to fetch tokens:', error);
       
       // Get default tokens
       const defaultTokensList = tokenService.getDefaultTokens();
@@ -233,7 +226,6 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
     
     // If searching and we have search results, use them
     if (q && q.length >= 2 && searchResultsForDropdown.length > 0) {
-      console.log(`🔍 Using search API results for "${q}": ${searchResultsForDropdown.length} tokens`);
       return filterAlgo(searchResultsForDropdown);
     }
     

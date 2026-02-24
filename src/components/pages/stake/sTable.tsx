@@ -42,7 +42,7 @@ interface STableProps {
   showExpandable: string
 }
 
-const FRY_ASSET_ID = BigInt(import.meta.env.VITE_FRY_TOKEN_ID); // 🔹 Replace this with your real FRY Token Asset ID
+const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 
 // Define the columns for the table
 // const STable: React.FC<STableProps> = memo(({ stacks, fetchData }) => {
@@ -98,52 +98,34 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
   }
 
   useEffect(() => {
-    // 🔹 Fetch FRY Token Balance from Wallet
     const fetchBalance = async () => {
       if (!activeAddress || !clients) {
         setFryBalance(0)
-        console.log('No active address or clients found.')
         return
       }
 
       try {
         const provider = clients?.pera || clients?.myalgo || clients?.defly
         if (!provider) {
-          console.error('No wallet provider found.')
           return
         }
 
-        const accountInfo = await provider.getAccountInfo(activeAddress) // ✅ Get account info
-        console.log('Fetched Wallet Account Info:', accountInfo)
+        const accountInfo = await provider.getAccountInfo(activeAddress)
 
         if (!accountInfo || !accountInfo.assets) {
-          console.error('No assets found in account.')
           setFryBalance(0)
           return
         }
 
-        console.log('🔍 All assets in wallet:', accountInfo.assets)
-
-        // ✅ Loop through all assets and log IDs
-        accountInfo.assets.forEach((asset: any) => {
-          console.log(`🔹 Asset ID: ${asset['asset-id']}, Amount: ${asset.amount}`)
-        })
-
-        // ✅ Find FRY Token in wallet
         const fryToken = accountInfo.assets.find((asset: any) => asset['asset-id'] === FRY_ASSET_ID || asset.id === FRY_ASSET_ID)
 
         if (!fryToken) {
-          console.error('FRY token not found in wallet.')
           setFryBalance(0)
           return
         }
 
-        console.log('🎉 Found FRY Token:', fryToken)
-
-        // ✅ Convert Micro-FRY to Normal FRY (Divide by 1M)
         const normalFryBalance = fryToken.amount / 1_000_000
-        setFryBalance(normalFryBalance) // ✅ Store correct balance
-        console.log(`✅ Updated FRY Balance: ${normalFryBalance}`)
+        setFryBalance(normalFryBalance)
       } catch (error) {
         console.error('Error fetching balance:', error)
         setFryBalance(0)
@@ -459,7 +441,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                         width={156}
                         onClick={() => {
                           // Redirect to Pera Wallet (mobile/web compatible)
-                          window.open('https://testnet.explorer.perawallet.app/application/' + record.stakingContractId, '_blank');
+                          window.open('https://explorer.perawallet.app/application/' + record.stakingContractId, '_blank');
                         }}
                       />
                   {/* Left */}

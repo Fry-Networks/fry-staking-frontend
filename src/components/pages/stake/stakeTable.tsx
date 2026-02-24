@@ -54,8 +54,6 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
   // Fetch token data from database (prices and images)
   const fetchTokenData = async (): Promise<{ priceMap: { [key: string]: number }, imageMap: { [key: string]: string } }> => {
     try {
-      console.log('🔍 Fetching token data from database for staking...');
-      
       // Fetch all tokens from database
       const tokens = await tokenService.fetchAllTokens();
       
@@ -78,11 +76,9 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
       setTvlData(priceMap);
       setTokenImages(imageMap);
       
-      console.log(`✅ Loaded ${tokens.length} tokens from database for staking`);
       return { priceMap, imageMap };
     } catch (error) {
-      console.error('❌ Failed to fetch token data from database:', error);
-      console.log('🔄 Using fallback token data for staking');
+      console.error('Failed to fetch token data:', error);
       // Set default prices and images
       const emptyMap = {};
       setTvlData(emptyMap);
@@ -243,10 +239,7 @@ async function getAsaUsdPrice(asaId: number): Promise<number> {
 }
 // Updated processPoolData to use database token data
 const processPoolData = async (result: any[], images: { [key: string]: string } = {}) => {
-  // Use database token images instead of Tinyman ASA list
   const databaseImages = images;
-  
-  console.log('🖼️ Processing pool data with images:', Object.keys(databaseImages).length, 'token images available');
 
   const transformedData = result.map((item: any, index: number) => {
     const now = Math.floor(Date.now() / 1000)
@@ -272,18 +265,6 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
     const rewardtokenImage = (rewardDbImage && isValidImageUrl(rewardDbImage)) 
       ? rewardDbImage 
       : `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`;
-    
-    // Debug logging for image URLs
-    if (index === 0) {
-      console.log('🖼️ First pool images:', {
-        stakeTokenId,
-        rewardTokenId,
-        stakeDbImage,
-        rewardDbImage,
-        staketokenImage,
-        rewardtokenImage
-      });
-    }
 
     // Use database prices with fallback to calculated prices
     const usdPrice = tvlData[stakeTokenId] || 1
@@ -374,7 +355,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       const stakedInFRY = item.totalAmountStaked
       const apr = parseFloat(item.apr) > 1 ? parseFloat(item.apr) / 100 : parseFloat(item.apr)
       const secondsStaked = currentTime - item.stakingTime
-      const finalReward = calculateReward(stakedInFRY, apr, item.stakingTime)
+      const finalReward = calculateReward(stakedInFRY, apr, secondsStaked)
 
       return {
         ...item,

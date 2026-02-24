@@ -59,7 +59,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     async function checkOptIn() {
       if (!activeAddress) return
       try {
-        const indexer = new algosdk.Indexer('', 'https://mainnet-idx.algonode.cloud', '')
+        const indexer = new algosdk.Indexer('', import.meta.env.VITE_INDEXER_SERVER || 'https://mainnet-idx.algonode.cloud', '')
         const accountInfo = await indexer.lookupAccountByID(activeAddress).do()
         const assets = accountInfo.account.assets || []
         setIsOptedIn(assets.some((asset: any) => asset['asset-id'] === FRY_ASSET_ID))
@@ -73,7 +73,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
   const handleOptIn = async () => {
     if (!activeAddress || !signer) return
     try {
-      const algod = new algosdk.Algodv2('', 'https://mainnet-api.algonode.cloud', '')
+      const algod = new algosdk.Algodv2('', import.meta.env.VITE_ALGOD_SERVER || 'https://mainnet-api.algonode.cloud', '')
       const params = await algod.getTransactionParams().do()
       const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
         from: activeAddress,
@@ -409,7 +409,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                             width={156}
                             onClick={() => {
                               // Redirect to Pera Wallet (mobile/web compatible)
-                              window.open('https://testnet.explorer.perawallet.app/application/' + record.appId, '_blank')
+                              window.open('https://explorer.perawallet.app/application/' + record.appId, '_blank')
                             }}
                           />
                         </div>

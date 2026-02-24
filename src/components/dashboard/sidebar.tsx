@@ -19,7 +19,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
     <>
       <div className="sidebar-main-container bg-white rounded-[26px] pt-[30px] pb-[12px] px-[12px] max-md:hidden max-w-[260px] w-full fixed flex flex-col gap-[60px] overflow-y-auto max-h-fit h-[calc(100vh-22px)] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]">
         <div className="sidebar-logo-container relative ">
-          <Link to="/admin-dashboard">
+          <Link to="/admin/dashboard">
             <div className="flex items-center gap-[3px] justify-center">
               <img src="../../assets/logo.png" alt="logo" className="logo w-[39px] h-[33px]" />
               <p className="text-darkRed font-medium large cursor-pointer">Fry Networks</p>
@@ -32,7 +32,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
             <div className="top-options flex flex-col">
               <li>
                 <NavLink
-                  to="/admin-dashboard"
+                  to="/admin/dashboard"
                   className={({ isActive }) =>
                     `dashLinks w-full max-w-full rounded-[16px] flex items-center gap-[10px] px-[20px] py-[15px]  ${
                       isActive ? 'linearGradient text-white' : 'text-primary'
@@ -45,13 +45,13 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
               </li>
               <li>
                 <NavLink
-                  to="/users"
+                  to="/admin/users"
                   className={({ isActive }) =>
                     `dashLinks w-full max-w-full rounded-[16px] flex items-center gap-[10px] px-[20px] py-[15px]  ${
                       isActive ||
-                      location.pathname === '/user-detail/staking' ||
-                      location.pathname === '/user-detail/farming' ||
-                      location.pathname === '/user-transactions-history'
+                      location.pathname === '/admin/user-detail/staking' ||
+                      location.pathname === '/admin/user-detail/farming' ||
+                      location.pathname === '/admin/user-transactions-history'
                         ? 'linearGradient text-white'
                         : 'text-primary'
                     }`
@@ -63,10 +63,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
               </li>
               <li>
                 <NavLink
-                  to="/staking"
+                  to="/admin/staking"
                   className={({ isActive }) =>
                     `dashLinks w-full max-w-full rounded-[16px] flex items-center gap-[10px] px-[20px] py-[15px]  ${
-                      isActive || location.pathname === '/staking-statistics' ? 'linearGradient text-white' : 'text-primary'
+                      isActive || location.pathname === '/admin/staking-statistics' ? 'linearGradient text-white' : 'text-primary'
                     }`
                   }
                 >
@@ -76,16 +76,16 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
               </li>
               <li>
                 <NavLink
-                  to="/farming"
+                  to="/admin/farming"
                   className={({ isActive }) =>
                     `dashLinks w-full max-w-full rounded-[16px] flex items-center gap-[10px] px-[20px] py-[15px]  ${
-                      isActive || location.pathname === '/farming-statistics' ? 'linearGradient text-white' : 'text-primary'
+                      isActive || location.pathname === '/admin/farming-statistics' ? 'linearGradient text-white' : 'text-primary'
                     }`
                   }
                 >
                   <img
                     src={
-                      location.pathname === '/farming' || location.pathname === '/farming-statistics'
+                      location.pathname === '/admin/farming' || location.pathname === '/admin/farming-statistics'
                         ? '../../assets/icons/plant-white.png'
                         : '../../assets/icons/plant-black.png'
                     }
@@ -98,10 +98,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
             <div className="bottom-options ">
               <li>
                 <NavLink
-                  to="/setting/profile"
+                  to="/admin/setting/profile"
                   className={({ isActive }) =>
                     `dashLinks w-full max-w-full rounded-[16px] flex items-center gap-[10px] px-[20px] py-[15px]  ${
-                      isActive || location.pathname === '/setting/general' ? 'linearGradient text-white' : 'text-primary'
+                      isActive || location.pathname === '/admin/setting/general' ? 'linearGradient text-white' : 'text-primary'
                     }`
                   }
                 >
@@ -137,7 +137,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
               onClick={toggleDrawer}
             />
             <div className="sidebar-logo-container relative mb-[60px]">
-              <Link to="/admin-dashboard" onClick={toggleDrawer}>
+              <Link to="/admin/dashboard" onClick={toggleDrawer}>
                 <div className="flex items-center gap-[3px] justify-center">
                   <img src="../../assets/logo.png" alt="logo" className="logo w-[39px] h-[33px]" />
                   <p className="text-darkRed font-medium large cursor-pointer">Fry Networks</p>
@@ -150,7 +150,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
                 <div className="top-options flex flex-col">
                   <li>
                     <NavLink
-                      to="/admin-dashboard"
+                      to="/admin/dashboard"
                       onClick={toggleDrawer}
                       className={({ isActive }) =>
                         `dashLinks w-full max-w-full rounded-[16px] flex items-center gap-[10px] px-[20px] py-[15px]  ${
@@ -164,14 +164,14 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
                   </li>
                   <li>
                     <NavLink
-                      to="/users"
+                      to="/admin/users"
                       onClick={toggleDrawer}
                       className={({ isActive }) =>
                         `dashLinks w-full max-w-full rounded-[16px] flex items-center gap-[10px] px-[20px] py-[15px]  ${
                           isActive ||
-                          location.pathname === '/user-detail/staking' ||
-                          location.pathname === '/user-detail/farming' ||
-                          location.pathname === '/user-transactions-history'
+                          location.pathname === '/admin/user-detail/staking' ||
+                          location.pathname === '/admin/user-detail/farming' ||
+                          location.pathname === '/admin/user-transactions-history'
                             ? 'linearGradient text-white'
                             : 'text-primary'
                         }`
@@ -183,11 +183,11 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
                   </li>
                   <li>
                     <NavLink
-                      to="/staking"
+                      to="/admin/staking"
                       onClick={toggleDrawer}
                       className={({ isActive }) =>
                         `dashLinks w-full max-w-full rounded-[16px] flex items-center gap-[10px] px-[20px] py-[15px]  ${
-                          isActive || location.pathname === '/staking-statistics' ? 'linearGradient text-white' : 'text-primary'
+                          isActive || location.pathname === '/admin/staking-statistics' ? 'linearGradient text-white' : 'text-primary'
                         }`
                       }
                     >
@@ -197,17 +197,17 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
                   </li>
                   <li>
                     <NavLink
-                      to="/farming"
+                      to="/admin/farming"
                       onClick={toggleDrawer}
                       className={({ isActive }) =>
                         `dashLinks w-full max-w-full rounded-[16px] flex items-center gap-[10px] px-[20px] py-[15px]  ${
-                          isActive || location.pathname === '/farming-statistics' ? 'linearGradient text-white' : 'text-primary'
+                          isActive || location.pathname === '/admin/farming-statistics' ? 'linearGradient text-white' : 'text-primary'
                         }`
                       }
                     >
                       <img
                         src={
-                          location.pathname === '/farming' || location.pathname === '/farming-statistics'
+                          location.pathname === '/admin/farming' || location.pathname === '/admin/farming-statistics'
                             ? '../../assets/icons/plant-white.png'
                             : '../../assets/icons/plant-black.png'
                         }
@@ -220,11 +220,11 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ isDrawerOpen, toggleDrawer 
                 <div className="bottom-options ">
                   <li>
                     <NavLink
-                      to="/setting/profile"
+                      to="/admin/setting/profile"
                       onClick={toggleDrawer}
                       className={({ isActive }) =>
                         `dashLinks w-full max-w-full rounded-[16px] flex items-center gap-[10px] px-[20px] py-[15px]  ${
-                          isActive || location.pathname === '/setting/general' ? 'linearGradient text-white' : 'text-primary'
+                          isActive || location.pathname === '/admin/setting/general' ? 'linearGradient text-white' : 'text-primary'
                         }`
                       }
                     >

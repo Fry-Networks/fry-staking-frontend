@@ -106,14 +106,7 @@ export class SwapService {
         throw new Error('Quote not available from FolksRouter');
       }
       
-      console.log('✅ FolksRouter quote received:', {
-        quoteAmount: quote.quoteAmount.toString(),
-        priceImpact: quote.priceImpact,
-        microalgoTxnsFee: quote.microalgoTxnsFee
-      });
-
       // Prepare transactions
-      console.log('🔧 Preparing FolksRouter transactions...');
       const base64Txns = await this.folksRouterClient.prepareSwapTransactions(
         swapParams,
         userAddress,
@@ -121,8 +114,6 @@ export class SwapService {
         quote
       );
       
-      console.log('✅ FolksRouter transactions prepared:', base64Txns.length, 'transactions');
-
       // Decode and sign transactions
       const decodedTxns = base64Txns.map((b64: string) => 
         new Uint8Array(Buffer.from(b64, 'base64'))

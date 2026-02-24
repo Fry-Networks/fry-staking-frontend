@@ -43,49 +43,8 @@ type TinymanAsset = {
 const formatAssetAmount = (amount: number | string | bigint, decimals: number) =>
   Number(amount) / Math.pow(10, decimals)
 
-const ASA_IDS: { [symbol: string]: number } = {
-  ALGO: 0,
-  USDC: 31566704,
-  goBTC: 386192725,
-  goETH: 386195940,
-  OPUL: 287867876,
-  PLANET: 27165954,
-  GARD: 684649988,
-  xALGO: 226701642,
-  STBL: 465865291,
-  AKITA: 244275365,
-  YLDY: 226701642,
-  CHIP: 77801156,
-  CHOCO: 105719244,
-  DEFLY: 470842789,
-  ALGOFI: 81288225,
-  HEADLINE: 444079935,
-  BANK: 900652777,
-  CHOICE: 297995609
-}
-
-const checkImage = async (assetId: number): Promise<string | null> => {
-  const url = `https://assets.perawallet.app/icon/assets/${assetId}.png`
-  try {
-    const res = await fetch(url)
-    return res.ok ? url : null
-  } catch {
-    return null
-  }
-}
-
-const resolveImages = async () => {
-  const resolved: { [symbol: string]: string | null } = {}
-  for (const [symbol, id] of Object.entries(ASA_IDS)) {
-    resolved[symbol] = await checkImage(id)
-  }
-  console.log(resolved)
-}
-
-const algodToken = ''
-const algodServer = 'https://testnet-api.algonode.cloud'
-const algodMainServer = 'https://mainnet-api.algonode.cloud'
-const algod = new algosdk.Algodv2(algodToken, algodServer, '')
+const algodToken = import.meta.env.VITE_ALGOD_TOKEN || ''
+const algodMainServer = import.meta.env.VITE_ALGOD_SERVER || 'https://mainnet-api.algonode.cloud'
 const algodMain = new algosdk.Algodv2(algodToken, algodMainServer, '')
 
 const TINYMAN_ASA_LIST_URL = 'https://asa-list.tinyman.org/assets.json';
@@ -142,8 +101,6 @@ const SwapMain = () => {
     const fetchTokensFromDatabase = async () => {
       try {
         setIsLoadingTokens(true);
-        console.log('🔍 Fetching tokens from database...');
-        
         // Get default tokens first
         const defaultTokensList = tokenService.getDefaultTokens();
         const defaultCurrencies = defaultTokensList.map(token => tokenService.convertToCurrency(token));
@@ -170,12 +127,8 @@ const SwapMain = () => {
         setSelectedRewards((prev) => prev ?? defaultCurrencies[0] ?? top[0] ?? all[0]);
         setSelectedAlgoRewards((prev) => prev ?? (defaultCurrencies[1] ?? top[1] ?? all.find(x => x.id === 0) ?? all[1]));
         
-        console.log(`✅ Loaded ${all.length} tokens from database (${top.length} top tokens)`);
-        console.log(`📋 Default tokens: ${defaultCurrencies.length}`);
-        console.log(`🔍 Search API is available for both token selection dropdowns`);
       } catch (error) {
-        console.error('❌ Failed to fetch tokens from database:', error);
-        console.log('🔄 Using fallback tokens for both dropdowns');
+        console.error('Failed to fetch tokens from database:', error);
         
         // Set default tokens from fallback
         const defaultTokensList = tokenService.getDefaultTokens();
@@ -239,14 +192,11 @@ const SwapMain = () => {
     setIsSearching(prev => ({ ...prev, [dropdown]: true }));
     
     try {
-      console.log(`🔍 Searching ${dropdown} dropdown for: "${query}"`);
       const searchTokens = await tokenService.searchTokens(query);
       const searchCurrencies = searchTokens.map(token => tokenService.convertToCurrency(token));
-      
-      console.log(`✅ Found ${searchCurrencies.length} tokens for ${dropdown} dropdown`);
       setSearchResults(prev => ({ ...prev, [dropdown]: searchCurrencies }));
     } catch (error) {
-      console.error(`❌ Search error for ${dropdown}:`, error);
+      console.error(`Search error for ${dropdown}:`, error);
       setSearchResults(prev => ({ ...prev, [dropdown]: [] }));
       toast.error('Search failed. Please try again.');
     } finally {
@@ -281,7 +231,6 @@ const SwapMain = () => {
     
     // If searching and we have search results, use them
     if (q && q.length >= 2 && searchResults[dropdown].length > 0) {
-      console.log(`🔍 Using search API results for "${q}": ${searchResults[dropdown].length} tokens`);
       return searchResults[dropdown].sort((a, b) => Number(isFryToken(b)) - Number(isFryToken(a)));
     }
     
@@ -395,13 +344,6 @@ const SwapMain = () => {
         setPriceImpact(priceImpactValue);
         setCurrentProvider(provider);
 
-        console.log(`💱 Swap Quote from ${provider}:
-          From: ${fromAmount} ${selectedRewards.code}
-          To: ${toAmount} ${selectedAlgoRewards.code}
-          Rate: 1 ${selectedRewards.code} = ${rate} ${selectedAlgoRewards.code}
-          Min Received: ${minReceivedAmount} ${selectedAlgoRewards.code}
-          Price Impact: ${priceImpactValue}%`);
-
       } catch (error: any) {
         console.error("Swap quote error:", error);
 
@@ -455,19 +397,16 @@ const SwapMain = () => {
     // Ensure assetId is a valid positive number
     const numericAssetId = Number(assetId)
     if (isNaN(numericAssetId) || numericAssetId <= 0) {
-      console.error('❌ Invalid asset ID:', assetId)
+      console.error('Invalid asset ID:', assetId)
       toast.error(`Invalid asset ID: ${assetId}`)
       return
     }
-
-    console.log('🔍 Opting in to asset ID:', numericAssetId, 'type:', typeof numericAssetId)
 
     try {
       const accountInfo = await algodMain.accountInformation(activeAddress).do()
       const alreadyOptedIn = accountInfo.assets.some((a: any) => a['asset-id'] === numericAssetId)
 
       if (alreadyOptedIn) {
-        console.log(`✅ Already opted in to asset ${numericAssetId}`)
         return
       }
 
@@ -483,18 +422,17 @@ const SwapMain = () => {
       const signed = await walletSignTransactions([txn.toByte()])
       const result = await algodMain.sendRawTransaction(signed).do()
 
-      toast.success(`✅ Opted in to asset ${numericAssetId}`)
-      console.log('Opt-in TX ID:', result.txId)
+      toast.success(`Opted in to asset ${numericAssetId}`)
       return result
     } catch (err) {
-      console.error('❌ Opt-in failed:', err)
+      console.error('Opt-in failed:', err)
       toast.error('Opt-in failed')
     }
   }
 
   const performSwap = async () => {
     if (!activeAddress) {
-      toast.error("⚠️ Please connect your wallet");
+      toast.error("Please connect your wallet");
       return;
     }
     if (!selectedRewards || !selectedAlgoRewards) {
@@ -523,12 +461,9 @@ const SwapMain = () => {
 
       // Check balances and opt-in to both source and destination ASA tokens (not ALGO)
       if (selectedRewards.id !== 0) {
-        console.log('🔍 Checking balance for source asset:', selectedRewards.id);
         const sourceBalance = await checkAssetBalance(selectedRewards.id);
-        console.log('Source asset balance:', sourceBalance);
-        
+
         if (!sourceBalance.hasAsset) {
-          console.log('🔍 Opting in to source asset:', selectedRewards.id);
           await optInToASA(selectedRewards.id);
         } else if (sourceBalance.balance < microAmount) {
           toast.error(`Insufficient balance. You have ${sourceBalance.balance} but need ${microAmount}`);
@@ -537,12 +472,9 @@ const SwapMain = () => {
       }
       
       if (selectedAlgoRewards.id !== 0) {
-        console.log('🔍 Checking opt-in for destination asset:', selectedAlgoRewards.id);
         const destBalance = await checkAssetBalance(selectedAlgoRewards.id);
-        console.log('Destination asset balance:', destBalance);
-        
+
         if (!destBalance.hasAsset) {
-          console.log('🔍 Opting in to destination asset:', selectedAlgoRewards.id);
           await optInToASA(selectedAlgoRewards.id);
         }
       }
@@ -554,15 +486,6 @@ const SwapMain = () => {
         walletSignTransactions: walletSignTransactions
       });
 
-      // Perform swap with automatic fallback
-      console.log('🔍 Swap component asset IDs:', {
-        fromAssetId: selectedRewards.id,
-        fromAssetIdType: typeof selectedRewards.id,
-        toAssetId: selectedAlgoRewards.id,
-        toAssetIdType: typeof selectedAlgoRewards.id,
-        amount: microAmount
-      });
-      
       const result = await swapService.performSwap(
         selectedRewards.id,
         selectedAlgoRewards.id,
@@ -572,18 +495,18 @@ const SwapMain = () => {
       );
 
       if (result.success) {
-        toast.success(`✅ Swap submitted via ${result.provider}! TXID: ${result.txId}`)
+        toast.success(`Swap submitted via ${result.provider}! TXID: ${result.txId}`)
       } else {
         // Show more helpful error messages
         if (result.provider === 'vestige') {
-          toast.warning(`⚠️ ${result.error}`)
+          toast.warning(result.error)
         } else {
           throw new Error(result.error || 'Swap failed')
         }
       }
     } catch (err) {
-      console.error('❌ Swap failed:', err)
-      toast.error("❌ Swap failed: " + (err.message || "Unknown error"));
+      console.error('Swap failed:', err)
+      toast.error("Swap failed: " + (err.message || "Unknown error"));
     }
   }
 
@@ -946,29 +869,19 @@ const SwapMain = () => {
                  {selectedRewards && selectedAlgoRewards && (
                    <div className="flex items-center gap-4 mt-2">
                      <div className="text-xs">
-                       <span className="text-text_clr">24h High: </span>
-                       <span className="text-green font-medium">{(parseFloat(tokenPerAlgo) * 1.05).toFixed(6)}</span>
-                     </div>
-                     <div className="text-xs">
-                       <span className="text-text_clr">24h Low: </span>
-                       <span className="text-red font-medium">{(parseFloat(tokenPerAlgo) * 0.95).toFixed(6)}</span>
-                     </div>
-                     <div className="text-xs">
-                       <span className="text-text_clr">24h Vol: </span>
-                       <span className="text-blue font-medium">{(Math.random() * 1000000).toLocaleString()}</span>
+                       <span className="text-text_clr">Rate: </span>
+                       <span className="text-green font-medium">1 {selectedRewards.code} = {priceRate} {selectedAlgoRewards.code}</span>
                      </div>
                    </div>
                  )}
                </div>
                <div className="text-right">
-                 <p className="text-text_clr text-sm">Last 24h</p>
+                 <p className="text-text_clr text-sm">Price Impact</p>
                  <p className={`medium tracking-[0.48px] font-medium ${
-                   selectedRewards && selectedAlgoRewards ?
-                     (Math.random() > 0.5 ? 'text-green' : 'text-red') :
-                     'text-text_clr'
+                   parseFloat(priceImpact) > 5 ? 'text-red' : 'text-green'
                  }`}>
                    {selectedRewards && selectedAlgoRewards ?
-                     `${(Math.random() * 10 - 5).toFixed(2)}%` :
+                     `${priceImpact}%` :
                      '0.00%'
                    }
                  </p>

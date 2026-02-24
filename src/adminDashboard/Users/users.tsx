@@ -137,7 +137,7 @@ const Users: React.FC<UsersProps> = ({ showSearchBar = true, showviewALL = false
             alt="Eye Icon"
             className="cursor-pointer"
             onClick={() => {
-              navigate('/user-detail/staking')
+              navigate('/admin/user-detail/staking')
             }}
           />
         </div>
@@ -155,7 +155,7 @@ const Users: React.FC<UsersProps> = ({ showSearchBar = true, showviewALL = false
           <p
             className="text-red small flex items-center cursor-pointer"
             onClick={() => {
-              navigate('/users')
+              navigate('/admin/users')
             }}
           >
             View All <Icon icon="lsicon:right-filled" color="red" className="cursor-pointer" width={24} height={24} />

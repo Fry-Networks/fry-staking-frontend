@@ -36,7 +36,7 @@ const UserDetail = () => {
               <p
                 className="text-darkRed sm-s:w-[70%] sm-s:text-center cursor-pointer font-medium medium px-[20px] py-[8px] rounded-[4px] border-solid border-2 border-[#F00]"
                 onClick={() => {
-                  navigate('/user-transactions-history')
+                  navigate('/admin/user-transactions-history')
                 }}
               >
                 Transaction History
@@ -111,7 +111,7 @@ const UserDetail = () => {
         <div className="flex flex-col items-center gap-[23px] py-[24px] px-[16px] bg-white rounded-[24px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] ">
           <div className="flex gap-[16px]">
             <NavLink
-              to="/user-detail/staking"
+              to="/admin/user-detail/staking"
               className={({ isActive }) =>
                 isActive
                   ? 'text-darkRed cursor-pointer large font-medium border-solid border-b-2 border-darkRed'
@@ -122,7 +122,7 @@ const UserDetail = () => {
             </NavLink>
 
             <NavLink
-              to="/user-detail/farming"
+              to="/admin/user-detail/farming"
               className={({ isActive }) =>
                 isActive
                   ? 'text-darkRed cursor-pointer large font-medium border-solid border-b-2 border-darkRed'
