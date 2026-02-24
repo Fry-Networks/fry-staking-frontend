@@ -153,7 +153,6 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
   const fetchTradeData = useCallback(async () => {
     // Don't fetch if tokens are not available
     if (!fromToken || !toToken) {
-      console.log('⏸️ Chart fetch skipped: tokens not selected yet');
       setIsLoading(false);
       return;
     }
@@ -161,8 +160,6 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
     setIsLoading(true)
     try {
       const apiUrl = getVestigeCandlesUrl(fromToken, toToken, timeframe)
-      console.log(`📊 Fetching chart data from Vestige Labs for: ${fromToken.code}/${toToken.code}`)
-      console.log(`🔗 API URL: ${apiUrl}`)
       
       // Fetch candles data from Vestige Labs API
       const response = await axios.get(apiUrl)
@@ -194,15 +191,13 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
       setPriceChangePercent(prev ? ((latest - prev) / prev) * 100 : 0)
       setLastUpdateTime(new Date())
       
-      console.log(`✅ Chart updated for ${fromToken.code}/${toToken.code}: ${candles.length} candles, latest price: ${latest.toFixed(6)}`)
     } catch (err: any) {
       // Only log error if tokens are available
       if (fromToken && toToken) {
         const errorMessage = err?.response?.status 
           ? `API returned ${err.response.status}`
           : err?.message || 'Network error';
-        console.error(`❌ Error fetching Vestige Labs data for ${fromToken.code}/${toToken.code}: ${errorMessage}`);
-        console.log(`🔄 Using fallback data for ${fromToken.code}/${toToken.code}`);
+        console.error(`Chart data error for ${fromToken.code}/${toToken.code}: ${errorMessage}`);
       }
       const fallback = generateChartData(0.2, 0.02, timeframe)
       setChartData(fallback)

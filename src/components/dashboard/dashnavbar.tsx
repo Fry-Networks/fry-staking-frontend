@@ -45,9 +45,9 @@ const Dashnavbar: FC<DashnavbarProps> = ({ toggleDrawer }) => {
               src="../../assets/images/dashboard/dp.png"
               alt=""
               className="h-[46px] w-[46px] cursor-pointer"
-              onClick={() => navigate('/setting/profile')}
+              onClick={() => navigate('/admin/setting/profile')}
             />
-            <div className="flex flex-col gap-[3px] cursor-pointer" onClick={() => navigate('/admin-settings')}>
+            <div className="flex flex-col gap-[3px] cursor-pointer" onClick={() => navigate('/admin/setting')}>
               <p className="small font-bold">Johnwick</p>
               <p className="e-small font-semibold text-text_clr">Admin</p>
             </div>

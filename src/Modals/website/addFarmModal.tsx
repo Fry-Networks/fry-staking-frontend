@@ -119,9 +119,6 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
 
     const missingFields: string[] = []
 
-    console.log('🧪 distributionType value:', `"${formData.distributionType}"`)
-    console.log('🧪 typeof distributionType:', typeof formData.distributionType)
-
     if (!lpTokenA.trim()) missingFields.push('LP Token A')
     if (!lpTokenB.trim()) missingFields.push('LP Token B')
     if (!rewardToken.trim()) missingFields.push('Reward Token')
@@ -217,41 +214,13 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
       const distributionRateValue = parseInt(distributionRate)
       const distributionScheduleValue = parseInt(formData.distributionSchedule)
 
-      // Log values for debugging
-      console.log('🔍 Validation values:', {
-        lockPeriod,
-        lockPeriodSeconds,
-        distributionRate,
-        distributionRateValue,
-        distributionSchedule: formData.distributionSchedule,
-        distributionScheduleValue,
-        scheduleInSeconds,
-      })
-
       // Final validation to ensure no NaN values
       if (isNaN(lockPeriodSeconds) || isNaN(distributionRateValue) || isNaN(distributionScheduleValue)) {
         toast.error('Invalid numeric values detected. Please check your input.')
         return
       }
 
-      // Log final parameters before calling initFarming
-      console.log('🚀 Final parameters for initFarming:', {
-        lpTokenA: Number(lpTokenA),
-        lpTokenB: Number(lpTokenB),
-        rewardToken: Number(rewardToken),
-        rewardAmount: Number(rewardAmount) * 1_000_000,
-        apr: 1000,
-        lockPeriod: lockPeriodSeconds,
-        farmStart: start,
-        farmEnd: end,
-        farmEntryFee: 0,
-        fryRewardFee: 0,
-        rewardDistributionRate: distributionRateValue,
-        rewardDistributionSchedule: distributionScheduleValue,
-        fryToken: Number(fryToken),
-      })
-
-      // 🧠 Deploy smart contract
+      // Deploy smart contract
       const result = await farming.initFarming(signer, activeAddress, {
         lpTokenA: Number(lpTokenA),
         lpTokenB: Number(lpTokenB),
@@ -460,7 +429,6 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
     setIsSearching(prev => ({ ...prev, [dropdown]: true }));
     
     try {
-      console.log(`🔍 Searching ${dropdown} dropdown for: "${query}"`);
       const searchTokens = await tokenService.searchTokens(query);
       const searchCurrencies = searchTokens.map(token => ({
         tokenId: token.id,
@@ -468,11 +436,10 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
         tokenSymbol: token.symbol,
         tokenImage: token.image
       }));
-      
-      console.log(`✅ Found ${searchCurrencies.length} tokens for ${dropdown} dropdown`);
+
       setSearchResults(prev => ({ ...prev, [dropdown]: searchCurrencies }));
     } catch (error) {
-      console.error(`❌ Search error for ${dropdown}:`, error);
+      console.error(`Search error for ${dropdown}:`, error);
       setSearchResults(prev => ({ ...prev, [dropdown]: [] }));
       toast.error('Search failed. Please try again.');
     } finally {
@@ -481,8 +448,6 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
   };
   const fetchTokens = async () => {
     try {
-      console.log('🔍 Fetching tokens from database for AddFarm modal...');
-      
       // Get default tokens first
       const defaultTokensList = tokenService.getDefaultTokens();
       const defaultCurrencies: Currency[] = defaultTokensList.map(token => ({
@@ -535,11 +500,8 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
         setSelectedRewardToken(defaultCurrencies[0] || currencies[0] || null);
       }
       
-      console.log(`✅ Loaded ${currencies.length} tokens from database for AddFarm modal`);
-      console.log(`📋 Default tokens: ${defaultCurrencies.length}`);
     } catch (error) {
-      console.error('❌ Failed to fetch tokens from database:', error);
-      console.log('🔄 Using fallback tokens for AddFarm modal');
+      console.error('Failed to fetch tokens:', error);
       
       // Get default tokens
       const defaultTokensList = tokenService.getDefaultTokens();
@@ -576,7 +538,6 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
     
     // If searching and we have search results, use them
     if (q && q.length >= 2 && searchResultsForDropdown.length > 0) {
-      console.log(`🔍 Using search API results for "${q}": ${searchResultsForDropdown.length} tokens`);
       return searchResultsForDropdown;
     }
     

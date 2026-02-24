@@ -34,8 +34,6 @@ const FarmTable: React.FC = () => {
   // Fetch token images from database
   const fetchTokenImages = async (): Promise<{ [key: string]: string }> => {
     try {
-      console.log('🔍 Fetching token images from database for farming...');
-      
       const tokens = await tokenService.fetchAllTokens();
       const imageMap: { [key: string]: string } = {};
       
@@ -51,10 +49,9 @@ const FarmTable: React.FC = () => {
       });
       
       setTokenImages(imageMap);
-      console.log(`✅ Loaded ${tokens.length} token images from database for farming`);
       return imageMap;
     } catch (error) {
-      console.error('❌ Failed to fetch token images from database:', error);
+      console.error('Failed to fetch token images:', error);
       const emptyMap = {};
       setTokenImages(emptyMap);
       return emptyMap;
@@ -70,8 +67,6 @@ const FarmTable: React.FC = () => {
       // Use database images with fallback to Tinyman
       const databaseImages = Object.keys(images).length > 0 ? images : tokenImages;
       
-      console.log('🖼️ Processing farm data with images:', Object.keys(databaseImages).length, 'token images available');
-
       const mapped = data
         .filter((farm: any) => {
           const isCreator = farm.creatorId === walletAddress;

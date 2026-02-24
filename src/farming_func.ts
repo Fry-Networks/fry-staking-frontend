@@ -63,7 +63,7 @@ export const initFarming = async (
     const algorandClient = algokit.AlgorandClient.fromConfig({ algodConfig });
     algorandClient.setDefaultSigner(signer);
 
-    console.log('🔄 Step 2: Initializing contract...');
+    // Step 2: Initialize contract
     const client = new FryFarmingClient(
       {
         sender: { addr: sender, signer },
@@ -74,25 +74,9 @@ export const initFarming = async (
       },
       algodClient
     );
-    console.log('✅ Farming client initialized');
 
-    console.log('🔍 Checking environment variables...');
     const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
     const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
-
-    // Log parameters before BigInt conversion for debugging
-    console.log('🔍 Parameters before BigInt conversion:', {
-      lpTokenA: params.lpTokenA,
-      lpTokenB: params.lpTokenB,
-      rewardToken: params.rewardToken,
-      rewardAmount: params.rewardAmount,
-      farmStart: params.farmStart,
-      farmEnd: params.farmEnd,
-      lockPeriod: params.lockPeriod,
-      farmEntryFee: params.farmEntryFee,
-      rewardDistributionRate: params.rewardDistributionRate,
-      rewardDistributionSchedule: params.rewardDistributionSchedule,
-    });
 
     // Step 3: Initialize the farming contract (no fry fee payment)
     const result = await client.create.initFarming({
@@ -111,15 +95,11 @@ export const initFarming = async (
       _fry_token: fryTokenId,
     });
 
-    console.log('📦 Farming Pool Created:', result);
-
     const farmingAppId = BigInt(result.appId);
-    console.log('🆔 Farming App ID:', farmingAppId);
     await new Promise((res) => setTimeout(res, 500));
 
-    console.log('🔄 Step 4: Opting into contract assets...');
+    // Step 4: Opt into contract assets
     const { lpTokenA, lpTokenB, rewardToken } = params;
-    console.log('🔢 Asset IDs:', { lpTokenA, lpTokenB, rewardToken });
 
     await optInToContractAssets(
       sender,
@@ -129,12 +109,10 @@ export const initFarming = async (
       BigInt(lpTokenB),
       BigInt(rewardToken)
     );
-    console.log('✅ Asset opt-in complete');
     await new Promise((res) => setTimeout(res, 1000));
 
-    console.log('🔄 Step 5: Transferring FRY tokens...');
+    // Step 5: Transfer reward tokens to contract
     const transferAmount = BigInt(params.rewardAmount);
-    console.log('💸 Transfer amount:', transferAmount);
 
     await transferFryTokensToContract(
       sender,
@@ -143,13 +121,10 @@ export const initFarming = async (
       transferAmount,
       farmingAppId
     );
-    console.log('✅ Token transfer complete');
 
-    console.log('🎉 Farming initialization completed successfully');
     return result;
   } catch (error) {
-    console.error('❌ Error initializing farming:', {
-      error,
+    console.error('Error initializing farming:', {
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
       timestamp: new Date().toISOString()
@@ -227,9 +202,6 @@ export const optInToContractAssets = async (
 
   const [signedTxn] = await signer([mbrPayTxn], [0]);
   await algod.sendRawTransaction(signedTxn).do();
-  console.log('✅ MBR payment sent');
-
-    console.log('🔄 Creating farming client for opt-in...');
     const appClient = new FryFarmingClient(
       {
         id: appId,
@@ -238,7 +210,6 @@ export const optInToContractAssets = async (
       },
       algod
     );
-    console.log('✅ Farming client created');
 
   try {
     // Opt into LP tokens and reward token (first batch)
@@ -248,13 +219,6 @@ export const optInToContractAssets = async (
       rewardToken,
       mbrPayTxn,
     ]);
-    console.log('✅ optInAsset completed');
-
-    console.log(`✅ Contract (App ID: ${appId}) opted into assets (0 means skip):`, {
-      lpTokenA,
-      lpTokenB,
-      rewardToken,
-    });
 
     // Get FRY token ID and opt into it separately if it's different from reward token
     const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
@@ -282,10 +246,9 @@ export const optInToContractAssets = async (
         fryMbrPayTxn,
       ]);
 
-      console.log(`✅ Contract also opted into FRY token: ${fryTokenId}`);
     }
   } catch (err) {
-    console.error('❌ Contract asset opt-in failed:', err);
+    console.error('Contract asset opt-in failed:', err);
     throw err;
   }
 };
@@ -383,11 +346,9 @@ export const sendAssetTransfer = async (
         assetId: rewardTokenIdToUse,
       });
 
-    console.log('✅ Asset transfer deducted successfully:', tx);
     return tx;
-
   } catch (error) {
-    console.error('❌ Error sending asset transfer:', error);
+    console.error('Error sending asset transfer:', error);
     throw error;
   }
 };
@@ -502,11 +463,10 @@ export const transferFryTokensToContract = async (
         assetId: rewardToken,
       });
 
-    console.log('✅ Tokens transferred to the farming contract:', tx);
     return tx;
 
   } catch (error) {
-    console.error('❌ Error transferring tokens to contract:', error);
+    console.error('Error transferring tokens to contract:', error);
     throw error;
   }
 };
@@ -723,15 +683,16 @@ export const stakeTokens = async (
         amount: algokit.microAlgos(Number(stakeAmount)),
         signer,
       });
-      // TODO: Replace 10458941n with a real ASA ID the user is opted into (e.g., USDC on testnet). This is required for the contract call signature.
+      // Dummy asset transfer required by contract signature when staking ALGO.
+      // Use the FRY token since users must be opted in to pay gas fees.
+      const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
       stakeAxfer = await algorandClient.transactions.assetTransfer({
         sender,
         receiver: appAddress,
         amount: 0n,
-        assetId: 10458941n, // Example: USDC on testnet. Change as needed.
+        assetId: fryTokenId,
         signer,
       });
-      console.log('DEBUG: ALGO staking, stakePay prepared. Dummy asset transfer uses assetId 10458941 (USDC testnet).');
     } else {
       // ASA staking: real asset transfer, dummy payment
       stakePay = await algorandClient.transactions.payment({
@@ -758,10 +719,9 @@ export const stakeTokens = async (
       box_tx: boxTx,
     });
 
-    console.log('✅ Staking complete:', result);
     return result;
   } catch (error) {
-    console.error('❌ Error during staking:', error);
+    console.error('Error during staking:', error);
     throw error;
   }
 };
@@ -958,7 +918,6 @@ export const claimRewards = async (
       throw new Error('No claimable rewards available');
     }
 
-    console.log('💰 Claimable:', Number(claimable) / 1e6, 'FRY');
 
     const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
     const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
@@ -994,10 +953,9 @@ export const claimRewards = async (
       }
     );
 
-    console.log('✅ Rewards claimed:', tx);
     return tx;
   } catch (e) {
-    console.error('❌ Claiming rewards failed:', e);
+    console.error('Claiming rewards failed:', e);
     throw new Error(`Claiming rewards failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 };
