@@ -3,6 +3,7 @@ import { DaffiWalletConnect } from '@daffiwallet/connect'
 import { PeraWalletConnect } from '@perawallet/connect'
 import { PROVIDER_ID, ProvidersArray, WalletProvider, useInitializeProviders } from '@txnlab/use-wallet'
 import algosdk from 'algosdk'
+import { useEffect } from 'react'
 import { SnackbarProvider } from 'notistack'
 import { ConfigProvider, theme } from 'antd'
 import { PoolDataProvider } from './context/PoolDataContext'
@@ -11,6 +12,7 @@ import { getAlgodConfigFromViteEnvironment, getKmdConfigFromViteEnvironment } fr
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { authService } from './services/AuthService';
 
 let providersArray: ProvidersArray
 if (import.meta.env.VITE_ALGOD_NETWORK === '') {
@@ -41,6 +43,11 @@ if (import.meta.env.VITE_ALGOD_NETWORK === '') {
 
 function AppInner() {
   const { isDark } = useTheme();
+
+  useEffect(() => {
+    authService.checkAuth();
+  }, []);
+
   const algodConfig = getAlgodConfigFromViteEnvironment()
 
   const walletProviders = useInitializeProviders({

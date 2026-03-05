@@ -7,6 +7,7 @@ class AuthService {
   private pendingAuth: Promise<void> | null = null;
   private _authenticated = false;
   private _wallet: string | null = null;
+  private checkAuthPromise: Promise<boolean> | null = null;
 
   isAuthenticated(): boolean {
     return this._authenticated;
@@ -24,10 +25,17 @@ class AuthService {
     fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
   }
 
-  /**
-   * Check if a valid auth cookie exists (on page load / tab restore).
-   */
   async checkAuth(): Promise<boolean> {
+    if (this.checkAuthPromise) return this.checkAuthPromise;
+    this.checkAuthPromise = this._checkAuth();
+    try {
+      return await this.checkAuthPromise;
+    } finally {
+      this.checkAuthPromise = null;
+    }
+  }
+
+  private async _checkAuth(): Promise<boolean> {
     try {
       const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
       const data = await res.json();

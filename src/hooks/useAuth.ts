@@ -7,11 +7,6 @@ export function useAuth() {
   const { activeAddress, signer } = useWallet();
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
 
-  // Check existing cookie on mount
-  useEffect(() => {
-    authService.checkAuth().then((authed) => setIsAuthenticated(authed));
-  }, []);
-
   // Clear auth only when wallet actually changes, not on every mount
   const prevAddressRef = useRef(activeAddress);
   useEffect(() => {
