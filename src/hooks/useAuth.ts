@@ -7,6 +7,11 @@ export function useAuth() {
   const { activeAddress, signer } = useWallet();
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
 
+  // Check existing cookie on mount
+  useEffect(() => {
+    authService.checkAuth().then((authed) => setIsAuthenticated(authed));
+  }, []);
+
   // Clear auth only when wallet actually changes, not on every mount
   const prevAddressRef = useRef(activeAddress);
   useEffect(() => {
@@ -17,15 +22,14 @@ export function useAuth() {
     }
   }, [activeAddress]);
 
-  const ensureAuth = useCallback(async (): Promise<string> => {
+  const ensureAuth = useCallback(async (): Promise<void> => {
     if (!activeAddress) {
       throw new Error('Please connect your wallet first.');
     }
 
     try {
-      const token = await authService.authenticate(activeAddress, signer);
+      await authService.authenticate(activeAddress, signer);
       setIsAuthenticated(true);
-      return token;
     } catch (err: any) {
       setIsAuthenticated(false);
       if (err.message?.includes('cancelled') || err.message?.includes('CANCELLED')) {
