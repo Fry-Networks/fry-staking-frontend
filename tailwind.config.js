@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 import plugin from 'tailwindcss/plugin';
 export default {
+  darkMode: 'class',
   content: ['./src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     fontFamily: {
@@ -38,6 +39,5 @@ export default {
   daisyui: {
     themes: ['lofi'],
   },
-  plugins: [require('daisyui')],
-  plugins: [require('tailwindcss-important')],
+  plugins: [require('daisyui'), require('tailwindcss-important')],
 }

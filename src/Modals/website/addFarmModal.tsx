@@ -7,8 +7,9 @@ import Input from '../../components/shared/input'
 import { useWallet } from '@txnlab/use-wallet'
 import * as farming from '../../farming_func'
 import dayjs from 'dayjs'
-import axios from 'axios'
-import { TokenService } from '../../services/TokenService'
+import { tokenServiceInstance as tokenService } from '../../services/TokenService'
+import { authAxios } from '../../services/apiClient'
+import { useAuth } from '../../hooks/useAuth'
 
 interface Currency {
   tokenId: number
@@ -25,10 +26,8 @@ interface AddFarmProps {
 }
 
 const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen }) => {
-  // Initialize TokenService
-  const tokenService = new TokenService();
-  
   const { signer, activeAddress } = useWallet()
+  const { ensureAuth } = useAuth()
   const isWalletConnected = !!activeAddress && !!signer
 
   const [formData, setFormData] = useState({
@@ -186,6 +185,7 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
     setIsSubmitting(true)
 
     try {
+      await ensureAuth();
       const start = farmStart ? Math.floor(farmStart.getTime() / 1000) : 0
       const end = start + parseInt(farmDuration) * 86400
 
@@ -244,8 +244,8 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
       // 🧠 Save to backend DB
       const payload = {
         creatorId: activeAddress,
-        lpToken: { tokenA: lpTokenA, tokenB: lpTokenB },
-        rewardToken: { id: rewardToken },
+        lpToken: { tokenA: String(lpTokenA), tokenB: String(lpTokenB) },
+        rewardToken: { id: String(rewardToken) },
         rewardTokenAmount: Number(rewardAmount) * 1_000_000,
         farmStartTime: start,
         farmEndTime: end,
@@ -259,9 +259,9 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
         appId: String(appId),
       }
 
-      const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/farming/add`, payload)
+      const response = await authAxios.post('/farming/add', payload)
 
-      if (response.status === 200) {
+      if (response.status >= 200 && response.status < 300) {
         toast.success('Farming pool created!')
         resetForm()
         setTimeout(() => setisaddFarmOpen(false), 500)
@@ -488,7 +488,15 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
         setSelectedTokenA(lpList[0] || null);
         setSelectedTokenB(lpList[1] || lpList[0] || null);
         // Reward token can be any (prefer default tokens first)
-        setSelectedRewardToken(defaultCurrencies[0] || sortedTokens.find((t) => isFryToken(t)) || sortedTokens[0] || null);
+        const rewardDefault = defaultCurrencies[0] || sortedTokens.find((t) => isFryToken(t)) || sortedTokens[0] || null;
+        setSelectedRewardToken(rewardDefault);
+        // Sync formData so validation sees the auto-selected tokens
+        setFormData((prev) => ({
+          ...prev,
+          lpTokenA: (lpList[0]?.tokenId ?? '').toString(),
+          lpTokenB: ((lpList[1] || lpList[0])?.tokenId ?? '').toString(),
+          rewardToken: (rewardDefault?.tokenId ?? '').toString(),
+        }));
       } else {
         setAllTokens(currencies);
         
@@ -497,7 +505,15 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
         const lpList = defaultLpList.length > 0 ? defaultLpList : currencies.filter((t) => t.tokenId !== 0);
         setSelectedTokenA(lpList[0] || null);
         setSelectedTokenB(lpList[1] || lpList[0] || null);
-        setSelectedRewardToken(defaultCurrencies[0] || currencies[0] || null);
+        const rewardDefault2 = defaultCurrencies[0] || currencies[0] || null;
+        setSelectedRewardToken(rewardDefault2);
+        // Sync formData so validation sees the auto-selected tokens
+        setFormData((prev) => ({
+          ...prev,
+          lpTokenA: (lpList[0]?.tokenId ?? '').toString(),
+          lpTokenB: ((lpList[1] || lpList[0])?.tokenId ?? '').toString(),
+          rewardToken: (rewardDefault2?.tokenId ?? '').toString(),
+        }));
       }
       
     } catch (error) {
@@ -528,7 +544,15 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
       const lpList = defaultLpList.length > 0 ? defaultLpList : fallbackTokens.filter((t) => t.tokenId !== 0);
       setSelectedTokenA(lpList[0] || null);
       setSelectedTokenB(lpList[1] || lpList[0] || null);
-      setSelectedRewardToken(defaultCurrencies[0] || fallbackTokens[0] || null);
+      const rewardDefault3 = defaultCurrencies[0] || fallbackTokens[0] || null;
+      setSelectedRewardToken(rewardDefault3);
+      // Sync formData so validation sees the auto-selected tokens
+      setFormData((prev) => ({
+        ...prev,
+        lpTokenA: (lpList[0]?.tokenId ?? '').toString(),
+        lpTokenB: ((lpList[1] || lpList[0])?.tokenId ?? '').toString(),
+        rewardToken: (rewardDefault3?.tokenId ?? '').toString(),
+      }));
     }
   };
   // Helper to get filtered currencies for each dropdown

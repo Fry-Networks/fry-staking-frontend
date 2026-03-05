@@ -11,7 +11,7 @@ const Profile = () => {
         <PageBg />
         <Navbar />
         <Profilebanner />
-        {/* <ProfileSwitcher /> */}
+        <ProfileSwitcher />
         <Footer />
       </div>
     </>

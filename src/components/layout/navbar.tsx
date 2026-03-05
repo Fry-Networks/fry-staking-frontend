@@ -5,9 +5,14 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import ConnectWallet from '../ConnectWallet'
 import Button from '../shared/button'
+import ThemeToggle from '../shared/ThemeToggle'
 import Transact from '../Transact'
+import { useTheme } from '../../contexts/ThemeContext'
+import DailyRewardsModal from '../../Modals/website/DailyRewardsModal'
+import { fetchRewardsStatus } from '../../services/rewardsApi'
 
 const Navbar: React.FC = () => {
+  const { isDark } = useTheme();
   const [isOpen, setIsOpen] = useState(false)
   const [open, setOpen] = useState<boolean>(false)
   const [walletConnected, setWalletConnected] = useState(false)
@@ -16,6 +21,8 @@ const Navbar: React.FC = () => {
   const [placement] = useState<'left'>('left')
   const [openWalletModal, setOpenWalletModal] = useState<boolean>(false);
   const [openDemoModal, setOpenDemoModal] = useState<boolean>(false);
+  const [openRewardsModal, setOpenRewardsModal] = useState(false)
+  const [rewardsAvailable, setRewardsAvailable] = useState(false)
   const { activeAddress } = useWallet();
 
   useEffect(() => {
@@ -29,6 +36,25 @@ const Navbar: React.FC = () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [])
+
+  // Rewards notification dot + auto-open
+  useEffect(() => {
+    if (!activeAddress) {
+      setRewardsAvailable(false)
+      return
+    }
+    fetchRewardsStatus(activeAddress)
+      .then((s) => {
+        setRewardsAvailable(s.canClaim)
+        const key = `fry_rewards_auto_opened_${activeAddress}`
+        const today = new Date().toISOString().slice(0, 10)
+        if (localStorage.getItem(key) !== today) {
+          localStorage.setItem(key, today)
+          setTimeout(() => setOpenRewardsModal(true), 1000)
+        }
+      })
+      .catch(() => {})
+  }, [activeAddress])
 
   const toggleDropdown = () => setIsOpen((prev) => !prev)
 
@@ -46,12 +72,12 @@ const Navbar: React.FC = () => {
         <div className="flex justify-between items-center">
           <div className="flex items-center">
             <NavLink to="/">
-              <img src="../../assets/images/logo.svg" alt="Logo" className="w-[100px] h-[97px]" />
+              <img src={isDark ? "/assets/images/logo_dark.png" : "/assets/images/logo_light.png"} alt="Logo" className="h-[97px] object-contain" />
             </NavLink>
           </div>
 
           <ul className="md:flex space-x-10 max-xxl:space-x-5">
-            <li className="uppercase large text-black font-bold font-apex">
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/"
                 className={({ isActive }) =>
@@ -61,7 +87,7 @@ const Navbar: React.FC = () => {
                 Swap
               </NavLink>
             </li>
-            <li className="uppercase large text-black font-bold font-apex">
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/stake"
                 className={({ isActive }) =>
@@ -71,7 +97,7 @@ const Navbar: React.FC = () => {
                 Stake
               </NavLink>
             </li>
-            <li className="uppercase large text-black font-bold font-apex">
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/farm"
                 className={({ isActive }) =>
@@ -81,7 +107,7 @@ const Navbar: React.FC = () => {
                 Farm
               </NavLink>
             </li>
-            <li className="uppercase large text-black font-bold font-apex">
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/profile"
                 className={({ isActive }) =>
@@ -93,7 +119,16 @@ const Navbar: React.FC = () => {
             </li>
           </ul>
 
-          <div className="button flex items-center">
+          <div className="button flex items-center gap-2">
+            <ThemeToggle />
+            {activeAddress && (
+              <div className="relative cursor-pointer" onClick={() => setOpenRewardsModal(true)}>
+                <Icon icon="mdi:gift" width={24} color="#FD0000" />
+                {rewardsAvailable && (
+                  <span className="absolute -top-1 -right-1 w-[10px] h-[10px] bg-green rounded-full" />
+                )}
+              </div>
+            )}
             {!activeAddress ? (
               <Button
                 text="Connect Wallet"
@@ -149,18 +184,18 @@ const Navbar: React.FC = () => {
 
       <div className="mobile-navbar w-[90%] m-auto hidden max-md:flex justify-between items-center pt-[20px]">
         <NavLink to="/">
-          <img src="../../assets/logo.png" alt="Logo" className="w-[70px] h-[67px]" />
+          <img src={isDark ? "/assets/images/logo_dark.png" : "/assets/images/logo_light.png"} alt="Logo" className="h-[67px] object-contain" />
         </NavLink>
 
-        <Icon icon="pajamas:hamburger" style={{ color: 'black' }} onClick={() => setOpen(!open)} width={22} className="cursor-pointer" />
+        <Icon icon="pajamas:hamburger" style={{ color: 'var(--text-primary)' }} onClick={() => setOpen(!open)} width={22} className="cursor-pointer" />
 
         <Drawer placement={placement} closable={false} onClose={onClose} open={open} key={placement} width="80%" className="p-[30px]">
           <div className="flex justify-between items-center">
             <NavLink to="/">
-              <img src="../../logo.png" alt="Logo" className="w-[55px] h-[45px] my-[10px] mx-[20px]" onClick={onClose} />
+              <img src={isDark ? "/assets/images/logo_dark.png" : "/assets/images/logo_light.png"} alt="Logo" className="h-[45px] my-[10px] mx-[20px] object-contain" onClick={onClose} />
             </NavLink>
             <Icon
-              color="black"
+              color="var(--text-primary)"
               icon="charm:cross"
               className="cursor-pointer"
               width={24}
@@ -172,7 +207,7 @@ const Navbar: React.FC = () => {
           </div>
 
           <ul className="flex flex-col space-y-9 p-[20px]">
-            <li className="uppercase large text-black font-bold font-apex">
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/"
                 onClick={onClose}
@@ -183,7 +218,7 @@ const Navbar: React.FC = () => {
                 Swap
               </NavLink>
             </li>
-            <li className="uppercase large text-black font-bold font-apex">
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/stake"
                 onClick={onClose}
@@ -194,7 +229,7 @@ const Navbar: React.FC = () => {
                 Stake
               </NavLink>
             </li>
-            <li className="uppercase large text-black font-bold font-apex">
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/farm"
                 onClick={onClose}
@@ -205,7 +240,7 @@ const Navbar: React.FC = () => {
                 Farm
               </NavLink>
             </li>
-            <li className="uppercase large text-black font-bold font-apex">
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/profile"
                 onClick={onClose}
@@ -218,6 +253,23 @@ const Navbar: React.FC = () => {
             </li>
           </ul>
 
+          <div className="flex items-center gap-3 mt-[10px] mb-[10px]">
+            <ThemeToggle />
+            {activeAddress && (
+              <div
+                className="relative cursor-pointer"
+                onClick={() => {
+                  onClose()
+                  setOpenRewardsModal(true)
+                }}
+              >
+                <Icon icon="mdi:gift" width={24} color="#FD0000" />
+                {rewardsAvailable && (
+                  <span className="absolute -top-1 -right-1 w-[10px] h-[10px] bg-green rounded-full" />
+                )}
+              </div>
+            )}
+          </div>
           <div className="button flex items-center mt-[10px]">
             {!activeAddress ? (
               <Button
@@ -274,6 +326,17 @@ const Navbar: React.FC = () => {
       </div>
       <ConnectWallet openModal={openWalletModal} closeModal={toggleWalletModal} />
       <Transact openModal={openDemoModal} setModalState={setOpenDemoModal} />
+      <DailyRewardsModal
+        open={openRewardsModal}
+        onClose={() => {
+          setOpenRewardsModal(false)
+          if (activeAddress) {
+            fetchRewardsStatus(activeAddress)
+              .then((s) => setRewardsAvailable(s.canClaim))
+              .catch(() => {})
+          }
+        }}
+      />
     </>
   )
 }

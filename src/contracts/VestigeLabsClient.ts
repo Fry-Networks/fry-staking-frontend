@@ -57,15 +57,21 @@ export interface VestigeSwapParams {
   denominating_asset_id?: number;
 }
 
+export interface VestigeTransactionResponse {
+  txn: string;      // base64-encoded msgpack unsigned transaction
+  signers: string[]; // addresses that need to sign
+  message: string;   // human-readable description
+}
+
 export class VestigeLabsClient {
   private readonly api: AxiosInstance;
   private readonly baseUrl: string;
 
   constructor(network: 'mainnet' | 'testnet' = 'mainnet') {
-    this.baseUrl = 'https://api.vestigelabs.org';
+    this.baseUrl = '/api/swap/vestige';
     this.api = axios.create({
       baseURL: this.baseUrl,
-      timeout: 10000,
+      timeout: 15000,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -77,7 +83,7 @@ export class VestigeLabsClient {
    */
   async fetchSwapQuote(params: VestigeSwapParams): Promise<VestigeSwapQuote> {
     try {
-      const response = await this.api.get('/swap/v4', {
+      const response = await this.api.get('/quote', {
         params: {
           from_asa: params.from_asa,
           to_asa: params.to_asa,
@@ -95,6 +101,31 @@ export class VestigeLabsClient {
     } catch (error) {
       console.error('Vestige Labs API error:', error);
       throw new Error(`Failed to fetch swap quote: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Prepare swap transactions from Vestige Labs API
+   * Calls POST /swap/v4/transactions to get unsigned transactions ready to sign
+   */
+  async prepareSwapTransactions(
+    quote: VestigeSwapQuote,
+    sender: string,
+    slippage: number = 0.005
+  ): Promise<VestigeTransactionResponse[]> {
+    try {
+      const response = await this.api.post('/transactions', quote, {
+        params: { sender, slippage },
+      });
+
+      if (!response.data || !Array.isArray(response.data)) {
+        throw new Error('Invalid transaction response from Vestige Labs API');
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Vestige Labs transaction preparation error:', error);
+      throw new Error(`Failed to prepare swap transactions: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

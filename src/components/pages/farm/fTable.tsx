@@ -10,7 +10,9 @@ import Input from '../../shared/input'
 import { stakeTokens, claimRewards, unstakeTokens } from '../../../farming_func'
 import axios from 'axios'
 import algosdk from 'algosdk'
-import { TokenService } from '../../../services/TokenService'
+import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
+import { authAxios } from '../../../services/apiClient'
+import { useAuth } from '../../../hooks/useAuth'
 
 interface DataType {
   key: React.Key
@@ -37,9 +39,6 @@ interface FTableProps {
 const FRY_ASSET_ID = import.meta.env.VITE_FRY_TOKEN_ID ? Number(import.meta.env.VITE_FRY_TOKEN_ID) : 2485314946;
 
 const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => {
-  // Initialize TokenService
-  const tokenService = new TokenService();
-  
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
   const [stakeInput, setStakeInput] = useState<{ [key: string]: string }>({})
   const [withdrawInput, setWithdrawInput] = useState<{ [key: string]: string }>({})
@@ -52,6 +51,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
   const [isOptedIn, setIsOptedIn] = useState<boolean | null>(null)
 
   const { providers, clients, activeAccount, activeAddress, signer } = useWallet()
+  const { ensureAuth } = useAuth()
 
   const navigate = useNavigate()
 
@@ -154,6 +154,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     const stakeAmount = BigInt(Math.floor(floatAmount * 1_000_000))
 
     try {
+      await ensureAuth()
       setStakeLoadingKeys((prev) => [...prev, record.key])
 
       // Perform the on-chain staking
@@ -172,7 +173,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
       }
 
       // Log staking data in DB after staking
-      await axios.post(`${import.meta.env.VITE_API_BASE_URL}/stakingfarmingtoken/add`, stakingData)
+      await authAxios.post('/stakingfarmingtoken/add', stakingData)
 
       // Fetch the updated staking balance from the backend
       const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/stakingfarmingtoken/pool/${record.appId}/user/${activeAddress}`)
@@ -215,6 +216,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     }
 
     try {
+      await ensureAuth()
       setWithdrawLoadingKeys((prev) => [...prev, record.key])
 
       const value = withdrawInput[keyStr] as unknown as number
@@ -224,11 +226,11 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
       const withdrawToken = await unstakeTokens(record.appId, adjustedWithdrawValue, activeAddress!, signer)
 
       // Log the withdrawal data to DB after the withdrawal is successful
-      await axios.post(`${import.meta.env.VITE_API_BASE_URL}/farmingwithdraw/add`, {
+      await authAxios.post('/farmingwithdraw/add', {
         amount: floatAmount,
         userWallet: activeAddress!,
-        poolId: record.appId,
-        farmingTokenId: record.appId,
+        poolId: String(record.appId),
+        farmingTokenId: String(record.appId),
       })
 
       toast.success('Withdraw successful')
@@ -291,6 +293,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     const keyStr = String(record.key)
 
     try {
+      await ensureAuth()
       setClaimingKeys((prev) => [...prev, record.key])
 
       // Step 1: Claim from contract
@@ -303,9 +306,9 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
       const { totalStaked, stakeTime } = userBox.data || {}
 
       // Step 3: Log claim to database
-      const dbResult = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/claimfarmrewards/add`, {
+      const dbResult = await authAxios.post('/claimfarmrewards/add', {
         walletId: activeAddress,
-        poolId: record.appId,
+        poolId: String(record.appId),
         stakedAmount: totalStaked || 0,
         stakeStartTime: stakeTime || Math.floor(Date.now() / 1000),
         claimTime: Math.floor(Date.now() / 1000),
@@ -329,7 +332,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
       title: (
         <div className="flex items-center gap-[2px]">
           TVL
-          <Icon icon="solar:arrow-down-outline" width={18} height={21} color="black" />
+          <Icon icon="solar:arrow-down-outline" width={18} height={21} color="var(--text-primary)" />
         </div>
       ),
       dataIndex: 'tvl',
@@ -422,7 +425,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                             <>
                               {/* Stake */}
                               <div className="flex flex-col gap-[4px]">
-                                <div className="bg-[#F5F5F5] rounded-[10px] flex gap-[13px] items-center">
+                                <div className="bg-[var(--input-bg)] rounded-[10px] flex gap-[13px] items-center">
                                   <Input
                                     type="number"
                                     name="stake"
@@ -434,7 +437,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                                   <p className="text-text_clr medium">Max</p>
                                   <Button
                                     text={stakeLoadingKeys.includes(record.key) ? 'Staking...' : 'Stake'}
-                                    className="button btn-gray"
+                                    className="button btn-primary"
                                     height={45}
                                     width={106}
                                     onClick={() => handleStake(record)}
@@ -446,7 +449,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
 
                               {/* Withdraw */}
                               <div className="flex flex-col gap-[4px]">
-                                <div className="bg-[#F5F5F5] rounded-[10px] flex gap-[13px] items-center">
+                                <div className="bg-[var(--input-bg)] rounded-[10px] flex gap-[13px] items-center">
                                   <Input
                                     type="number"
                                     name="withdraw"
@@ -458,7 +461,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                                   <p className="text-text_clr medium">Max</p>
                                   <Button
                                     text={withdrawLoadingKeys.includes(record.key) ? 'Withdrawing...' : 'Withdraw'}
-                                    className="button btn-gray"
+                                    className="button btn-primary"
                                     height={45}
                                     width={106}
                                     onClick={() => handleWithdraw(record)}

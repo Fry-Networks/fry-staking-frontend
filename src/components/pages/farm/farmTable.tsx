@@ -4,9 +4,9 @@ import axios from 'axios';
 import Button from '../../shared/button';
 import FTable, { TabOption } from './fTable';
 import Farmbanner from './farmbanner';
-import AddFarmModal from '../../../Modals/website/addFarmModal';
+import CreateFarmWizard from '../../../Modals/website/CreateFarmWizard';
 import { useWallet } from '@txnlab/use-wallet';
-import { TokenService } from '../../../services/TokenService';
+import { tokenServiceInstance as tokenService } from '../../../services/TokenService';
 
 // Helper function to validate image URL (outside component to avoid recreation)
 const isValidImageUrl = (url: string | undefined | null): boolean => {
@@ -22,21 +22,19 @@ const isValidImageUrl = (url: string | undefined | null): boolean => {
 };
 
 const FarmTable: React.FC = () => {
-  // Initialize TokenService
-  const tokenService = new TokenService();
-  
   const { activeAddress: walletAddress } = useWallet();
   const [farms, setFarms] = useState<any[]>([]);
+  const [originalData, setOriginalData] = useState<any[]>([]);
   const [isAddFarmOpen, setIsAddFarmOpen] = useState(false);
   const [tokenImages, setTokenImages] = useState<{ [key: string]: string }>({});
-  const [activeTab, setActiveTab] = useState<TabOption>('MyLive');
+  const [activeTab, setActiveTab] = useState<TabOption>('Live');
 
   // Fetch token images from database
   const fetchTokenImages = async (): Promise<{ [key: string]: string }> => {
     try {
       const tokens = await tokenService.fetchAllTokens();
       const imageMap: { [key: string]: string } = {};
-      
+
       tokens.forEach(token => {
         // Only use database image if it's valid, otherwise use Tinyman fallback
         const dbImage = token.image;
@@ -47,7 +45,7 @@ const FarmTable: React.FC = () => {
           imageMap[token.id.toString()] = `https://asa-list.tinyman.org/assets/${token.id}/icon.png`;
         }
       });
-      
+
       setTokenImages(imageMap);
       return imageMap;
     } catch (error) {
@@ -66,26 +64,9 @@ const FarmTable: React.FC = () => {
 
       // Use database images with fallback to Tinyman
       const databaseImages = Object.keys(images).length > 0 ? images : tokenImages;
-      
-      const mapped = data
-        .filter((farm: any) => {
-          const isCreator = farm.creatorId === walletAddress;
-          const isLive = farm.farmEndTime > now;
 
-          switch (activeTab) {
-            case 'Live':
-              return !isCreator && isLive;
-            case 'Ended':
-              return !isCreator && !isLive;
-            case 'MyLive':
-              return isCreator && isLive;
-            case 'MyEnded':
-              return isCreator && !isLive;
-            default:
-              return true;
-          }
-        })
-        .map((farm: any, index: number) => {
+      // Map ALL farms (no tab filtering here — filtering happens client-side)
+      const mapped = data.map((farm: any, index: number) => {
           const endsIn = Math.max(0, farm.farmEndTime - now);
           const endsInDays = Math.ceil(endsIn / 86400);
 
@@ -93,8 +74,8 @@ const FarmTable: React.FC = () => {
           const tvl = `$${(poolData)}`; // Calculate TVL here
 
           // Get token IDs for LP tokens and reward token
-          const tokenAId = farm.lpToken?.tokenAId?.toString() || farm.lpToken?.tokenA?.id?.toString();
-          const tokenBId = farm.lpToken?.tokenBId?.toString() || farm.lpToken?.tokenB?.id?.toString();
+          const tokenAId = farm.lpToken?.tokenAId?.toString() || farm.lpToken?.tokenA?.toString();
+          const tokenBId = farm.lpToken?.tokenBId?.toString() || farm.lpToken?.tokenB?.toString();
           const rewardTokenId = farm.rewardToken?.id?.toString() || farm.rewardTokenId?.toString();
 
           // Use database images with fallback to Tinyman
@@ -102,7 +83,7 @@ const FarmTable: React.FC = () => {
           const tokenADbImage = databaseImages[tokenAId];
           const tokenBDbImage = databaseImages[tokenBId];
           const rewardTokenDbImage = databaseImages[rewardTokenId];
-          
+
           const tokenAImage = (tokenADbImage && isValidImageUrl(tokenADbImage))
             ? tokenADbImage
             : `https://asa-list.tinyman.org/assets/${tokenAId}/icon.png`;
@@ -116,15 +97,21 @@ const FarmTable: React.FC = () => {
           return {
             key: farm._id || index,
             _id: farm._id,
+            creatorId: farm.creatorId,
+            farmEndTime: farm.farmEndTime,
+            farmStartTime: farm.farmStartTime,
+            appId: farm.appId,
+            isGated: farm.isGated || false,
+            gateConfig: farm.gateConfig || {},
             pool: (
               <div className="flex items-center gap-[20px] w-[350px]">
                 {/* Token Icons */}
                 <div className="flex relative">
-                  <img 
+                  <img
                     key={`tokenA-${tokenAId}-${tokenAImage}`}
-                    src={tokenAImage} 
-                    alt={farm.lpToken?.tokenA || 'Token A'} 
-                    className="w-[40px] h-[40px] rounded-full drop-shadow-md" 
+                    src={tokenAImage}
+                    alt={farm.lpToken?.tokenA || 'Token A'}
+                    className="w-[40px] h-[40px] rounded-full drop-shadow-md"
                     loading="lazy"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
@@ -137,11 +124,11 @@ const FarmTable: React.FC = () => {
                       }
                     }}
                   />
-                  <img 
+                  <img
                     key={`tokenB-${tokenBId}-${tokenBImage}`}
-                    src={tokenBImage} 
-                    alt={farm.lpToken?.tokenB || 'Token B'} 
-                    className="w-[40px] h-[40px] rounded-full drop-shadow-md -ml-4 z-10" 
+                    src={tokenBImage}
+                    alt={farm.lpToken?.tokenB || 'Token B'}
+                    className="w-[40px] h-[40px] rounded-full drop-shadow-md -ml-4 z-10"
                     loading="lazy"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
@@ -158,13 +145,15 @@ const FarmTable: React.FC = () => {
 
                 {/* Text Information */}
                 <div className="flex flex-col ml-[10px]">
-                  <h6 className="text-black font-medium text-[14px]">{farm.lpToken?.tokenA} / {farm.lpToken?.tokenB}</h6>
+                  <h6 className="text-[var(--text-primary)] font-medium text-[14px]">
+                    {farm.lpPairName || `${farm.lpToken?.tokenA} / ${farm.lpToken?.tokenB}`}
+                  </h6>
                   <div className="flex items-center gap-2">
-                    <img 
+                    <img
                       key={`reward-${rewardTokenId}-${rewardTokenImage}`}
-                      src={rewardTokenImage} 
-                      alt={farm.rewardToken?.id || 'Reward token'} 
-                      className="w-[20px] h-[20px] rounded-full" 
+                      src={rewardTokenImage}
+                      alt={farm.rewardToken?.id || 'Reward token'}
+                      className="w-[20px] h-[20px] rounded-full"
                       loading="lazy"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
@@ -177,7 +166,20 @@ const FarmTable: React.FC = () => {
                         }
                       }}
                     />
-                    <h6 className="text-green font-medium text-[14px]">{farm.rewardToken?.id}</h6>
+                    <h6 className="text-green font-medium text-[14px]">
+                      {farm.rewardTokenSymbol || farm.rewardToken?.name || farm.rewardToken?.id}
+                    </h6>
+                    {farm.dexProvider && (
+                      <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] font-medium">
+                        {farm.dexProvider}
+                      </span>
+                    )}
+                    {farm.isGated && (
+                      <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium flex items-center gap-0.5" title={farm.gateConfig?.gateMessage || 'NFT Gated'}>
+                        <Icon icon="mdi:shield-lock-outline" width={10} height={10} />
+                        {farm.gateConfig?.collectionName || 'NFT Gated'}
+                      </span>
+                    )}
                   </div>
                   <p className="text-gray-500 text-[12px]">
                     {farm.lockPeriod / 86400} {farm.lockPeriod / 86400 === 1 ? 'Day' : 'Days'} Lock
@@ -194,48 +196,46 @@ const FarmTable: React.FC = () => {
               </div>
             ),
             ends: `${endsInDays} ${endsInDays === 1 ? 'day' : 'days'}`,
-            farmStartTime: farm.farmStartTime,
-            farmEndTime: farm.farmEndTime,
-            appId: farm.appId,
           };
         });
 
-      setFarms(mapped);
+      setOriginalData(mapped);
     } catch (error) {
       console.error('Error fetching farms:', error);
     }
   };
 
+  // Client-side filtering: filter originalData by activeTab and walletAddress
+  useEffect(() => {
+    const now = Math.floor(Date.now() / 1000);
+    const filtered = originalData.filter((farm) => {
+      const isCreator = farm.creatorId === walletAddress;
+      const isLive = farm.farmEndTime > now;
+
+      switch (activeTab) {
+        case 'Live':
+          return isLive;
+        case 'Ended':
+          return !isLive;
+        case 'MyLive':
+          return isCreator && isLive;
+        case 'MyEnded':
+          return isCreator && !isLive;
+        default:
+          return true;
+      }
+    });
+    setFarms(filtered);
+  }, [originalData, activeTab, walletAddress]);
+
+  // Initial load: fetch token images then farms (once)
   useEffect(() => {
     const loadData = async () => {
-      await fetchTokenImages();
-      // Fetch farms after token images are loaded
-      fetchAllFarms();
+      const images = await fetchTokenImages();
+      fetchAllFarms(images);
     };
     loadData();
   }, []);
-
-  useEffect(() => {
-    // Refetch farms when activeTab or walletAddress changes
-    if (Object.keys(tokenImages).length > 0) {
-      const timer = setTimeout(() => {
-        fetchAllFarms();
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [activeTab, walletAddress]);
-  
-  // Refetch farms when tokenImages are updated (but not on initial empty state)
-  useEffect(() => {
-    if (Object.keys(tokenImages).length > 0 && farms.length > 0) {
-      const timer = setTimeout(() => {
-        fetchAllFarms();
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [tokenImages]);
 
   return (
     <div className="w-full mt-[40px] mb-[47px]">
@@ -244,25 +244,29 @@ const FarmTable: React.FC = () => {
         {/* Tabs */}
         <div className="top flex max-md:flex-col justify-between items-center gap-[20px]">
           <div className="flex w-full justify-center md:justify-start">
-            <div className="switcher flex flex-wrap justify-center md:flex-nowrap gap-[8px] p-[8px] bg-white rounded-[12px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] overflow-x-auto max-w-full">
-              {(['MyLive', 'MyEnded', 'Live', 'Ended', 'All'] as TabOption[]).map((tab) => (
-                <p
-                  key={tab}
-                  className={`${activeTab === tab 
-                    ? 'text-white linearGradient shadow-md' 
-                    : 'text-black hover:bg-gray-50'
-                  } flex items-center justify-center text-center cursor-pointer tracking-[0.09px] rounded-[10px] px-[16px] min-w-[120px] h-[40px] text-[14px] whitespace-nowrap transition-all duration-200`}
-                  onClick={() => setActiveTab(tab)}
-                >
-                  {{
-                    MyLive: 'My Live Farms',
-                    MyEnded: 'My Ended Farms',
-                    Live: 'Live Farms',
-                    Ended: 'Ended Farms',
-                    All: 'All Farms',
-                  }[tab]}
-                </p>
-              ))}
+            <div className="switcher flex flex-wrap justify-center md:flex-nowrap gap-[8px] p-[8px] bg-[var(--bg-card)] rounded-[12px] shadow-[0px_4px_24.2px_0px_var(--shadow-color)] overflow-x-auto max-w-full">
+              {(['MyLive', 'MyEnded', 'Live', 'Ended', 'All'] as TabOption[]).map((tab) => {
+                const isMyTab = tab === 'MyLive' || tab === 'MyEnded';
+                const isDisabled = isMyTab && !walletAddress;
+                return (
+                  <p
+                    key={tab}
+                    className={`${activeTab === tab
+                      ? 'text-white linearGradient shadow-md'
+                      : 'text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                    } ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} flex items-center justify-center text-center tracking-[0.09px] rounded-[10px] px-[16px] min-w-[120px] h-[40px] text-[14px] whitespace-nowrap transition-all duration-200`}
+                    onClick={() => !isDisabled && setActiveTab(tab)}
+                  >
+                    {{
+                      MyLive: 'My Live Farms',
+                      MyEnded: 'My Ended Farms',
+                      Live: 'Live Farms',
+                      Ended: 'Ended Farms',
+                      All: 'All Farms',
+                    }[tab]}
+                  </p>
+                );
+              })}
             </div>
           </div>
 
@@ -294,16 +298,10 @@ const FarmTable: React.FC = () => {
         </div>
 
         <div className="bottom">
-          {!walletAddress ? (
-            <div className="flex flex-col items-center justify-center p-8 bg-white rounded-lg shadow-sm">
-              <Icon icon="mdi:wallet-outline" className="w-16 h-16 text-gray-400 mb-4" />
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">Connect Your Wallet</h3>
-              <p className="text-gray-500 text-center">Please connect your wallet to view farming pools and participate in farming.</p>
-            </div>
-          ) : farms.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-8 bg-white rounded-lg shadow-sm">
+          {farms.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-8 bg-[var(--bg-card)] rounded-lg shadow-sm">
               <Icon icon="mdi:folder-open-outline" className="w-16 h-16 text-gray-400 mb-4" />
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Farms Found</h3>
+              <h3 className="text-xl font-semibold text-[var(--text-heading)] mb-2">No Farms Found</h3>
               <p className="text-gray-500 text-center">There are currently no farming pools available in this category.</p>
             </div>
           ) : (
@@ -316,7 +314,7 @@ const FarmTable: React.FC = () => {
         </div>
       </div>
 
-      <AddFarmModal
+      <CreateFarmWizard
         isaddFarmOpen={isAddFarmOpen}
         setisaddFarmOpen={setIsAddFarmOpen}
         fetchData={fetchAllFarms}

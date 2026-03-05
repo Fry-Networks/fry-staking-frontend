@@ -23,7 +23,7 @@ const LogoutModal: React.FC<LogoutModalProps> = ({ isModalOpen, setIsModalOpen }
     <>
       <Modal open={isModalOpen} onOk={handleOk} onCancel={handleCancel} className="del-modal" centered={true} width="415px">
         <div className="modal-content flex flex-col items-center p-[34px] gap-[24px]">
-          <h5 className="text-black text-center font-medium max-w-[327px]">Are you sure you want to Logout?</h5>
+          <h5 className="text-[var(--text-heading)] text-center font-medium max-w-[327px]">Are you sure you want to Logout?</h5>
           <div className="flex gap-[8px]">
             <Button
               text="Yes"

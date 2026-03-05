@@ -52,7 +52,7 @@ const Button: React.FC<ButtonProps> = ({
       {loading ? (
         <span className="flex justify-center items-center gap-2">
           {text}
-          <img src="../../assets/icons/loading.svg" alt="Loading" className="w-5 rotate-360 invert" />
+          <Icon icon="eos-icons:loading" width={20} className="invert" />
         </span>
       ) : (
         <>

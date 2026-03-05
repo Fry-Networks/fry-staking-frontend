@@ -2,11 +2,11 @@ import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
 import axios from 'axios'
 import React, { useEffect, useState } from 'react'
-import Addstake from '../../../Modals/website/addStakeModal'
+import CreateStakeWizard from '../../../Modals/website/CreateStakeWizard'
 import Button from '../../shared/button'
 import STable from './sTable'
 import Stakebanner from './stakebanner'
-import { TokenService } from '../../../services/TokenService'
+import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
 
 interface StakeTableProps {
   setTotals: (totals: { totalTvl: number; totalStaked: number; totalRewards: number }) => void
@@ -27,9 +27,6 @@ const isValidImageUrl = (url: string | undefined | null): boolean => {
 };
 
 const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
-  // Initialize TokenService
-  const tokenService = new TokenService();
-  
   const [isaddStakeOpen, setisaddStakeOpen] = useState(false)
   const [stacks, setStacks] = useState<any[]>([])
   const [originalData, setOriginalData] = useState<any[]>([])
@@ -40,7 +37,7 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
   const api_base_url = import.meta.env.VITE_API_BASE_URL;
 
   type TabOption = 'MyLive' | 'MyEnded' | 'Live' | 'Ended' | 'All'
-  const [activeTab, setActiveTab] = useState<TabOption>('MyLive')
+  const [activeTab, setActiveTab] = useState<TabOption>('Live')
 
   const [filteredData, setFilteredData] = useState<any[]>([])
   const [searchToken, setSearchToken] = useState<string>('')
@@ -316,8 +313,16 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
             />
           </div>
           <div className="flex flex-col">
-            <h6 className="text-black font-bold tracking-[0.1px]">Stake {item?.stakeToken?.name || 'Token'}</h6>
-            <p className="text-green font-medium small">Earn {item?.rewardToken?.name || 'Token'}</p>
+            <h6 className="text-[var(--text-primary)] font-bold tracking-[0.1px]">Stake {item?.stakeToken?.name || 'Token'}</h6>
+            <div className="flex items-center gap-1">
+              <p className="text-green font-medium small">Earn {item?.rewardToken?.name || 'Token'}</p>
+              {item?.isGated && (
+                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-medium flex items-center gap-0.5" title={item?.gateConfig?.gateMessage || 'NFT Gated'}>
+                  <Icon icon="mdi:shield-lock-outline" width={10} height={10} />
+                  {item?.gateConfig?.collectionName || 'NFT'}
+                </span>
+              )}
+            </div>
             <p className="text-text_clr small">with {item?.lockPeriod / 86400} days lock</p>
           </div>
         </div>
@@ -338,6 +343,8 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       tvlReward: finalReward * usdPrice,
       totalAmountStaked: item.totalAmountStaked,
       userAddress: item.creatorId,
+      isGated: item.isGated || false,
+      gateConfig: item.gateConfig || {},
     }
   })
 
@@ -380,9 +387,9 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
         case 'MyEnded':
           return isEnded && belongsToWallet
         case 'Live':
-          return isLive && !belongsToWallet
+          return isLive
         case 'Ended':
-          return isEnded && !belongsToWallet
+          return isEnded
         case 'All':
           return true
         default:
@@ -421,18 +428,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
     loadData()
   }, [])
   
-  // Refetch pools when tokenImages are loaded/updated (but not on initial empty state)
-  useEffect(() => {
-    // Only refetch if we have token images and original data exists (meaning pools were already loaded)
-    // Add a small delay to prevent rapid re-renders
-    if (Object.keys(tokenImages).length > 0 && originalData.length > 0) {
-      const timer = setTimeout(() => {
-        fetchAllPools()
-      }, 300)
-      return () => clearTimeout(timer)
-    }
-    return undefined
-  }, [tokenImages])
+  // Note: removed duplicate tokenImages refetch effect — initial load already passes imageMap directly
 
   return (
     <>
@@ -442,25 +438,29 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
           {/* Tabs */}
           <div className="top flex max-md:flex-col justify-between items-center gap-[20px]">
             <div className="flex w-full justify-center md:justify-start">
-              <div className="switcher flex flex-wrap justify-center md:flex-nowrap gap-[8px] p-[8px] bg-white rounded-[12px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] overflow-x-auto max-w-full">
-                {(['MyLive', 'MyEnded', 'Live', 'Ended', 'All'] as TabOption[]).map((tab) => (
-                  <p
-                    key={tab}
-                    className={`${activeTab === tab
-                      ? 'text-white linearGradient shadow-md'
-                      : 'text-black hover:bg-gray-50'
-                    } flex items-center justify-center text-center cursor-pointer tracking-[0.09px] rounded-[10px] px-[16px] min-w-[120px] h-[40px] text-[14px] whitespace-nowrap transition-all duration-200`}
-                    onClick={() => handleTabSwitch(tab)}
-                  >
-                    {{
-                      MyLive: 'My Live',
-                      MyEnded: 'My Ended',
-                      Live: 'Live Pools',
-                      Ended: 'Ended Pools',
-                      All: 'All Pools',
-                    }[tab]}
-                  </p>
-                ))}
+              <div className="switcher flex flex-wrap justify-center md:flex-nowrap gap-[8px] p-[8px] bg-[var(--bg-card)] rounded-[12px] shadow-[0px_4px_24.2px_0px_var(--shadow-color)] overflow-x-auto max-w-full">
+                {(['MyLive', 'MyEnded', 'Live', 'Ended', 'All'] as TabOption[]).map((tab) => {
+                  const isMyTab = tab === 'MyLive' || tab === 'MyEnded';
+                  const isDisabled = isMyTab && !activeAddress;
+                  return (
+                    <p
+                      key={tab}
+                      className={`${activeTab === tab
+                        ? 'text-white linearGradient shadow-md'
+                        : 'text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                      } ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} flex items-center justify-center text-center tracking-[0.09px] rounded-[10px] px-[16px] min-w-[120px] h-[40px] text-[14px] whitespace-nowrap transition-all duration-200`}
+                      onClick={() => !isDisabled && handleTabSwitch(tab)}
+                    >
+                      {{
+                        MyLive: 'My Live',
+                        MyEnded: 'My Ended',
+                        Live: 'Live Pools',
+                        Ended: 'Ended Pools',
+                        All: 'All Pools',
+                      }[tab]}
+                    </p>
+                  );
+                })}
               </div>
             </div>
 
@@ -477,7 +477,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
                   clr="text-red"
                 />
               </div>
-              <div className="max-w-[398px] max-md:max-w-[250px] w-full mx-auto md:mx-0 py-[12px] px-[8px] flex items-center gap-[8px] rounded-[12px] bg-white shadow">
+              <div className="max-w-[398px] max-md:max-w-[250px] w-full mx-auto md:mx-0 py-[12px] px-[8px] flex items-center gap-[8px] rounded-[12px] bg-[var(--bg-card)] shadow">
                 <Icon icon="si:search-line" color="#A8A8A8" width={22} height={22} />
                 <input type="search" placeholder="Search token" className="w-full" value={searchToken} onChange={handleSearchChange} />
               </div>
@@ -509,16 +509,10 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
           </div>
 
           <div className="bottom">
-            {!activeAddress ? (
-              <div className="flex flex-col items-center justify-center p-8 bg-white rounded-lg shadow-sm">
-                <Icon icon="mdi:wallet-outline" className="w-16 h-16 text-gray-400 mb-4" />
-                <h3 className="text-xl font-semibold text-gray-700 mb-2">Connect Your Wallet</h3>
-                <p className="text-gray-500 text-center">Please connect your wallet to view staking pools and start earning rewards.</p>
-              </div>
-            ) : stacks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-8 bg-white rounded-lg shadow-sm">
+            {stacks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-8 bg-[var(--bg-card)] rounded-lg shadow-sm">
                 <Icon icon="mdi:folder-open-outline" className="w-16 h-16 text-gray-400 mb-4" />
-                <h3 className="text-xl font-semibold text-gray-700 mb-2">No Pools Found</h3>
+                <h3 className="text-xl font-semibold text-[var(--text-heading)] mb-2">No Pools Found</h3>
                 <p className="text-gray-500 text-center">There are currently no staking pools available in this category.</p>
               </div>
             ) : (
@@ -531,7 +525,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
           </div>
         </div>
       </div>
-      <Addstake isaddStakeOpen={isaddStakeOpen} setisaddStakeOpen={setisaddStakeOpen} fetchData={fetchAllPools} />
+      <CreateStakeWizard isOpen={isaddStakeOpen} setIsOpen={setisaddStakeOpen} fetchData={fetchAllPools} />
     </>
   )
 }

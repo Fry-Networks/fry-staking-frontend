@@ -1,139 +1,173 @@
 import axios from 'axios'
 import React, { useEffect, useState } from 'react'
-import Addstake from '../../../../Modals/website/addStakeModal'
-import Button from '../../../shared/button'
+import { useWallet } from '@txnlab/use-wallet'
 import P_STable from './PsTable'
+import { tokenServiceInstance } from '../../../../services/TokenService'
+
+export type PoolStatus = 'active' | 'ending-soon' | 'ended'
+export type PoolFilter = 'all' | 'active' | 'ending-soon' | 'ended'
+
+export interface ProfileStakePool {
+  key: React.Key
+  _id: string
+  poolName: string
+  stakeTokenName: string
+  rewardTokenName: string
+  stakeTokenImage: string
+  rewardTokenImage: string
+  tvl: string
+  apr: string
+  userStaked: string
+  reward: string
+  endsIn: string
+  lockDays: number
+  stakingContractId: number
+  isCreator: boolean
+  endTime: number
+  status: PoolStatus
+}
+
+function computeStatus(endTime: number): PoolStatus {
+  const now = Math.floor(Date.now() / 1000)
+  if (endTime <= now) return 'ended'
+  if (endTime - now <= 86400) return 'ending-soon'
+  return 'active'
+}
+
+const FILTER_LABELS: { key: PoolFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'active', label: 'Active' },
+  { key: 'ending-soon', label: 'Ending Soon' },
+  { key: 'ended', label: 'Ended' },
+]
 
 const PstakeTable: React.FC = () => {
-  const [isaddStakeOpen, setIsAddStakeOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'Live' | 'Ended'>('Live')
-  const [activePool, setActivePool] = useState<'All' | 'My Pools'>('All')
-  const [transactionData, setTransactionData] = useState<any[]>([]) // Store fetched transaction data
-  const [loading, setLoading] = useState<boolean>(false) // For loading state
-  const api_base_url = process.env.VITE_API_BASE_URL;
+  const { activeAddress } = useWallet()
+  const [pools, setPools] = useState<ProfileStakePool[]>([])
+  const [loading, setLoading] = useState(false)
+  const [activeFilter, setActiveFilter] = useState<PoolFilter>('all')
+  const api_base_url = import.meta.env.VITE_API_BASE_URL
 
-  // Define fetchData function
-  const fetchData = async () => {
+  useEffect(() => {
+    if (activeAddress) {
+      fetchUserStakingPools()
+    } else {
+      setPools([])
+    }
+  }, [activeAddress])
+
+  const fetchUserStakingPools = async () => {
+    if (!activeAddress) return
+    setLoading(true)
+
     try {
-      setLoading(true) // Set loading to true while fetching
-      console.log('Fetching data...')
+      // Fetch all staking pools, staking token records, and legacy staker data in parallel
+      const [allPoolsRes, stakingTokenRes, stakerDataRes] = await Promise.allSettled([
+        axios.get(`${api_base_url}/staking/all`),
+        axios.get(`${api_base_url}/stakingtoken/wallet/${activeAddress}`),
+        axios.get(`${api_base_url}/stakerdata/${activeAddress}`),
+      ])
 
-      let url = `${api_base_url}/transactions` // Base API URL
+      const allPools = allPoolsRes.status === 'fulfilled' ? allPoolsRes.value.data?.data || [] : []
+      const stakingTokenRecords = stakingTokenRes.status === 'fulfilled' ? stakingTokenRes.value.data?.data || [] : []
+      const stakerRecords = stakerDataRes.status === 'fulfilled' ? stakerDataRes.value.data?.data || [] : []
 
-      // Build the URL dynamically based on selected tab and pool
-      if (activeTab === 'Live') {
-        url += '?status=live' // Add query parameter for live transactions
-      } else if (activeTab === 'Ended') {
-        url += '?status=ended' // Add query parameter for ended transactions
+      // Build a set of pool IDs where the user has staked (merge both sources)
+      const stakedPoolIds = new Set([
+        ...stakingTokenRecords.map((r: any) => r.poolId),
+        ...stakerRecords.map((r: any) => r.poolId),
+      ])
+      // Build a map of poolId -> stakedAmount for display (prefer stakingtokens totalStaked, fallback to stakerdata)
+      const stakedAmountMap: Record<string, number> = {}
+      stakerRecords.forEach((r: any) => {
+        stakedAmountMap[r.poolId] = (stakedAmountMap[r.poolId] || 0) + (r.stakedAmount || 0)
+      })
+      stakingTokenRecords.forEach((r: any) => {
+        stakedAmountMap[r.poolId] = (stakedAmountMap[r.poolId] || 0) + (r.totalStaked || 0)
+      })
+
+      // Build image map from TokenService (DB → Pera → Tinyman fallback chain)
+      const imageMap: Record<string, string> = {}
+      try {
+        const tokens = await tokenServiceInstance.fetchAllTokens()
+        tokens.forEach(t => { imageMap[t.id.toString()] = t.image })
+      } catch (e) {
+        console.warn('Failed to fetch token images:', e)
       }
 
-      if (activePool === 'My Pools') {
-        url += '&pool=my' // Add query parameter for "My Pools"
-      }
+      const now = Math.floor(Date.now() / 1000)
 
-      console.log(`Fetching from URL: ${url}`)
+      // Filter pools: user created them OR user has staked in them
+      const userPools = allPools.filter((pool: any) => {
+        const isCreator = pool.creatorId?.toLowerCase() === activeAddress.toLowerCase()
+        const hasStaked = stakedPoolIds.has(pool._id)
+        return isCreator || hasStaked
+      })
 
-      // Fetch the data from the API
-      const response = await axios.get(url)
+      const mapped: ProfileStakePool[] = userPools.map((pool: any, index: number) => {
+        const endTime = pool.stakingEndTime || 0
+        const secondsLeft = endTime - now
+        const daysLeft = Math.floor(secondsLeft / 86400)
+        const isCreator = pool.creatorId?.toLowerCase() === activeAddress.toLowerCase()
 
-      // Check response status and data structure
-      if (response.status === 200 && Array.isArray(response.data)) {
-        console.log('Fetched data:', response.data)
-        setTransactionData(response.data) // Set the fetched data in the state
-      } else {
-        console.error('Error fetching data:', response.statusText)
-      }
+        const stakeTokenId = (pool?.stakeToken?.id ?? pool?.stakeTokenId)?.toString()
+        const rewardTokenId = (pool?.rewardToken?.id ?? pool?.rewardTokenId)?.toString()
+
+        const stakeTokenImage = imageMap[stakeTokenId] || `https://asa-list.tinyman.org/assets/${stakeTokenId}/icon.png`
+        const rewardTokenImage = imageMap[rewardTokenId] || `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`
+
+        const userStakedAmount = stakedAmountMap[pool._id] || 0
+
+        return {
+          key: index,
+          _id: pool._id,
+          poolName: `Stake ${pool?.stakeToken?.name || 'Token'}`,
+          stakeTokenName: pool?.stakeToken?.name || 'Token',
+          rewardTokenName: pool?.rewardToken?.name || 'Token',
+          stakeTokenImage,
+          rewardTokenImage,
+          tvl: `$${pool.totalAmountStaked || 0}`,
+          apr: `${pool.aprRate || 0}%`,
+          userStaked: userStakedAmount > 0 ? `${(userStakedAmount / 1_000_000).toFixed(3)}` : '0',
+          reward: `${pool.totalAmountStaked ? ((pool.totalAmountStaked * pool.aprRate * ((now - pool.stakingTime) / 31104000)) / 1_000_000).toFixed(3) : '0'}`,
+          endsIn: daysLeft >= 0 ? `${Math.max(daysLeft, 1)} ${Math.max(daysLeft, 1) === 1 ? 'day' : 'days'}` : 'Ended',
+          lockDays: Math.floor((pool.lockPeriod || 0) / 86400),
+          stakingContractId: Number(pool.stakingContractId),
+          isCreator,
+          endTime,
+          status: computeStatus(endTime),
+        }
+      })
+
+      setPools(mapped)
     } catch (error) {
-      console.error('Error fetching data:', error)
+      console.error('Error fetching user staking pools:', error)
     } finally {
-      setLoading(false) // Set loading to false after fetching
+      setLoading(false)
     }
   }
 
-  // Fetch data when the tab or pool selection changes
-  useEffect(() => {
-    console.log('Tab or pool changed, fetching data...')
-    fetchData() // Fetch data on tab or pool change
-  }, [activeTab, activePool]) // Dependency array to trigger fetch on state changes
-
-  // Open "Create Stake" Modal
-  const onCreateStakeClick = () => {
-    setIsAddStakeOpen(true)
-  }
-
   return (
-    <>
-      <div className="w-full m-auto flex flex-col gap-[16px]">
-        {/* Top Section */}
-        <div className="top flex max-sm:flex-col justify-between items-center gap-[10px]">
-          {/* Left Section */}
-          <div className="flex max-md:flex-col gap-[8px]">
-            <div className="switcher flex justify-center items-center gap-[3px] w-fit p-[3px] bg-white rounded-[12px] shadow">
-              <p
-                className={`${
-                  activeTab === 'Live' ? 'text-white linearGradient' : 'text-black'
-                } flex items-center justify-center text-center cursor-pointer tracking-[0.09px] rounded-[10px] w-[92px] sm-s:w-[125px] h-[38px] shadow`}
-                onClick={() => setActiveTab('Live')}
-              >
-                Live
-              </p>
-              <p
-                className={`${
-                  activeTab === 'Ended' ? 'text-white linearGradient' : 'text-black'
-                } flex items-center justify-center text-center cursor-pointer tracking-[0.09px] rounded-[10px] w-[92px] sm-s:w-[125px] h-[38px]`}
-                onClick={() => setActiveTab('Ended')}
-              >
-                Ended
-              </p>
-            </div>
-            <div className="switcher flex justify-center items-center gap-[3px] w-fit p-[3px] bg-white rounded-[12px] shadow">
-              <p
-                className={`${
-                  activePool === 'All' ? 'text-white linearGradient' : 'text-black'
-                } flex items-center justify-center text-center cursor-pointer tracking-[0.09px] rounded-[10px] w-[92px] sm-s:w-[125px] h-[38px] shadow`}
-                onClick={() => setActivePool('All')}
-              >
-                All
-              </p>
-              <p
-                className={`${
-                  activePool === 'My Pools' ? 'text-white linearGradient' : 'text-black'
-                } flex items-center justify-center text-center cursor-pointer tracking-[0.09px] rounded-[10px] w-[92px] sm-s:w-[125px] h-[38px]`}
-                onClick={() => setActivePool('My Pools')}
-              >
-                My Pools
-              </p>
-            </div>
-          </div>
-
-          {/* Right Section */}
-          <div className="flex gap-[14px] items-center justify-end w-full max-sm:justify-center">
-            <Button
-              text="Create Stake"
-              onClick={onCreateStakeClick}
-              img="ic:sharp-add"
-              className="button btn-red-border max-sm:!w-[250px]"
-              height={45}
-              width={140}
-              clr="text-red"
-            />
-          </div>
-        </div>
-
-        {/* Bottom Section - Table */}
-        <div className="bottom">
-          <P_STable
-            activeTab={activeTab}
-            activePool={activePool}
-            data={transactionData} // ✅ Fix: Ensuring data is passed correctly
-            loading={loading} // ✅ Fix: Ensuring loading is passed correctly
-          />
+    <div className="w-full m-auto flex flex-col gap-[16px]">
+      {/* Sub-tab pills */}
+      <div className="flex justify-center">
+        <div className="switcher flex justify-center items-center gap-[3px] w-fit p-[3px] bg-white rounded-[12px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]">
+          {FILTER_LABELS.map(({ key, label }) => (
+            <p
+              key={key}
+              onClick={() => setActiveFilter(key)}
+              className={`${
+                activeFilter === key ? 'text-white linearGradient shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]' : 'text-black'
+              } flex items-center justify-center text-center cursor-pointer tracking-[0.09px] rounded-[10px] w-[117px] h-[38px] text-[14px]`}
+            >
+              {label}
+            </p>
+          ))}
         </div>
       </div>
 
-      {/* Pass fetchData to Addstake */}
-      <Addstake isaddStakeOpen={isaddStakeOpen} setisaddStakeOpen={setIsAddStakeOpen} fetchData={fetchData} />
-    </>
+      <P_STable data={pools} loading={loading} activeFilter={activeFilter} />
+    </div>
   )
 }
 

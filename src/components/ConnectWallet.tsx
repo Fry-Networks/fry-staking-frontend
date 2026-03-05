@@ -1,6 +1,7 @@
 import { Provider, useWallet } from '@txnlab/use-wallet'
 import { Modal } from 'antd'
 import Account from './Account'
+import { useAuth } from '../hooks/useAuth'
 
 interface ConnectWalletInterface {
   openModal: boolean
@@ -9,6 +10,7 @@ interface ConnectWalletInterface {
 
 const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
   const { providers, activeAddress } = useWallet()
+  const { clearAuth } = useAuth()
 
   const isKmd = (provider: Provider) => provider.metadata.name.toLowerCase() === 'kmd'
 
@@ -19,9 +21,9 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
   }
   return (
     <Modal open={openModal} onOk={handleOk} onCancel={closeModal} centered={true} width={415} footer={null}>
-      <form method="dialog" className="relative modal-box bg-white max-w-md px-6 py-5 rounded-3xl">
+      <form method="dialog" className="relative modal-box bg-[var(--modal-bg)] max-w-md px-6 py-5 rounded-3xl">
         <div className="w-full flex flex-col items-center justify-center gap-6 mt-5">
-          <h3 className="text-black uppercase text-2xl text-center font-apex walletText">
+          <h3 className="text-[var(--text-heading)] uppercase text-2xl text-center font-apex walletText">
             {activeAddress ? 'Wallet Is Connected' : 'Connect Your Wallet'}
           </h3>
           <img className="max-w-[106px] max-h-[80px] w-full h-full object-cover" src="/assets/logo.png" alt="fry-logo" />
@@ -38,7 +40,7 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
                 providers?.map((provider) => (
                   <button
                     data-test-id={`${provider.metadata.id}-connect`}
-                    className="wltbtn py-3.5 px-6 lightGray font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[red]"
+                    className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[red]"
                     key={`provider-${provider.metadata.id}`}
                     onClick={() => {
                       return provider.connect()
@@ -51,7 +53,7 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
                         style={{ objectFit: 'contain', width: '30px', height: 'auto' }}
                       />
                     )}
-                    <span className="text-[#808080] font-Roboto">{isKmd(provider) ? 'LocalNet Wallet' : provider.metadata.name}</span>
+                    <span className="text-[var(--text-secondary)] font-Roboto">{isKmd(provider) ? 'LocalNet Wallet' : provider.metadata.name}</span>
                   </button>
                 ))}
             </div>
@@ -63,6 +65,7 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
                 className="bg-gradient-to-r from-[#FF9292] to-[#FD0000] text-white p-3"
                 data-test-id="logout"
                 onClick={() => {
+                  clearAuth()
                   if (providers) {
                     const activeProvider = providers.find((p) => p.isActive)
                     if (activeProvider) {
