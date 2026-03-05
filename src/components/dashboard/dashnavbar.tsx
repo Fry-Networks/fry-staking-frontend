@@ -17,7 +17,7 @@ const Dashnavbar: FC<DashnavbarProps> = ({ toggleDrawer }) => {
 
   return (
     <>
-      <div className="dashnavbar-container mb-[20px] py-[11px] px-[32px] bg-white rounded-[26px] h-fit flex items-center justify-between w-[calc(100vw-310px)] max-md:w-full shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]">
+      <div className="dashnavbar-container mb-[20px] py-[11px] px-[32px] bg-[var(--bg-card)] rounded-[26px] h-fit flex items-center justify-between w-[calc(100vw-310px)] max-md:w-full shadow-[0px_4px_24.2px_0px_var(--shadow-color)]">
         <div className="dashnav-left">
           <Icon icon="ion:menu" width={20} height={20} onClick={toggleDrawer} className="hidden max-md:flex cursor-pointer" />
         </div>

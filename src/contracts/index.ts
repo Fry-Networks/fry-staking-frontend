@@ -9,4 +9,5 @@ export * from "./constants/testnetConstants";
 
 export * from "./FolksRouterClient";
 export * from "./VestigeLabsClient";
+export * from "./DeflexClient";
 export * from "./SwapService";

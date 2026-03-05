@@ -2,13 +2,15 @@ import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
 import { DatePicker, Modal } from 'antd'
 import dayjs from 'dayjs';
-import axios from 'axios'
 import React, { useEffect, useRef, useState } from 'react'
 import { toast } from 'react-toastify'
 import Button from '../../components/shared/button'
 import Input from '../../components/shared/input'
+import APRCalculator from '../../components/shared/APRCalculator'
 import { initStaking } from '../../staking_func'
-import { TokenService } from '../../services/TokenService'
+import { tokenServiceInstance as tokenService } from '../../services/TokenService'
+import { authAxios } from '../../services/apiClient'
+import { useAuth } from '../../hooks/useAuth'
 interface AddstakeProps {
   isaddStakeOpen: boolean
   setisaddStakeOpen: (state: boolean) => void
@@ -39,9 +41,7 @@ const isValidImageUrl = (url: string | undefined | null): boolean => {
 };
 
 const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, fetchData }) => {
-  // Initialize TokenService
-  const tokenService = new TokenService();
-  
+
   const [allTokens, setAllTokens] = useState<Currency[]>([])
   const [defaultTokens, setDefaultTokens] = useState<Currency[]>([])
   const [isOpenDropdowns, setIsOpenDropdowns] = useState<{ [key: string]: boolean }>({
@@ -50,6 +50,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
     algoRewards: false,
   })
   const { providers, activeAddress, signer } = useWallet()
+  const { ensureAuth } = useAuth()
   const [searchQuery, setSearchQuery] = useState<{ [key: string]: string }>({
     stakingToken: '',
     rewards: '',
@@ -330,6 +331,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
     const adjustedReward = Math.floor(reward * 1_000_000)
     console.log('adjustedReward', adjustedReward)
     try {
+      await ensureAuth();
       const stakingDetails = await initStaking(
         selectedStakingToken.tokenId,
         selectedRewards.tokenId,
@@ -350,30 +352,27 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
         const stakingData = {
           creatorId: activeAddress,
           stakeToken: {
-            id: selectedStakingToken.tokenId,
+            id: String(selectedStakingToken.tokenId),
             name: selectedStakingToken.tokenName,
           },
           rewardToken: {
-            id: selectedRewards.tokenId,
+            id: String(selectedRewards.tokenId),
             name: selectedRewards.tokenName,
           },
           stakingStartTime: unixStartDate,
           stakingEndTime: unixEndDate,
           duration: pooling,
           aprRate: 0,
-          totalStakers: 0,
-          totalAmountStaked: 0,
           rewardTokenAmount: adjustedReward,
-          stakingContractId: stakingDetails,
+          stakingContractId: String(stakingDetails),
           lockPeriod: lockPeriod * 24 * 60 * 60 || 0,
-          rewardsDistributed: 0,
         }
 
-        const response = await axios.post(`${api_base_url}/staking/add`, stakingData, {
+        const response = await authAxios.post('/staking/add', stakingData, {
           headers: { 'Content-Type': 'application/json' },
         })
         console.log('response', response)
-        if (response.status === 200) {
+        if (response.status >= 200 && response.status < 300) {
           toast.success('Staking details submitted successfully')
           setisaddStakeOpen(false)
           const data = fetchData()
@@ -545,16 +544,16 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
   return (
     <Modal open={isaddStakeOpen} onOk={handleOk} onCancel={handleCancel} className="del-modal" centered width="415px">
       <div className="modal-content flex flex-col pt-[24px] pb-[31px] px-[31px]">
-        <h5 className="text-black font-apex text-center">Add Stake</h5>
+        <h5 className="text-[var(--text-primary)] font-apex text-center">Add Stake</h5>
         <div className="red-line w-full h-[1px] mt-[25px] mb-[19px]"></div>
         <div className="max-h-[80vh] overflow-y-auto px-[10px]">
           <div className="flex flex-col gap-[16px]">
             {/* Staking Token */}
             <div className="flex flex-col gap-[10px]">
-              <p className="large text-black">Staking Token</p>
+              <p className="large text-[var(--text-primary)]">Staking Token</p>
               <div className="relative" ref={dropdownRefs.stakingToken}>
                 <div
-                  className="flex items-center justify-between gap-[13px] cursor-pointer bg-gray w-full h-[54px] rounded-[6px] py-[9px] px-[12px]"
+                  className="flex items-center justify-between gap-[13px] cursor-pointer bg-[var(--input-bg)] w-full h-[54px] rounded-[6px] py-[9px] px-[12px]"
                   onClick={() => toggleDropdown('stakingToken')}
                 >
                   <div className="flex items-center gap-[8px]">
@@ -576,8 +575,8 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                   />
                 </div>
                 {isOpenDropdowns.stakingToken && (
-                  <div className="absolute left-0 mt-2 px-[11px] py-[9px] w-full bg-white rounded-[10px] shadow-lg z-10">
-                    <div className="py-[7px] px-[9px] mb-[16px] flex items-center gap-[8px] rounded-[10px] bg-gray shadow-sm">
+                  <div className="absolute left-0 mt-2 px-[11px] py-[9px] w-full bg-[var(--bg-card)] rounded-[10px] shadow-lg z-10">
+                    <div className="py-[7px] px-[9px] mb-[16px] flex items-center gap-[8px] rounded-[10px] bg-[var(--input-bg)] shadow-sm">
                       <Icon icon="si:search-line" color="#A8A8A8" width={22} height={22} />
                       <input
                         type="search"
@@ -589,7 +588,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                             handleSearchSubmit('stakingToken');
                           }
                         }}
-                        className="w-full bg-transparent focus:outline-none"
+                        className="w-full bg-transparent focus:outline-none text-[var(--input-text)]"
                       />
                       <button
                         onClick={() => handleSearchSubmit('stakingToken')}
@@ -670,8 +669,8 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
 
             {/* Rewards */}
             <div className="flex flex-col gap-[10px]">
-              <p className="large text-black">Rewards</p>
-              <div className="algo-div flex gap-[10px] items-center justify-between bg-[#F5F5F5] rounded-[12px] pl-[0px] p-[7px]">
+              <p className="large text-[var(--text-primary)]">Rewards</p>
+              <div className="algo-div flex gap-[10px] items-center justify-between bg-[var(--input-bg)] rounded-[12px] pl-[0px] p-[7px]">
                 <Input
                   type="number"
                   name="number"
@@ -682,7 +681,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                 />
                 <div className="relative inline-block text-left" ref={dropdownRefs.rewards}>
                   <div
-                    className="flex items-center justify-between gap-[13px] cursor-pointer bg-white w-[126px] h-[46px] rounded-[6px] py-[9px] px-[12px]"
+                    className="flex items-center justify-between gap-[13px] cursor-pointer bg-[var(--bg-card)] w-[126px] h-[46px] rounded-[6px] py-[9px] px-[12px]"
                     onClick={() => toggleDropdown('rewards')}
                   >
                     {selectedRewards && (
@@ -712,8 +711,8 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                     </div>
                   </div>
                   {isOpenDropdowns.rewards && (
-                    <div className="absolute right-0 mt-2 px-[11px] py-[9px] w-[300px]  bg-white rounded-[10px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] z-10">
-                      <div className="py-[7px] px-[9px] mb-[16px] flex items-center gap-[8px] rounded-[10px] bg-gray shadow-sm">
+                    <div className="absolute right-0 mt-2 px-[11px] py-[9px] w-[300px]  bg-[var(--bg-card)] rounded-[10px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] z-10">
+                      <div className="py-[7px] px-[9px] mb-[16px] flex items-center gap-[8px] rounded-[10px] bg-[var(--input-bg)] shadow-sm">
                         <Icon icon="si:search-line" color="#A8A8A8" width={22} height={22} />
                         <input
                           type="search"
@@ -725,7 +724,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                               handleSearchSubmit('rewards');
                             }
                           }}
-                          className="w-full bg-transparent focus:outline-none"
+                          className="w-full bg-transparent focus:outline-none text-[var(--input-text)]"
                         />
                         <button
                           onClick={() => handleSearchSubmit('rewards')}
@@ -840,7 +839,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
             {/* ALGO Rewards (optional) */}
             {/* <div className="flex flex-col gap-[10px]">
               <p className="large text-black">ALGO Rewards (optional)</p>
-              <div className="algo-div flex gap-[10px] items-center justify-between bg-[#F5F5F5] rounded-[12px] pl-[0px] p-[7px]">
+              <div className="algo-div flex gap-[10px] items-center justify-between bg-[var(--input-bg)] rounded-[12px] pl-[0px] p-[7px]">
                 <Input
                   type="number"
                   name="number"
@@ -851,7 +850,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                 />
                 <div className="relative inline-block text-left" ref={dropdownRefs.algoRewards}>
                   <div
-                    className="flex items-center justify-between gap-[13px] cursor-pointer bg-white w-[126px] h-[46px] rounded-[6px] py-[9px] px-[12px]"
+                    className="flex items-center justify-between gap-[13px] cursor-pointer bg-[var(--bg-card)] w-[126px] h-[46px] rounded-[6px] py-[9px] px-[12px]"
                     onClick={() => toggleDropdown('algoRewards')}
                   >
                     <img src={selectedAlgoRewards?.tokenImage} alt="" width={28} height={28} />
@@ -866,15 +865,15 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                     </div>
                   </div>
                   {isOpenDropdowns.algoRewards && (
-                    <div className="absolute right-0 mt-2 px-[11px] py-[9px] w-[300px]  bg-white rounded-[10px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] z-10">
-                      <div className="py-[7px] px-[9px] mb-[16px] flex items-center gap-[8px] rounded-[10px] bg-gray shadow-sm">
+                    <div className="absolute right-0 mt-2 px-[11px] py-[9px] w-[300px]  bg-[var(--bg-card)] rounded-[10px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] z-10">
+                      <div className="py-[7px] px-[9px] mb-[16px] flex items-center gap-[8px] rounded-[10px] bg-[var(--input-bg)] shadow-sm">
                         <Icon icon="si:search-line" color="#A8A8A8" width={22} height={22} />
                         <input
                           type="search"
                           placeholder="Search token"
                           value={searchQuery.algoRewards}
                           onChange={(e) => setSearchQuery(prev => ({ ...prev, algoRewards: e.target.value }))}
-                          className="w-full bg-transparent focus:outline-none"
+                          className="w-full bg-transparent focus:outline-none text-[var(--input-text)]"
                         />
                       </div>
                       <ul className="py-1 flex flex-col gap-[6px] max-h-[100px] overflow-y-auto">
@@ -947,9 +946,18 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
               </div>
             </div> */}
 
+            {/* APR Calculator (informational) */}
+            <APRCalculator
+              mode="compact"
+              rewardTokenId={selectedRewards?.tokenId}
+              rewardTokenSymbol={selectedRewards?.tokenSymbol}
+              rewardAmount={reward ? reward : undefined}
+              durationDays={poolTime ? poolTime : undefined}
+            />
+
             {/* date div */}
             <div className="flex flex-col gap-[10px]">
-              <p className="large text-black">Start</p>
+              <p className="large text-[var(--text-primary)]">Start</p>
               {/* <DatePicker className="w-full mt-[6px]" onChange={(date) => setStartDate(date?.toDate() || null)} /> */}
               <DatePicker
                 className="w-full mt-[6px]"
@@ -962,8 +970,8 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
 
             {/* Duration div */}
             <div className="flex flex-col gap-[10px]">
-              <p className="large text-black">Duration</p>
-              <div className="algo-div flex gap-[10px] items-center justify-between bg-[#F5F5F5] rounded-[12px] pl-[0px] pr-[18px] py-[7px]">
+              <p className="large text-[var(--text-primary)]">Duration</p>
+              <div className="algo-div flex gap-[10px] items-center justify-between bg-[var(--input-bg)] rounded-[12px] pl-[0px] pr-[18px] py-[7px]">
                 <Input
                   type="number"
                   name="number"
@@ -978,8 +986,8 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
 
             {/* Lock div */}
             <div className="flex flex-col gap-[10px]">
-              <p className="large text-black">Lock</p>
-              <div className="algo-div flex gap-[10px] items-center justify-between bg-[#F5F5F5] rounded-[12px] pl-[0px] pr-[18px] py-[7px]">
+              <p className="large text-[var(--text-primary)]">Lock</p>
+              <div className="algo-div flex gap-[10px] items-center justify-between bg-[var(--input-bg)] rounded-[12px] pl-[0px] pr-[18px] py-[7px]">
                 <Input
                   type="number"
                   name="lockPeriod"
@@ -993,6 +1001,9 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
             </div>
             {/* \kmxzkml */}
             <div className="flex flex-col gap-[12px] items-center justify-center mt-[30px]">
+              <p className="text-text_clr text-xs text-center px-2">
+                A minimum balance requirement (MBR) of ALGO will be sent to fund the staking contract. This is required by the Algorand protocol to cover account minimum balance and asset opt-in costs.
+              </p>
               {/* <Button text="Verify Details" className="button btn-primary" height={53} width="100%" onClick={handleVerifyDetails} /> */}
               <Button
                 text={isVerifying ? 'Verifying Please Wait...' : 'Verify Details'}

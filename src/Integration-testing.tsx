@@ -5,7 +5,7 @@ import ConnectWallet from './components/ConnectWallet'
 import Transact from './components/Transact'
 import {
   claimTokens,
-  getApr,
+  takeOutAsset_BROKEN,
   getStakingData,
   getUserData,
   getUsersStakeData,
@@ -97,7 +97,7 @@ const Home: React.FC<HomeProps> = () => {
     console.log(data)
   }
   const getCalcApr = async () => {
-    let data = await getApr(stakingID, activeAddress!, signer)
+    let data = await takeOutAsset_BROKEN(stakingID, activeAddress!, signer)
     console.log(data)
   }
 

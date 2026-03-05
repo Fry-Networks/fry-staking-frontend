@@ -88,7 +88,7 @@ const Profilebanner: React.FC = () => {
           <img src={userData?.banner || '../../assets/images/home/coverDP.png'} alt="Banner" className="w-full h-[500px] object-cover sm-s:h-[170px]" />
           <img src={userData?.profilePicture || '../../assets/images/home/mainDP.png'} alt="Profile" className="w-[142px] h-[142px] mt-[-70px]" />
           <div className="flex items-center justify-center mt-5 gap-[13px]">
-            <h3 className="font-apex text-black leading-[1.6px] ">{userData?.name}</h3>
+            <h3 className="font-apex text-[var(--text-primary)] leading-normal ">{userData?.name}</h3>
             <Icon
               icon="material-symbols:edit-sharp"
               width={28}
@@ -99,10 +99,16 @@ const Profilebanner: React.FC = () => {
             />
           </div>
 
+          {userData?.bio && (
+            <p className="text-[var(--text-secondary)] text-sm mt-2 text-center max-w-[500px]">
+              {userData.bio}
+            </p>
+          )}
+
           <div className="mt-[17px] flex flex-col items-center gap-[10px]">
-            <div className="flex gap-[10px] items-center bg-white border border-[#E7E7E7] rounded-[15px] py-[12px] px-[20px]">
+            <div className="flex gap-[10px] items-center bg-[var(--bg-card)] border border-[var(--border-color)] rounded-[15px] py-[12px] px-[20px]">
               <img src="../../assets/images/logo-red.svg" alt="FRY" />
-              <p className="large text-black">{fryBalance.toFixed(2)} FRY</p>
+              <p className="large text-[var(--text-primary)]">{fryBalance.toFixed(2)} FRY</p>
             </div>
 
             {activeAddress && (

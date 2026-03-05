@@ -8,9 +8,46 @@ class TokenService {
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   private searchCache: Map<string, { tokens: Token[], timestamp: number }> = new Map();
   private readonly SEARCH_CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+  private peraImageCache: Map<number, string | null> = new Map();
 
   constructor() {
     this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://frynodebackend.octalooptechnologies.com';
+  }
+
+  /**
+   * Fetch token image from Pera API with caching.
+   * Returns the Pera CDN logo URL, or null if unavailable.
+   */
+  async getPeraTokenImage(tokenId: number): Promise<string | null> {
+    if (this.peraImageCache.has(tokenId)) {
+      return this.peraImageCache.get(tokenId) ?? null;
+    }
+    try {
+      const resp = await axios.get(`https://mainnet.api.perawallet.app/v1/assets/${tokenId}/`, { timeout: 5000 });
+      const logo: string | undefined = resp.data?.logo;
+      const result = logo && typeof logo === 'string' && logo.startsWith('http') ? logo : null;
+      this.peraImageCache.set(tokenId, result);
+      return result;
+    } catch {
+      this.peraImageCache.set(tokenId, null);
+      return null;
+    }
+  }
+
+  /**
+   * Resolve the best available image for a token.
+   * Priority: DB image (if valid) → Pera API → Tinyman icon.png fallback
+   */
+  async resolveTokenImage(tokenId: number, dbImage?: string): Promise<string> {
+    const isValid = dbImage &&
+      (dbImage.startsWith('http://') || dbImage.startsWith('https://') || dbImage.startsWith('ipfs://') ||
+       dbImage.includes('.png') || dbImage.includes('.jpg') || dbImage.includes('.jpeg') || dbImage.includes('.svg'));
+    if (isValid) return dbImage;
+
+    const peraImage = await this.getPeraTokenImage(tokenId);
+    if (peraImage) return peraImage;
+
+    return `https://asa-list.tinyman.org/assets/${tokenId}/icon.png`;
   }
 
   /**
@@ -34,17 +71,9 @@ class TokenService {
       });
       const dbTokens = response.data.data || response.data;
 
-      // Convert database tokens to Token format
-      const tokens = dbTokens.map((token: any) => {
-        // Check if tokenImage is a valid URL (contains http, https, or ipfs)
-        const isValidImageUrl = token.tokenImage && 
-          (token.tokenImage.startsWith('http://') || 
-           token.tokenImage.startsWith('https://') || 
-           token.tokenImage.startsWith('ipfs://') ||
-           token.tokenImage.includes('.png') ||
-           token.tokenImage.includes('.jpg') ||
-           token.tokenImage.includes('.jpeg') ||
-           token.tokenImage.includes('.svg'));
+      // Convert database tokens to Token format, resolving images via Pera API for invalid URLs
+      const results = await Promise.allSettled(dbTokens.map(async (token: any) => {
+        const image = await this.resolveTokenImage(token.tokenId, token.tokenImage);
 
         return {
           id: token.tokenId,
@@ -52,7 +81,7 @@ class TokenService {
           symbol: token.tokenSymbol || token.tokenName || 'UNKNOWN',
           decimals: token.decimals || 6,
           verified: token.verified || false,
-          image: isValidImageUrl ? token.tokenImage : `https://asa-list.tinyman.org/assets/${token.tokenId}/icon.png`,
+          image,
           price: token.price,
           marketCap: token.marketCap,
           volume24h: token.volume1d,
@@ -62,7 +91,10 @@ class TokenService {
           rank: token.rank,
           source: token.source || 'Backend API'
         };
-      });
+      }));
+      const tokens = results
+        .filter((r): r is PromiseFulfilledResult<Token> => r.status === 'fulfilled')
+        .map(r => r.value);
 
       // Add some essential tokens that might not be in database
       const essentialTokens = this.getEssentialTokens();
@@ -205,17 +237,9 @@ class TokenService {
       });
       const searchResults = response.data.data || response.data;
 
-      // Convert search results to Token format
-      const tokens = searchResults.map((token: any) => {
-        // Check if tokenImage is a valid URL
-        const isValidImageUrl = token.tokenImage && 
-          (token.tokenImage.startsWith('http://') || 
-           token.tokenImage.startsWith('https://') || 
-           token.tokenImage.startsWith('ipfs://') ||
-           token.tokenImage.includes('.png') ||
-           token.tokenImage.includes('.jpg') ||
-           token.tokenImage.includes('.jpeg') ||
-           token.tokenImage.includes('.svg'));
+      // Convert search results to Token format, resolving images via Pera API
+      const searchSettled = await Promise.allSettled(searchResults.map(async (token: any) => {
+        const image = await this.resolveTokenImage(token.tokenId, token.tokenImage);
 
         return {
           id: token.tokenId,
@@ -223,7 +247,7 @@ class TokenService {
           symbol: token.tokenSymbol || token.tokenName || 'UNKNOWN',
           decimals: token.decimals || 6,
           verified: token.verified || false,
-          image: isValidImageUrl ? token.tokenImage : `https://asa-list.tinyman.org/assets/${token.tokenId}/icon.png`,
+          image,
           price: token.price,
           marketCap: token.marketCap,
           volume24h: token.volume1d,
@@ -233,7 +257,10 @@ class TokenService {
           rank: token.rank,
           source: token.source || 'Search API'
         };
-      });
+      }));
+      const tokens = searchSettled
+        .filter((r): r is PromiseFulfilledResult<Token> => r.status === 'fulfilled')
+        .map(r => r.value);
 
       // Cache search results
       this.searchCache.set(normalizedQuery, {
@@ -265,8 +292,24 @@ class TokenService {
           return localResults;
         }
       }
-      
-      // Return empty array on error to prevent breaking the UI
+
+      // Fallback: search comprehensive and default token lists
+      const allFallbackTokens = [
+        ...this.getDefaultTokens(),
+        ...this.getComprehensiveTokenList(),
+      ];
+      // Deduplicate by id
+      const uniqueFallback = allFallbackTokens.filter((token, index, self) =>
+        index === self.findIndex(t => t.id === token.id)
+      );
+      const fallbackResults = uniqueFallback.filter(token =>
+        token.name.toLowerCase().includes(normalizedQuery) ||
+        token.symbol.toLowerCase().includes(normalizedQuery)
+      );
+      if (fallbackResults.length > 0) {
+        return fallbackResults;
+      }
+
       return [];
     }
   }
@@ -349,5 +392,7 @@ interface Currency {
   decimals: number;
 }
 
-export { TokenService };
+const tokenServiceInstance = new TokenService();
+
+export { TokenService, tokenServiceInstance };
 export type { Token, Currency };

@@ -3,9 +3,10 @@ import { Input, Modal } from 'antd'
 import { useFormik } from 'formik'
 import React, { useEffect, useState } from 'react'
 import * as Yup from 'yup'
-import axios from 'axios'
 import Button from '../../components/shared/button'
 import { toast } from 'react-toastify'
+import { authAxios } from '../../services/apiClient'
+import { useAuth } from '../../hooks/useAuth'
 import '../../styles/shared/scrollbar.css'
 
 interface editprofileProps {
@@ -92,6 +93,7 @@ async function prepareUploadFile(file: File): Promise<{ file: File; preview: str
 
 // ...existing props & component signature...
 const EditProfileModal: React.FC<editprofileProps> = ({ iseditProfileOpen, setiseditProfileOpen, userData, setUserData, walletId }) => {
+  const { ensureAuth } = useAuth();
   // Previews (string URL) and Files (for upload)
   const [bannerImage, setBannerImage] = useState<string | null>(userData?.banner || null)
   const [profileImage, setProfileImage] = useState<string | null>(userData?.profilePicture || null)
@@ -150,6 +152,7 @@ const EditProfileModal: React.FC<editprofileProps> = ({ iseditProfileOpen, setis
         return
       }
       try {
+        await ensureAuth();
         const form = new FormData()
         form.append('walletId', walletId)
         form.append('name', values.name.trim())
@@ -159,13 +162,13 @@ const EditProfileModal: React.FC<editprofileProps> = ({ iseditProfileOpen, setis
         if (profileFile) form.append('profilePicture', profileFile)
         if (bannerFile) form.append('banner', bannerFile)
 
-        const response = await axios.post(
-          `${import.meta.env.VITE_API_BASE_URL}/user/create-or-update`,
+        const response = await authAxios.post(
+          '/user/create-or-update',
           form,
           { headers: { 'Content-Type': 'multipart/form-data' } }
         )
 
-        if (response.status === 200) {
+        if (response.status >= 200 && response.status < 300) {
           setUserData(response.data.data)
           toast.success('Profile updated successfully!')
           setiseditProfileOpen(false)
@@ -187,7 +190,7 @@ const EditProfileModal: React.FC<editprofileProps> = ({ iseditProfileOpen, setis
   return (
     <Modal open={iseditProfileOpen} onCancel={() => setiseditProfileOpen(false)} centered width="415px">
       <div className="modal-content flex flex-col pt-[24px] pb-[31px] px-[31px]">
-        <h5 className="text-black font-apex text-center">Edit Profile</h5>
+        <h5 className="text-[var(--text-primary)] font-apex text-center">Edit Profile</h5>
         {!walletId && (
           <p className="italic text-sm text-center mt-2" style={{ color: '#f87171' }}>
             Wallet must be connected to edit profile
@@ -199,15 +202,15 @@ const EditProfileModal: React.FC<editprofileProps> = ({ iseditProfileOpen, setis
           <form onSubmit={formik.handleSubmit}>
             <div className="flex flex-col mb-[24px]">
               <div
-                className="flex flex-col items-center justify-center gap-[8px] relative rounded-[10px] bg-[#F5F5F5] border-dashed border-2 border-[#DEDEDE] h-[155px] cursor-pointer"
+                className="flex flex-col items-center justify-center gap-[8px] relative rounded-[10px] bg-[var(--bg-secondary)] border-dashed border-2 border-[var(--border-color)] h-[155px] cursor-pointer"
                 onClick={() => document.getElementById('bannerUpload')?.click()}
               >
                 {bannerImage ? (
                   <img src={bannerImage} alt="Banner" className="w-full h-full object-cover rounded-[10px]" />
                 ) : (
                   <>
-                    <Icon icon="pajamas:upload" width={42} height={42} color="#DEDEDE" />
-                    <p className="text-[#DEDEDE] font-bold e-small">Upload Banner</p>
+                    <Icon icon="pajamas:upload" width={42} height={42} color="var(--border-color)" />
+                    <p className="text-[var(--text-secondary)] font-bold e-small">Upload Banner</p>
                   </>
                 )}
                 <input
@@ -239,19 +242,19 @@ const EditProfileModal: React.FC<editprofileProps> = ({ iseditProfileOpen, setis
               </div>
 
               <div className="flex flex-col gap-[10px] mt-[10px]">
-                <p className="large text-black">Name</p>
+                <p className="large text-[var(--text-primary)]">Name</p>
                 <Input
                   type="text"
                   name="name"
                   placeholder="Name"
-                  className="input-wrapper bg-[#F5F5F5] rounded-[10px] text-[16px] w-full"
+                  className="input-wrapper bg-[var(--input-bg)] text-[var(--input-text)] rounded-[10px] text-[16px] w-full"
                   value={formik.values.name}
                   onChange={formik.handleChange}
                 />
               </div>
 
               <div className="flex flex-col gap-[10px] mt-[10px]">
-                <p className="large text-black">Bio</p>
+                <p className="large text-[var(--text-primary)]">Bio</p>
                 <Input.TextArea
                   name="bio"
                   placeholder="Bio"
@@ -259,6 +262,7 @@ const EditProfileModal: React.FC<editprofileProps> = ({ iseditProfileOpen, setis
                   value={formik.values.bio}
                   onChange={formik.handleChange}
                   onBlur={formik.handleBlur}
+                  className="text-[var(--input-text)]"
                 />
               </div>
             </div>

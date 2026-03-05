@@ -6,7 +6,7 @@ const Footer = () => {
     telegram: 'https://t.me/+zodNDzQtGKQ1MTBh',
     linkedin: 'https://www.linkedin.com/company/fry-networks/',
     discord: 'https://discord.com/invite/frynetworks',
-    twitter: 'https://x.com/FrysCrypto',
+    twitter: 'https://x.com/FryNetworks',
     youtube: 'https://www.youtube.com/channel/UCXwYRxNo3yOmQjq1eEClVjg',
     reddit: 'https://www.reddit.com/r/frynetworks/',
     github: 'https://github.com/FrysCrypto/',

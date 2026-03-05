@@ -11,7 +11,9 @@ import { claimTokens, getStakingData, getUserData, stakeTokens, unstakeTokens } 
 import { getAlgodConfigFromViteEnvironment } from '../../../utils/network/getAlgoClientConfigs'
 import Button from '../../shared/button'
 import Input from '../../shared/input'
-import { TokenService } from '../../../services/TokenService'
+import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
+import { authAxios } from '../../../services/apiClient'
+import { useAuth } from '../../../hooks/useAuth'
 
 interface DataType {
   [x: string]: any
@@ -47,13 +49,8 @@ const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 // Define the columns for the table
 // const STable: React.FC<STableProps> = memo(({ stacks, fetchData }) => {
 const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable }) => {
-  // Initialize TokenService
-  const tokenService = new TokenService();
-  
-  // const STable: React.FC<STableProps> = memo(({ stacks, fetchData, activeTab }) => {
-  // const STableComponent: React.FC<STableProps> = ({ stacks, fetchData, activeTab }) => {
+  const { ensureAuth } = useAuth();
 
-  // console.log(showExpandable)
   const api_base_url = import.meta.env.VITE_API_BASE_URL;
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
   // stack btc input value
@@ -145,7 +142,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       title: (
         <div className="flex items-center gap-[2px]">
           TVL
-          <Icon icon="solar:arrow-down-outline" width={18} height={21} color="black" />
+          <Icon icon="solar:arrow-down-outline" width={18} height={21} color="var(--text-primary)" />
         </div>
       ),
       dataIndex: 'tvl',
@@ -197,6 +194,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
     setIsStaking(true); // 🔁 Start loading
 
     try {
+      await ensureAuth();
       const adjustedStackValue = stackValue * 1000000;
 
       const StackToken = await stakeTokens(stakingContractId, adjustedStackValue, activeAddress!, signer);
@@ -228,27 +226,28 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
         wallet: activeAddress
       };
 
-      await axios.post(`${api_base_url}/stakingtoken/add`, stakingTokenPayload);
+      await authAxios.post('/stakingtoken/add', stakingTokenPayload);
 
       const { stakedAmount, stakeTime } = StakerData;
 
-      const apr_response = await axios.put(`${api_base_url}/staking/update/${_id}`, {
+      const apr_response = await authAxios.put(`/staking/update/${_id}`, {
         aprRate: getStakingRecord.apr / 100,
         totalAmountStaked: Number(stakedAmount) / 1_000_000,
         totalStakers: 1,
         stakingTime: stakeTime,
       });
 
-      if (apr_response.status === 200) {
+      if (apr_response.status >= 200 && apr_response.status < 300) {
         fetchData();
         toast.success('Staking successful!');
         setStackValue(0); // 🔁 Reset input
       } else {
         toast.error('Failed to update staking data.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error during staking operation:', error);
-      toast.error('Error during staking operation.');
+      const msg = error?.response?.data?.message || error?.message || 'Error during staking operation.';
+      toast.error(msg);
     } finally {
       setIsStaking(false); // ✅ Done loading
     }
@@ -276,6 +275,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
     setIsWithdrawing(true);
 
     try {
+      await ensureAuth();
       const adjustedWithdrawValue = withdrawValue * 1_000_000;
       const withdrawToken = await unstakeTokens(stakingContractId, adjustedWithdrawValue, activeAddress!, signer);
 
@@ -307,16 +307,16 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       const { stakedAmount, stakeTime } = StakerData;
       const calculateAPR = (getStakingRecord as { apr: number }).apr / 100;
 
-      const apr_response = await axios.put(`${api_base_url}/staking/update/${_id}`, {
+      const apr_response = await authAxios.put(`/staking/update/${_id}`, {
         aprRate: calculateAPR,
         totalAmountStaked: Number(stakedAmount) / 1_000_000,
         totalStakers: 1,
         stakingTime: stakeTime,
       });
 
-      if (apr_response.status === 200) {
+      if (apr_response.status >= 200 && apr_response.status < 300) {
         // ✅ Now safe to log withdrawal
-        const logResponse = await axios.post(`${api_base_url}/withdraw/add`, {
+        const logResponse = await authAxios.post('/withdraw/add', {
           tokens: Number(withdrawValue),
           wallet: activeAddress,
           poolId: _id,
@@ -339,7 +339,8 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
         toast.error('⚠️ Network mismatch: Please switch wallet to correct network.');
       } else {
         console.error('Error during withdrawal:', error);
-        toast.error('Error during withdrawal');
+        const msg = error?.response?.data?.message || error?.message || 'Error during withdrawal.';
+        toast.error(msg);
       }
     } finally {
       setIsWithdrawing(false);
@@ -352,6 +353,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
 
   const handleClaim = async (stakingContractId: number, _id: string) => {
     try {
+      await ensureAuth();
       const claimToken = await claimTokens(stakingContractId, activeAddress!, signer);
       console.log('claimToken:', claimToken);
 
@@ -371,7 +373,6 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
         stakedTime,
         poolId: _id,
         rewardClaimed,
-        txId: tx || '', // optional
       };
 
       // const [stakerRes, claimRes] = await Promise.all([
@@ -386,12 +387,12 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       //   toast.error('Claim processed, but log request failed.');
       // }
       
-      const stakerRes = await axios.post(`${api_base_url}/stakerData/add`, stakerData, {
+      const stakerRes = await authAxios.post('/stakerData/add', stakerData, {
         headers: { 'Content-Type': 'application/json' },
       });
 
       // ✅ Call /claimreward/add API
-      const claimResponse = await axios.post(`${api_base_url}/claimreward/add`, claimData, {
+      const claimResponse = await authAxios.post('/claimreward/add', claimData, {
         headers: { 'Content-Type': 'application/json' },
       });
 
@@ -401,9 +402,10 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       } else {
         toast.error('Reward claim logged, but backend response was not OK.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error during claim:', error);
-      toast.error('Error during claim');
+      const msg = error?.response?.data?.message || error?.message || 'Error during claim.';
+      toast.error(msg);
     }
   };
 
@@ -464,7 +466,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                       (showExpandable === 'Live' || showExpandable === 'MyLive') &&
                       <div>
                         <div className="flex flex-col gap-[4px]">
-                          <div className="bg-[#F5F5F5] rounded-[10px] flex gap-[13px] items-center">
+                          <div className="bg-[var(--input-bg)] rounded-[10px] flex gap-[13px] items-center">
                             <Input
                               type="number"
                               name="number"
@@ -478,7 +480,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                             <p className="text-text_clr medium">Max</p>
                             <Button
                               text={isStaking ? "Processing..." : "Stake"}
-                              className="button btn-gray"
+                              className="button btn-primary"
                               onClick={() => handleStack(record.stakingContractId, record._id)}
                               height={45}
                               width={106}
@@ -489,7 +491,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                           <p className="text-text_clr e-small">Balance: {fryBalance} fry_token</p> {/* 🔹 Updated to show actual balance */}
                         </div>
                         <div className="flex flex-col gap-[4px]">
-                          <div className="bg-[#F5F5F5] rounded-[10px] flex gap-[13px] items-center">
+                          <div className="bg-[var(--input-bg)] rounded-[10px] flex gap-[13px] items-center">
                             <Input
                               type="number"
                               name="number"
@@ -504,7 +506,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                             <Button
                               text={isWithdrawing ? "Processing..." : "Withdraw"}
                               onClick={() => handleWithdraw(record.stakingContractId, record._id)}
-                              className="button btn-gray"
+                              className="button btn-primary"
                               height={45}
                               width={106}
                               disabled={isWithdrawing}

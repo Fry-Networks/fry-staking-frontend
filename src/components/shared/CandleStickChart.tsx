@@ -25,6 +25,15 @@ interface CandleData {
 
 const FETCH_INTERVAL = 5 * 60 * 1000 // 5 minutes
 
+// Smart price formatter that preserves significant digits for small numbers
+const formatPrice = (value: number): string => {
+  if (value === 0) return '0';
+  if (value >= 1) return value.toFixed(4);
+  const str = value.toFixed(20);
+  const match = str.match(/^0\.(0*[1-9]\d{0,3})/);
+  return match ? `0.${match[1]}` : value.toPrecision(4);
+}
+
 // Vestige Labs API configuration
 const VESTIGE_BASE_URL = 'https://api.vestigelabs.org'
 
@@ -338,9 +347,9 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
   }
 
   return (
-    <div className="chart w-full px-[24px] pt-[19px] pb-[21px] rounded-[22px] bg-white shadow-md">
+    <div className="chart w-full px-[24px] pt-[19px] pb-[21px] rounded-[22px] bg-[var(--bg-card)] shadow-md">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-xl font-apex text-black">
+        <h3 className="text-xl font-apex text-[var(--text-primary)]">
           {fromToken && toToken ? `${fromToken.code}/${toToken.code} Price Chart` : 'Price Chart'}
         </h3>
         <div className="flex flex-col items-end gap-1">
@@ -353,8 +362,8 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
         </div>
       </div>
 
-      <h4 className="text-black tracking-[0.96px] mt-[3px]">
-        $ {currentPrice.toFixed(4)}
+      <h4 className="text-[var(--text-primary)] tracking-[0.96px] mt-[3px]">
+        $ {formatPrice(currentPrice)}
       </h4>
       <div className="flex items-center gap-[4px] mb-[50px]">
         <p className={`medium tracking-[0.48px] font-medium ${priceChange >= 0 ? 'text-green' : 'text-red-500'}`}>

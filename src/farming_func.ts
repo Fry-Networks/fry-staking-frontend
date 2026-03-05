@@ -78,6 +78,10 @@ export const initFarming = async (
     const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
     const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
 
+    if (!fryTokenId || fryTokenId === 0n) {
+      throw new Error('Invalid FRY token ID: token ID cannot be zero. Check VITE_FRY_TOKEN_ID env var.')
+    }
+
     // Step 3: Initialize the farming contract (no fry fee payment)
     const result = await client.create.initFarming({
       _authority: sender,
@@ -279,43 +283,6 @@ export const optInToAsset = async (
   }
 };
 
-// Function to send asset transfer (deduct fee from user's wallet)
-// export const sendAssetTransfer = async (
-//   sender: string,
-//   signer: TransactionSigner,
-//   rewardTokenId: number | bigint,  // Accept both number or bigint
-//   amountToDeduct: bigint, // Amount to deduct from the user (e.g., fee amount)
-//   appId: bigint // Add appId to target the app address for the fee transfer
-// ) => {
-//   try {
-//     // Create the Algorand client
-//     const algodConfig = getAlgodConfigFromViteEnvironment();
-//     const algorandClient = algokit.AlgorandClient.fromConfig({ algodConfig });
-//     algorandClient.setDefaultSigner(signer);
-
-//     // Convert rewardTokenId to bigint if it's a number
-//     const rewardTokenIdToUse = typeof rewardTokenId === 'number' ? BigInt(rewardTokenId) : rewardTokenId;
-
-//     // Get the application's address
-//     const appAddress = algosdk.getApplicationAddress(appId);
-
-//     // Send the asset transfer directly from user to the application address (deducting fee)
-//     const tx = await algorandClient.transactions.assetTransfer({
-//       sender,
-//       signer,
-//       receiver: appAddress, // Send the fee to the application's address
-//       amount: amountToDeduct, // Deduct the specified amount (e.g., fee)
-//       assetId: rewardTokenIdToUse, // Use converted rewardTokenId as bigint
-//     });
-
-//     console.log('Asset transfer deducted successfully:', tx);
-//     return tx;
-//   } catch (error) {
-//     console.error('Error sending asset transfer:', error);
-//     throw error;
-//   }
-// };
-
 export const sendAssetTransfer = async (
   sender: string,
   signer: TransactionSigner,
@@ -354,68 +321,6 @@ export const sendAssetTransfer = async (
 };
 
 
-// export const transferFryTokensToContract = async (
-//   sender: string,
-//   signer: TransactionSigner,
-//   rewardToken: bigint,
-//   amountToTransfer: bigint,
-//   appId: bigint
-// ) => {
-//   const algodConfig = getAlgodConfigFromViteEnvironment();
-//   const algorandClient = algokit.AlgorandClient.fromConfig({ algodConfig });
-//   algorandClient.setDefaultSigner(signer);
-
-//   try {
-//     const appAddress = algosdk.getApplicationAddress(appId);
-//     if (amountToTransfer <= 0n) {
-//       throw new Error("Transfer amount must be greater than 0");
-//     }
-
-//     const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
-//     const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
-
-//     const gasTx = await algorandClient.send.assetTransfer({
-//       sender,
-//       signer,
-//       receiver: algosdk.getApplicationAddress(appId),
-//       amount: gasFee,
-//       assetId: fryTokenId,
-//     });
-
-//     const isAlgo = rewardToken === 0n;
-
-//     // const tx = await algorandClient.send.assetTransfer({
-//     //   sender,
-//     //   signer,
-//     //   receiver: algosdk.getApplicationAddress(appId),
-//     //   amount: amountToTransfer, // 1 FRY assuming 6 decimals
-//     //   assetId: rewardToken,
-//     // });
-
-//     const tx = isAlgo
-//       ? await algorandClient.send.payment({
-//         sender,
-//         signer,
-//         receiver: appAddress,
-//         amount: amountToTransfer,
-//       })
-//       : await algorandClient.send.assetTransfer({
-//         sender,
-//         signer,
-//         receiver: appAddress,
-//         amount: amountToTransfer,
-//         assetId: rewardToken,
-//       });
-
-//     console.log(' FRY Tokens transferred to the farming contract:', tx);
-//     return tx;
-
-//   } catch (error) {
-//     console.error('Error transferring FRY tokens to contract:', error);
-//     throw error;
-//   }
-// };
-
 export const transferFryTokensToContract = async (
   sender: string,
   signer: TransactionSigner,
@@ -437,11 +342,15 @@ export const transferFryTokensToContract = async (
     const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
     const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
 
-    // Send gas fee as ASA (FRY)
+    if (!fryTokenId || fryTokenId === 0n) {
+      throw new Error('Invalid FRY token ID: token ID cannot be zero. Check VITE_FRY_TOKEN_ID env var.')
+    }
+
+    // Send gas fee as ASA (FRY) to admin wallet
     await algorandClient.send.assetTransfer({
       sender,
       signer,
-      receiver: appAddress,
+      receiver: import.meta.env.VITE_FEE_RECIPIENT,
       amount: gasFee,
       assetId: fryTokenId,
     });
@@ -506,105 +415,6 @@ export const createFryFarmingClient = async (
   return { farmingClient, algorandClient, algodClient };
 };
 
-// export const stakeTokens = async (
-//   stakingId: number,
-//   stakeAmount: number,
-//   sender: string,
-//   signer: TransactionSigner
-// ) => {
-//   try {
-//     // Step 1: Create the farming client
-//     const { farmingClient, algorandClient } = await createFryFarmingClient(signer, sender, stakingId);
-
-//     // Step 2: Get global state from the farming contract
-//     const globalState = await farmingClient.getGlobalState();
-
-//     // Step 3: Extract values with proper checks
-//     const appAddress = algosdk.getApplicationAddress(stakingId);
-
-//     const stakeTokenId = globalState.stakeToken?.asNumber();
-//     const rewardAmount = globalState.rewardTokenAmount?.asNumber();
-//     const currentTotalStaked = globalState.totalStaked?.asNumber();
-//     const start = globalState.farmStartTime?.asNumber();
-//     const end = globalState.farmEndTime?.asNumber();
-
-//     if (
-//       stakeTokenId === undefined ||
-//       rewardAmount === undefined ||
-//       currentTotalStaked === undefined ||
-//       start === undefined ||
-//       end === undefined
-//     ) {
-//       throw new Error('Missing required global state values');
-//     }
-
-//     const poolTime = end - start;
-//     if (poolTime <= 0) throw new Error('Invalid farm duration');
-
-//     // Step 4: Calculate updated APR
-//     const updatedAprFloat =
-//       (rewardAmount / (currentTotalStaked + stakeAmount)) * 100 * ((86400 * 360) / poolTime);
-//     const updatedApr = Math.floor(updatedAprFloat * 100); // scale ×100 to keep 2 decimal places
-
-//     // Step 5: Prepare the box payment transaction for storage
-//     const boxTx = await algorandClient.transactions.payment({
-//       sender,
-//       receiver: appAddress,
-//       amount: algokit.microAlgos(BOX_PRICE),
-//     });
-
-//     const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
-//     const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
-
-//     const gasTx = await algorandClient.send.assetTransfer({
-//       sender,
-//       signer,
-//       receiver: algosdk.getApplicationAddress(stakingId),
-//       amount: gasFee,
-//       assetId: fryTokenId,
-//     });
-
-//     try {
-//       const { data } = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-//         appId: stakingId,
-//         userId: sender,
-//         gasAmount: Number(gasFee),
-//         gasType: 'farmingStake',
-//       });
-
-//       if (data.success) {
-//         console.log('Gas fee logged:', data);
-//       } else {
-//         console.warn('Gas fee log response:', data.message);
-//       }
-//     } catch (err) {
-//       console.error('Error logging gas fee:', err);
-//     }
-
-//     // Step 6: Prepare asset transfer transaction for staking
-//     const stakeAxfer = await algorandClient.transactions.assetTransfer({
-//       sender,
-//       receiver: appAddress,
-//       amount: BigInt(stakeAmount),
-//       assetId: BigInt(stakeTokenId),
-//     });
-
-//     // Step 7: Call the smart contract method `stakeTokens`
-//     const result = await farmingClient.stakeTokens({
-//       stakeAmount: BigInt(stakeAmount),
-//       updatedApr: BigInt(updatedApr),
-//       stakeAxfer,
-//       boxTx,
-//     });
-
-//     console.log(' Staking complete:', result);
-//     return result;
-//   } catch (error) {
-//     console.error('Error during staking:', error);
-//     throw error;
-//   }
-// };
-
 export const stakeTokens = async (
   stakingId: number,
   stakeAmount: number,
@@ -615,8 +425,6 @@ export const stakeTokens = async (
     const { farmingClient, algorandClient } = await createFryFarmingClient(signer, sender, stakingId);
 
     const globalState = await farmingClient.getGlobalState();
-    console.log('DEBUG: Staking to appId:', stakingId);
-    console.log('DEBUG: Fetched global state:', globalState);
 
     const appAddress = algosdk.getApplicationAddress(stakingId);
     const stakeTokenId = globalState.stake_token?.asNumber();
@@ -624,15 +432,6 @@ export const stakeTokens = async (
     const currentTotalStaked = globalState.total_staked?.asNumber();
     const start = globalState.farm_start_time?.asNumber();
     const end = globalState.farm_end_time?.asNumber();
-
-    console.log('DEBUG: stakeTokenId:', stakeTokenId);
-    console.log('DEBUG: rewardAmount:', rewardAmount);
-    console.log('DEBUG: currentTotalStaked:', currentTotalStaked);
-    console.log('DEBUG: start:', start);
-    console.log('DEBUG: end:', end);
-    console.log('DEBUG: sender:', sender);
-    console.log('DEBUG: stakingId:', stakingId);
-    console.log('DEBUG: stakeAmount:', stakeAmount);
 
     if (
       stakeTokenId === undefined ||
@@ -665,10 +464,14 @@ export const stakeTokens = async (
     const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
     const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
 
+    if (!fryTokenId || fryTokenId === 0n) {
+      throw new Error('Invalid FRY token ID: token ID cannot be zero. Check VITE_FRY_TOKEN_ID env var.')
+    }
+
     await algorandClient.send.assetTransfer({
       sender,
       signer,
-      receiver: appAddress,
+      receiver: import.meta.env.VITE_FEE_RECIPIENT,
       amount: gasFee,
       assetId: fryTokenId,
     });
@@ -708,7 +511,6 @@ export const stakeTokens = async (
         assetId: BigInt(stakeTokenId),
         signer,
       });
-      console.log('DEBUG: ASA staking, stakePay and stakeAxfer prepared. assetId:', stakeTokenId);
     }
 
     const result = await farmingClient.stakeTokens({
@@ -922,10 +724,14 @@ export const claimRewards = async (
     const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
     const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
 
+    if (!fryTokenId || fryTokenId === 0n) {
+      throw new Error('Invalid FRY token ID: token ID cannot be zero. Check VITE_FRY_TOKEN_ID env var.')
+    }
+
     const gasTx = await algorandClient.send.assetTransfer({
       sender,
       signer,
-      receiver: algosdk.getApplicationAddress(farmingId),
+      receiver: import.meta.env.VITE_FEE_RECIPIENT,
       amount: gasFee,
       assetId: fryTokenId,
     });

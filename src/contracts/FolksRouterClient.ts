@@ -14,24 +14,15 @@ import {
   import { routerABIContract } from "./abiContracts";
   import { mulScale, ONE_4_DP } from "./utils";
   
-  const BASE_URL = "https://api.folksrouter.io";
-  
+  const BASE_URL = "/api/swap/folks";
+
   export class FolksRouterClient {
     private readonly network: Network;
     private readonly api: AxiosInstance;
-  
+
     constructor(network: Network, apiKey?: string) {
-      // construct url
-      let url = BASE_URL;
-      if (network === Network.TESTNET) url += "/testnet";
-      url += "/v1";
-      if (apiKey !== undefined) {
-        url += "/pro";
-      }
-  
-      // set
       this.network = network;
-      this.api = axios.create({ baseURL: url, headers: { "x-api-key": apiKey } });
+      this.api = axios.create({ baseURL: BASE_URL, timeout: 15000 });
     }
   
     public async fetchSwapQuote(
@@ -42,7 +33,7 @@ import {
     ): Promise<SwapQuote> {
       const { fromAssetId, toAssetId, amount, swapMode } = params;
   
-      const { data } = await this.api.get("/fetch/quote", {
+      const { data } = await this.api.get("/quote", {
         params: {
           network: this.network,
           fromAsset: fromAssetId,
@@ -75,7 +66,7 @@ import {
       const { fromAssetId, toAssetId, amount, swapMode } = params;
   
       // fetch transactions
-      const { data } = await this.api.get("/prepare/swap", {
+      const { data } = await this.api.get("/prepare", {
         params: {
           userAddress,
           slippageBps,

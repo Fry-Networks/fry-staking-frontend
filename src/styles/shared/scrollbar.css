@@ -1,7 +1,7 @@
 /* Custom scrollbar styles */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(113, 128, 150, 0.4) transparent;
+  scrollbar-color: var(--scrollbar-track) transparent;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -14,7 +14,7 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(113, 128, 150, 0.4);
+  background-color: var(--scrollbar-track);
   border-radius: 10px;
   border: 2px solid transparent;
 }

@@ -4,17 +4,17 @@ import { PeraWalletConnect } from '@perawallet/connect'
 import { PROVIDER_ID, ProvidersArray, WalletProvider, useInitializeProviders } from '@txnlab/use-wallet'
 import algosdk from 'algosdk'
 import { SnackbarProvider } from 'notistack'
+import { ConfigProvider, theme } from 'antd'
 import { PoolDataProvider } from './context/PoolDataContext'
 import Home from './Home'
 import { getAlgodConfigFromViteEnvironment, getKmdConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 let providersArray: ProvidersArray
 if (import.meta.env.VITE_ALGOD_NETWORK === '') {
   const kmdConfig = getKmdConfigFromViteEnvironment()
-
-  console.log(kmdConfig, 'tesgin passwrord')
 
   providersArray = [
     {
@@ -39,7 +39,8 @@ if (import.meta.env.VITE_ALGOD_NETWORK === '') {
   ]
 }
 
-export default function App() {
+function AppInner() {
+  const { isDark } = useTheme();
   const algodConfig = getAlgodConfigFromViteEnvironment()
 
   const walletProviders = useInitializeProviders({
@@ -54,26 +55,36 @@ export default function App() {
   })
 
   return (
-    <SnackbarProvider maxSnack={3}>
-      <WalletProvider value={walletProviders}>
-        <PoolDataProvider>
-          <ToastContainer 
-            position="top-right" 
-            autoClose={3000}
-            hideProgressBar={false}
-            newestOnTop={false}
-            closeOnClick
-            rtl={false}
-            pauseOnFocusLoss
-            draggable
-            pauseOnHover
-            theme="light"
-          />
-          <div className="min-h-screen">
-            <Home />
-          </div>
-        </PoolDataProvider>
-      </WalletProvider>
-    </SnackbarProvider>
+    <ConfigProvider theme={{ algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm }}>
+      <SnackbarProvider maxSnack={3}>
+        <WalletProvider value={walletProviders}>
+          <PoolDataProvider>
+            <ToastContainer
+              position="top-right"
+              autoClose={3000}
+              hideProgressBar={false}
+              newestOnTop={false}
+              closeOnClick
+              rtl={false}
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+              theme={isDark ? "dark" : "light"}
+            />
+            <div className="min-h-screen">
+              <Home />
+            </div>
+          </PoolDataProvider>
+        </WalletProvider>
+      </SnackbarProvider>
+    </ConfigProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
   )
 }

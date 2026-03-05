@@ -4,7 +4,7 @@ import { AppDetails } from '@algorandfoundation/algokit-utils/types/app-client'
 import algosdk, { TransactionSigner } from 'algosdk'
 import { FryStakingClient } from './contracts/FryStaking'
 import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
-import axios from 'axios'
+import { authFetch } from './services/apiClient'
 
 export const getAlgodClient = async (): Promise<algosdk.Algodv2> => {
   const algodConfig = getAlgodConfigFromViteEnvironment()
@@ -68,7 +68,11 @@ export const initStaking = async (
     if (rewardTokenId === 0) {
       throw new Error('ALGO cannot be used as a reward token. Please select a different token.')
     }
-    
+
+    if (!stakeTokenId || stakeTokenId === 0) {
+      throw new Error('Invalid stake token ID: token ID cannot be zero')
+    }
+
     // Validate reward token amount
     if (rewardTokenAmount <= 0) {
       throw new Error('Reward token amount must be greater than 0')
@@ -106,14 +110,15 @@ export const initStaking = async (
 
     const { stakingClient, algorandClient } = await createFryStakingClient(signer, sender, Number(initStake.appId))
 
-    // Send initial payment to cover minimum balance requirement
-    // Contract needs: 0.1 ALGO (base) + 0.1 ALGO per asset (2 assets) = 0.3 ALGO minimum
-    // Sending 0.5 ALGO to ensure sufficient balance (0.3 ALGO min + 0.2 ALGO buffer)
-    // This covers the base minimum and asset MBR requirements
+    // Send initial payment to cover minimum balance requirement (MBR)
+    // Contract needs: 0.1 ALGO (base) + 0.1 ALGO per unique asset + 0.1 ALGO buffer
+    // For same-token pools (stake == reward), only 1 unique asset opt-in is needed
+    const uniqueAssets = stakeTokenId === rewardTokenId ? 1 : 2;
+    const mbrAmount = 0.1 + (uniqueAssets * 0.1) + 0.1; // base + per-asset + buffer
     await algorandClient.send.payment({
       sender,
       receiver: algosdk.getApplicationAddress(initStake.appId),
-      amount: algokit.algos(0.5),
+      amount: algokit.algos(mbrAmount),
       extraFee: algokit.algos(0.001),
     })
     
@@ -141,12 +146,24 @@ export const initStaking = async (
         sender,
       })
 
+      const isSameToken = stakeTokenId === rewardTokenId
       await stakingClient
-        .optInAsset({
-          assetOne: rewardTokenId,
-          assetTwo: stakeTokenId,
-          mbrPay: mbrPay,
-        })
+        .optInAsset(
+          {
+            assetOne: rewardTokenId,
+            assetTwo: stakeTokenId,
+            mbrPay: mbrPay,
+          },
+          isSameToken
+            ? {
+                assets: [stakeTokenId],
+                sendParams: {
+                  populateAppCallResources: false,
+                  fee: algokit.algos(0.003),
+                },
+              }
+            : {},
+        )
         .then((res) => res)
 
       await stakingClient
@@ -218,26 +235,22 @@ export const stakeTokens = async (stakingId: number, stakeAmount: number, sender
     const { stakingClient, algorandClient } = await createFryStakingClient(signer, sender, stakingId)
     let globalState: any = await stakingClient.getGlobalState()
 
-    // await algorandClient.send.assetTransfer({
-    //   sender,
-    //   signer,
-    //   receiver: algosdk.getApplicationAddress(stakingId), // or your designated fee wallet
-    //   amount: 1_000_000n,
-    //   assetId: globalState.rewardToken?.asNumber(),
-    // })
-
     const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
     const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
+
+    if (!fryTokenId || fryTokenId === 0n) {
+      throw new Error('Invalid FRY token ID: token ID cannot be zero. Check VITE_FRY_TOKEN_ID env var.')
+    }
 
     const gasTx = await algorandClient.send.assetTransfer({
       sender,
       signer,
-      receiver: algosdk.getApplicationAddress(stakingId),
+      receiver: import.meta.env.VITE_FEE_RECIPIENT,
       amount: gasFee,
       assetId: fryTokenId,
     });
 
-    await fetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+    await authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -301,16 +314,7 @@ export const unstakeTokens = async (
     const globalState: any = await stakingClient.getGlobalState()
     const stakerData = await getUserData(stakingId, sender)
 
-    // ✅ 1. Deduct FRY fee from user (1 FRY)
-    // await algorandClient.send.assetTransfer({
-    //   sender,
-    //   signer,
-    //   receiver: algosdk.getApplicationAddress(stakingId),
-    //   amount: 1_000_000n,
-    //   assetId: globalState.rewardToken?.asNumber(), // assuming FRY is the reward token
-    // })
-
-    // ✅ 2. APR calculation
+    // APR calculation
     const reward =
       unstakeAmount *
       (globalState?.apr?.asNumber() / 10000) *
@@ -355,27 +359,22 @@ export const claimTokens = async (
     const stakedAmount = Number(stakerData?.stakedAmount)
     const stakeTime = Number(stakerData?.stakeTime)
 
-    // ✅ 1. Deduct 1 FRY token from user
-    // await algorandClient.send.assetTransfer({
-    //   sender,
-    //   signer,
-    //   receiver: algosdk.getApplicationAddress(stakingId),
-    //   amount: 1_000_000n, // 1 FRY assuming 6 decimals
-    //   assetId: globalState.rewardToken?.asNumber(),
-    // })
-
     const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
     const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
+
+    if (!fryTokenId || fryTokenId === 0n) {
+      throw new Error('Invalid FRY token ID: token ID cannot be zero. Check VITE_FRY_TOKEN_ID env var.')
+    }
 
     const gasTx = await algorandClient.send.assetTransfer({
       sender,
       signer,
-      receiver: algosdk.getApplicationAddress(stakingId),
+      receiver: import.meta.env.VITE_FEE_RECIPIENT,
       amount: gasFee,
       assetId: fryTokenId,
     });
 
-    await fetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+    await authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -434,17 +433,17 @@ export const claimTokens = async (
 }
 
 
-export const getApr = async (stakingID: number, sender: string, signer: TransactionSigner) => {
-  try {
-    const { stakingClient } = await createFryStakingClient(signer, sender, stakingID)
-
-    await stakingClient.takeOutAsset({ amount: 102000 }, { sendParams: { fee: algokit.algos(0.002) } }).then((res) => res)
-
-    return true
-  } catch (e) {
-    console.error('Error in getApr:', e)
-    throw e
-  }
+/**
+ * @deprecated takeOutAsset is not routed in the current TEAL contract.
+ * The ABI method exists in the AppSpec but has no matching routing entry,
+ * so calling it will always fail with "invalid method selector".
+ * Renamed from getApr to make the broken state explicit.
+ */
+export const takeOutAsset_BROKEN = async (_stakingID: number, _sender: string, _signer: TransactionSigner) => {
+  throw new Error(
+    'takeOutAsset is not routed in the current FryStaking TEAL contract. ' +
+    'This function cannot succeed until the contract is recompiled with the route enabled.'
+  )
 }
 
 export const getUsersStakeData = async (stakingId: number) => {
@@ -501,7 +500,7 @@ export const getStakingData = async (stakingId: number, sender: string, signer: 
     let globalState = await stakingClient.getGlobalState()
     return {
       apr: globalState.apr?.asNumber(),
-      stakeTokens: globalState?.stakeToken?.asNumber(),
+      stakeToken: globalState?.stakeToken?.asNumber(),
       rewardToken: globalState?.rewardToken?.asNumber(),
       poolTime: globalState?.poolTime?.asNumber(),
       lockPeriod: globalState?.lockPeriod?.asNumber(),
