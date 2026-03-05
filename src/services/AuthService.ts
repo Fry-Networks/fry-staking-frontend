@@ -2,49 +2,57 @@ import algosdk, { TransactionSigner } from 'algosdk';
 import { getAlgodClient } from '../staking_func';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL as string;
-const TOKEN_KEY = 'fry_auth_token';
-const EXPIRY_KEY = 'fry_auth_expiry';
 
 class AuthService {
-  private pendingAuth: Promise<string> | null = null;
-
-  getToken(): string | null {
-    const token = sessionStorage.getItem(TOKEN_KEY);
-    const expiry = sessionStorage.getItem(EXPIRY_KEY);
-    if (!token || !expiry) return null;
-    // 60-second buffer before expiry
-    if (Date.now() >= Number(expiry) - 60_000) {
-      this.clearAuth();
-      return null;
-    }
-    return token;
-  }
+  private pendingAuth: Promise<void> | null = null;
+  private _authenticated = false;
+  private _wallet: string | null = null;
 
   isAuthenticated(): boolean {
-    return this.getToken() !== null;
+    return this._authenticated;
+  }
+
+  getWallet(): string | null {
+    return this._wallet;
   }
 
   clearAuth(): void {
-    sessionStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(EXPIRY_KEY);
+    this._authenticated = false;
+    this._wallet = null;
     this.pendingAuth = null;
+    // Tell backend to clear the HttpOnly cookie
+    fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
+  }
+
+  /**
+   * Check if a valid auth cookie exists (on page load / tab restore).
+   */
+  async checkAuth(): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+      const data = await res.json();
+      this._authenticated = data.authenticated === true;
+      this._wallet = data.wallet || null;
+      return this._authenticated;
+    } catch {
+      this._authenticated = false;
+      this._wallet = null;
+      return false;
+    }
   }
 
   async authenticate(
     activeAddress: string,
     signer: TransactionSigner,
-  ): Promise<string> {
-    // Return existing token if still valid
-    const existing = this.getToken();
-    if (existing) return existing;
+  ): Promise<void> {
+    if (this._authenticated && this._wallet === activeAddress) return;
 
     // Coalesce concurrent auth attempts
     if (this.pendingAuth) return this.pendingAuth;
 
     this.pendingAuth = this._doAuth(activeAddress, signer);
     try {
-      const token = await this.pendingAuth;
-      return token;
+      await this.pendingAuth;
     } finally {
       this.pendingAuth = null;
     }
@@ -53,12 +61,13 @@ class AuthService {
   private async _doAuth(
     activeAddress: string,
     signer: TransactionSigner,
-  ): Promise<string> {
+  ): Promise<void> {
     // Step 1: Get nonce from backend
     const nonceRes = await fetch(`${API_BASE}/auth/nonce`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ wallet: activeAddress }),
+      credentials: 'include',
     });
 
     if (!nonceRes.ok) {
@@ -95,7 +104,7 @@ class AuthService {
       signedTxnBase64 = btoa(binary);
     }
 
-    // Step 5: Verify signed transaction with backend and get JWT
+    // Step 5: Verify signed transaction with backend — JWT set as HttpOnly cookie
     const verifyRes = await fetch(`${API_BASE}/auth/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -104,6 +113,7 @@ class AuthService {
         signedTxn: signedTxnBase64,
         nonce,
       }),
+      credentials: 'include',
     });
 
     if (!verifyRes.ok) {
@@ -111,13 +121,8 @@ class AuthService {
       throw new Error(err.message || `Auth verify failed (${verifyRes.status})`);
     }
 
-    const { token } = await verifyRes.json();
-
-    // Step 6: Store token with 24h expiry
-    sessionStorage.setItem(TOKEN_KEY, token);
-    sessionStorage.setItem(EXPIRY_KEY, String(Date.now() + 24 * 60 * 60 * 1000));
-
-    return token;
+    this._authenticated = true;
+    this._wallet = activeAddress;
   }
 }
 

@@ -21,7 +21,7 @@ if (import.meta.env.VITE_ALGOD_NETWORK === '') {
       id: PROVIDER_ID.KMD,
       clientOptions: {
         wallet: kmdConfig.wallet,
-        password: 'test',
+        password: import.meta.env.VITE_KMD_PASSWORD || '',
         host: kmdConfig.server,
         token: String(kmdConfig.token),
         port: String(kmdConfig.port),
