@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react'
 import { useWallet } from '@txnlab/use-wallet'
 import P_STable from './PsTable'
 import { tokenServiceInstance } from '../../../../services/TokenService'
+import { fetchPriceMap } from '../../../../services/PriceService'
 
 export type PoolStatus = 'active' | 'ending-soon' | 'ended'
 export type PoolFilter = 'all' | 'active' | 'ending-soon' | 'ended'
@@ -22,10 +23,14 @@ export interface ProfileStakePool {
   endsIn: string
   lockDays: number
   stakingContractId: number
+  stakeTokenId: number
+  rewardTokenId: number
   isCreator: boolean
   endTime: number
   status: PoolStatus
 }
+
+const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 
 function computeStatus(endTime: number): PoolStatus {
   const now = Math.floor(Date.now() / 1000)
@@ -77,13 +82,21 @@ const PstakeTable: React.FC = () => {
         ...stakingTokenRecords.map((r: any) => r.poolId),
         ...stakerRecords.map((r: any) => r.poolId),
       ])
-      // Build a map of poolId -> stakedAmount for display (prefer stakingtokens totalStaked, fallback to stakerdata)
-      const stakedAmountMap: Record<string, number> = {}
+      // Build a map of poolId -> stakedAmount for display (take MAX per source, then greater of the two)
+      const stakerMaxMap: Record<string, number> = {}
       stakerRecords.forEach((r: any) => {
-        stakedAmountMap[r.poolId] = (stakedAmountMap[r.poolId] || 0) + (r.stakedAmount || 0)
+        const amt = r.stakedAmount || 0
+        stakerMaxMap[r.poolId] = Math.max(stakerMaxMap[r.poolId] || 0, amt)
       })
+      const tokenMaxMap: Record<string, number> = {}
       stakingTokenRecords.forEach((r: any) => {
-        stakedAmountMap[r.poolId] = (stakedAmountMap[r.poolId] || 0) + (r.totalStaked || 0)
+        const amt = r.totalStaked || 0
+        tokenMaxMap[r.poolId] = Math.max(tokenMaxMap[r.poolId] || 0, amt)
+      })
+      const stakedAmountMap: Record<string, number> = {}
+      const allPoolKeys = new Set([...Object.keys(stakerMaxMap), ...Object.keys(tokenMaxMap)])
+      allPoolKeys.forEach((poolId) => {
+        stakedAmountMap[poolId] = Math.max(stakerMaxMap[poolId] || 0, tokenMaxMap[poolId] || 0)
       })
 
       // Build image map from TokenService (DB → Pera → Tinyman fallback chain)
@@ -104,6 +117,18 @@ const PstakeTable: React.FC = () => {
         return isCreator || hasStaked
       })
 
+      // Fetch real prices for all stake tokens
+      const asaIds = [...new Set(userPools.map((p: any) =>
+        Number(p?.stakeToken?.id ?? p?.stakeTokenId)
+      ).filter((id: number) => !isNaN(id) && id > 0))] as number[]
+
+      let priceMap: Record<string, number> = {}
+      try {
+        priceMap = await fetchPriceMap(asaIds)
+      } catch (err) {
+        console.error('Failed to fetch live prices:', err)
+      }
+
       const mapped: ProfileStakePool[] = userPools.map((pool: any, index: number) => {
         const endTime = pool.stakingEndTime || 0
         const secondsLeft = endTime - now
@@ -117,6 +142,8 @@ const PstakeTable: React.FC = () => {
         const rewardTokenImage = imageMap[rewardTokenId] || `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`
 
         const userStakedAmount = stakedAmountMap[pool._id] || 0
+        const usdPrice = priceMap[stakeTokenId] ?? 0
+        const tvlUsd = (pool.totalAmountStaked || 0) * usdPrice
 
         return {
           key: index,
@@ -126,13 +153,15 @@ const PstakeTable: React.FC = () => {
           rewardTokenName: pool?.rewardToken?.name || 'Token',
           stakeTokenImage,
           rewardTokenImage,
-          tvl: `$${pool.totalAmountStaked || 0}`,
+          tvl: `$${Number(tvlUsd.toFixed(6)).toString()}`,
           apr: `${pool.aprRate || 0}%`,
           userStaked: userStakedAmount > 0 ? `${(userStakedAmount / 1_000_000).toFixed(3)}` : '0',
           reward: `${pool.totalAmountStaked ? ((pool.totalAmountStaked * pool.aprRate * ((now - pool.stakingTime) / 31104000)) / 1_000_000).toFixed(3) : '0'}`,
           endsIn: daysLeft >= 0 ? `${Math.max(daysLeft, 1)} ${Math.max(daysLeft, 1) === 1 ? 'day' : 'days'}` : 'Ended',
           lockDays: Math.floor((pool.lockPeriod || 0) / 86400),
           stakingContractId: Number(pool.stakingContractId),
+          stakeTokenId: Number(stakeTokenId) || FRY_ASSET_ID,
+          rewardTokenId: Number(rewardTokenId) || FRY_ASSET_ID,
           isCreator,
           endTime,
           status: computeStatus(endTime),
@@ -166,7 +195,7 @@ const PstakeTable: React.FC = () => {
         </div>
       </div>
 
-      <P_STable data={pools} loading={loading} activeFilter={activeFilter} />
+      <P_STable data={pools} loading={loading} activeFilter={activeFilter} onRefresh={fetchUserStakingPools} />
     </div>
   )
 }

@@ -45,19 +45,19 @@ const Stakebanner: React.FC<StakeBannerProps> = ({ wallet }) => {
         <div className="flex flex-col items-center gap-[24px] sm-s:gap-[6px]">
           <p className="text-text_clr tracking-[0.54px] large">Stake TVL</p>
           <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
-            {stats.totalTVL.toLocaleString()}
+            {stats.totalTVL.toLocaleString()} tokens
           </h3>
         </div>
         <div className="flex flex-col items-center gap-[24px] sm-s:gap-[6px]">
           <p className="text-text_clr tracking-[0.54px] large">My Stakes</p>
           <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
-            {stats.myStake.toLocaleString()}
+            {stats.myStake.toLocaleString()} tokens
           </h3>
         </div>
         <div className="flex flex-col items-center gap-[24px] sm-s:gap-[6px]">
           <p className="text-text_clr tracking-[0.54px] large">My Reward</p>
           <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
-            {Number(stats.myReward).toFixed(6)}
+            {Number(stats.myReward).toFixed(6)} tokens
           </h3>
         </div>
       </div>

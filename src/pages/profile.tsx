@@ -7,7 +7,7 @@ import PageBg from '../components/shared/pageBg'
 const Profile = () => {
   return (
     <>
-      <div className="relative overflow-hidden">
+      <div className="relative overflow-hidden min-h-screen flex flex-col">
         <PageBg />
         <Navbar />
         <Profilebanner />

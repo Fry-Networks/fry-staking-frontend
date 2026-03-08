@@ -13,7 +13,7 @@ const Footer = () => {
   }
 
   return (
-    <footer className=" w-full ">
+    <footer className="w-full mt-auto">
       <div className="linearGradient m-auto max-xxxl:w-[95%] w-[80%] relative rounded-t-[8px] pt-[29px] pb-[31px] px-[20px] z-[1]">
         <img src="../../assets/images/home/footer-bg.png" alt="" className="w-full h-full absolute top-0 right-0 z-[-1]" />
         <div className="flex flex-col justify-center items-center relative z-[2]">

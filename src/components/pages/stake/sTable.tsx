@@ -3,17 +3,20 @@ import { useWallet } from '@txnlab/use-wallet'
 import type { TableColumnsType } from 'antd'
 import { Table } from 'antd'
 import axios from 'axios'
-import React, { memo, useEffect, useMemo, useState } from 'react'
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { usePoolData } from '../../../context/PoolDataContext'
-import { claimTokens, getStakingData, getUserData, stakeTokens, unstakeTokens } from '../../../staking_func'
+import { claimTokens, getStakingData, getUserData, stakeTokens, unstakeTokens, getAlgodClient, estimateStakingReward } from '../../../staking_func'
 import { getAlgodConfigFromViteEnvironment } from '../../../utils/network/getAlgoClientConfigs'
 import Button from '../../shared/button'
 import Input from '../../shared/input'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
 import { authAxios } from '../../../services/apiClient'
 import { useAuth } from '../../../hooks/useAuth'
+import { fetchFeeConfig, calculateFeeSimple } from '../../../services/FeeService'
+import type { FeeCalculation } from '../../../services/FeeService'
+import FeeConfirmation from '../../shared/FeeConfirmation'
 
 interface DataType {
   [x: string]: any
@@ -40,7 +43,7 @@ interface StakingRecord {
 
 interface STableProps {
   stacks: DataType[]
-  fetchData: () => void
+  fetchData: () => Promise<void>
   showExpandable: string
 }
 
@@ -57,9 +60,22 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
   const [stackValue, setStackValue] = useState<number>()
   const [withdrawValue, setWithdrawValue] = useState<number>()
   const [fryBalance, setFryBalance] = useState<number>(0) // 🔹 Store FRY balance
+  const [tokenBalances, setTokenBalances] = useState<{ [key: string]: number }>({})
   const [isStaking, setIsStaking] = useState(false);
+  const isStakingRef = useRef(false)
   const [isWithdrawing, setIsWithdrawing] = useState(false)
   const [isClaimingId, setIsClaimingId] = useState<string | null>(null); // Holds the _id of the pool being claimed
+  const [estimatedRewards, setEstimatedRewards] = useState<Record<string, number>>({})
+  const [rewardLoading, setRewardLoading] = useState<Record<string, boolean>>({})
+
+  // Fee confirmation state
+  const [feeModalVisible, setFeeModalVisible] = useState(false)
+  const [feeCalc, setFeeCalc] = useState<FeeCalculation | null>(null)
+  const [feeLoading, setFeeLoading] = useState(false)
+  const [pendingAction, setPendingAction] = useState<{ type: string; args: any } | null>(null)
+  const [feeActionLabel, setFeeActionLabel] = useState('')
+  const [feeAmountFormatted, setFeeAmountFormatted] = useState('')
+  const [netAmountFormatted, setNetAmountFormatted] = useState('')
 
   const navigate = useNavigate()
 
@@ -70,10 +86,26 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
   const { setPoolData } = usePoolData() // Get the function to set poolData from context
 
   const { providers, clients, activeAccount, activeAddress, signer } = useWallet()
-  const handleToggleExpand = (key: React.Key) => {
+  const handleToggleExpand = (key: React.Key, stakeTokenId?: number) => {
+    const isExpanding = !expandedKeys.includes(key)
     setExpandedKeys(
       (prev) => (prev.includes(key) ? prev.filter((rowKey) => rowKey !== key) : [key]), // Allow only one row to expand at a time
     )
+    if (isExpanding) {
+      if (stakeTokenId) fetchTokenBalance(key, stakeTokenId)
+      // Estimate reward for grey-out logic
+      if (activeAddress && signer) {
+        const pool = stacks.find(s => s.key === key)
+        if (pool?.stakingContractId) {
+          const k = String(key)
+          setRewardLoading(prev => ({ ...prev, [k]: true }))
+          estimateStakingReward(pool.stakingContractId, activeAddress, signer)
+            .then(est => setEstimatedRewards(prev => ({ ...prev, [k]: est.reward })))
+            .catch(() => {}) // on error, leave undefined = button stays enabled
+            .finally(() => setRewardLoading(prev => ({ ...prev, [k]: false })))
+        }
+      }
+    }
   }
 
   const [claimedPools, setClaimedPools] = useState<string[]>([])
@@ -94,41 +126,53 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
     }
   }
 
-  useEffect(() => {
-    const fetchBalance = async () => {
-      if (!activeAddress || !clients) {
+  const fetchBalance = async () => {
+    if (!activeAddress || !clients) {
+      setFryBalance(0)
+      return
+    }
+
+    try {
+      const provider = clients?.pera || clients?.myalgo || clients?.defly
+      if (!provider) {
+        return
+      }
+
+      const accountInfo = await provider.getAccountInfo(activeAddress)
+
+      if (!accountInfo || !accountInfo.assets) {
         setFryBalance(0)
         return
       }
 
-      try {
-        const provider = clients?.pera || clients?.myalgo || clients?.defly
-        if (!provider) {
-          return
-        }
+      const fryToken = accountInfo.assets.find((asset: any) => asset['asset-id'] === FRY_ASSET_ID || asset.id === FRY_ASSET_ID)
 
-        const accountInfo = await provider.getAccountInfo(activeAddress)
-
-        if (!accountInfo || !accountInfo.assets) {
-          setFryBalance(0)
-          return
-        }
-
-        const fryToken = accountInfo.assets.find((asset: any) => asset['asset-id'] === FRY_ASSET_ID || asset.id === FRY_ASSET_ID)
-
-        if (!fryToken) {
-          setFryBalance(0)
-          return
-        }
-
-        const normalFryBalance = fryToken.amount / 1_000_000
-        setFryBalance(normalFryBalance)
-      } catch (error) {
-        console.error('Error fetching balance:', error)
+      if (!fryToken) {
         setFryBalance(0)
+        return
       }
-    }
 
+      const normalFryBalance = fryToken.amount / 1_000_000
+      setFryBalance(normalFryBalance)
+    } catch (error) {
+      console.error('Error fetching balance:', error)
+      setFryBalance(0)
+    }
+  }
+
+  const fetchTokenBalance = async (key: React.Key, stakeTokenId: number) => {
+    if (!activeAddress || !stakeTokenId) return
+    try {
+      const algod = await getAlgodClient()
+      const assetInfo = await algod.accountAssetInformation(activeAddress, stakeTokenId).do()
+      const balance = Number(assetInfo?.['asset-holding']?.amount ?? 0)
+      setTokenBalances((prev) => ({ ...prev, [String(key)]: balance / 1_000_000 }))
+    } catch {
+      setTokenBalances((prev) => ({ ...prev, [String(key)]: 0 }))
+    }
+  }
+
+  useEffect(() => {
     fetchBalance()
     fetchClaimedPools()
   }, [activeAddress]) // 🔹 Fetch balance whenever the wallet address changes
@@ -174,7 +218,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                 height={36}
                 color="#808080"
                 className="cursor-pointer"
-                onClick={() => handleToggleExpand(record.key)}
+                onClick={() => handleToggleExpand(record.key, record.stakeTokenId)}
               />
             </div>
           ),
@@ -183,73 +227,137 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       : []),
   ]
 
+  // Fee confirmation helpers
+
+  const showFeeConfirmation = async (actionType: string, amountMicro: number, tokenAsaId: number, tokenDecimals: number, tokenName: string, label: string, action: { type: string; args: any }) => {
+    try {
+      setFeeLoading(true)
+      const config = await fetchFeeConfig()
+      const fee = calculateFeeSimple(actionType, amountMicro, config)
+
+      setFeeCalc(fee)
+      const divisor = Math.pow(10, tokenDecimals)
+      setFeeAmountFormatted(`${(fee.feeAmount / divisor).toFixed(tokenDecimals > 2 ? 4 : 2)} ${tokenName}`)
+      setNetAmountFormatted(`${(fee.netAmount / divisor).toFixed(tokenDecimals > 2 ? 4 : 2)} ${tokenName}`)
+      setFeeActionLabel(label)
+      setPendingAction({ ...action, args: { ...action.args, feeAmount: fee.feeAmount, feeTokenId: tokenAsaId, feeRecipient: fee.feeRecipient } })
+      setFeeModalVisible(true)
+    } catch (error: any) {
+      toast.error(error?.message || 'Error calculating fee')
+    } finally {
+      setFeeLoading(false)
+    }
+  }
+
+  const cancelFeeModal = () => {
+    setFeeModalVisible(false)
+    setPendingAction(null)
+    setFeeCalc(null)
+    setFeeAmountFormatted('')
+    setNetAmountFormatted('')
+    setIsStaking(false)
+    setIsWithdrawing(false)
+    isStakingRef.current = false
+  }
+
+  const executePendingAction = async () => {
+    if (!pendingAction || !feeCalc) return
+    setFeeModalVisible(false)
+    const { type, args } = pendingAction
+
+    if (type === 'stake') {
+      setIsStaking(true)
+      try {
+        const StackToken = await stakeTokens(args.stakingContractId, args.adjustedStackValue, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
+        if (StackToken instanceof Error) {
+          toast.error('Transaction canceled or staking failed.');
+          return;
+        }
+        if (!activeAddress) {
+          toast.error('No active address found for staking.');
+          return;
+        }
+        const getStakingRecord = await getStakingData(args.stakingContractId, activeAddress, signer) as StakingRecord;
+        const StakerData = await getUserData(args.stakingContractId, activeAddress);
+        const stakingTokenPayload = {
+          apr: getStakingRecord.apr,
+          lockPeriod: getStakingRecord.lockPeriod,
+          poolStartTime: getStakingRecord.poolStartTime,
+          poolEndTime: getStakingRecord.poolEndTime,
+          poolTime: getStakingRecord.poolTime || (getStakingRecord.poolEndTime - getStakingRecord.poolStartTime),
+          rewardToken: Number(getStakingRecord.rewardToken || FRY_ASSET_ID),
+          stakeTokens: Number(getStakingRecord.stakeToken || FRY_ASSET_ID),
+          totalStaked: args.adjustedStackValue,
+          poolId: args._id,
+          appId: Number(args.stakingContractId),
+          wallet: activeAddress
+        };
+        await authAxios.post('/stakingtoken/add', stakingTokenPayload);
+        const { stakedAmount, stakeTime } = StakerData;
+        const apr_response = await authAxios.put(`/staking/update/${args._id}`, {
+          aprRate: getStakingRecord.apr / 100,
+          totalAmountStaked: Number(stakedAmount) / 1_000_000,
+          totalStakers: 1,
+          stakingTime: stakeTime,
+        });
+        if (apr_response.status >= 200 && apr_response.status < 300) {
+          await new Promise(r => setTimeout(r, 500));
+          await fetchData();
+          fetchBalance();
+          const pool = stacks.find(s => s._id === args._id)
+          if (pool?.stakeTokenId && pool?.key) fetchTokenBalance(pool.key, pool.stakeTokenId)
+          toast.success('Staking successful!');
+          setStackValue(0);
+        } else {
+          toast.error('Failed to update staking data.');
+        }
+      } catch (error: any) {
+        console.error('Error during staking operation:', error);
+        const msg = error?.response?.data?.message || error?.message || 'Error during staking operation.';
+        toast.error(msg);
+      } finally {
+        setIsStaking(false);
+        isStakingRef.current = false;
+      }
+    } else if (type === 'withdraw') {
+      await executeWithdraw(args)
+    } else if (type === 'claim') {
+      await executeClaim(args)
+    } else if (type === 'claimAndWithdraw') {
+      await executeClaimAndWithdraw(args)
+    }
+
+    setPendingAction(null)
+    setFeeCalc(null)
+  }
+
   // stacking function
 
   const handleStack = async (stakingContractId: number, _id: string) => {
+    if (isStakingRef.current) return
+    isStakingRef.current = true
+
     if (!stackValue) {
       toast.error('Please enter a valid amount');
+      isStakingRef.current = false
       return;
     }
-
-    setIsStaking(true); // 🔁 Start loading
 
     try {
       await ensureAuth();
       const adjustedStackValue = stackValue * 1000000;
-
-      const StackToken = await stakeTokens(stakingContractId, adjustedStackValue, activeAddress!, signer);
-      if (StackToken instanceof Error) {
-        console.error('StackToken error:', StackToken.message);
-        toast.error('Transaction canceled or staking failed.');
-        return;
-      }
-
-      if (!activeAddress) {
-        toast.error('No active address found for staking.');
-        return;
-      }
-
-      const getStakingRecord = await getStakingData(stakingContractId, activeAddress, signer) as StakingRecord;
-      const StakerData = await getUserData(stakingContractId, activeAddress);
-
-      const stakingTokenPayload = {
-        apr: getStakingRecord.apr,
-        lockPeriod: getStakingRecord.lockPeriod,
-        poolStartTime: getStakingRecord.poolStartTime,
-        poolEndTime: getStakingRecord.poolEndTime,
-        poolTime: getStakingRecord.poolTime || (getStakingRecord.poolEndTime - getStakingRecord.poolStartTime),
-        rewardToken: Number(getStakingRecord.rewardToken || FRY_ASSET_ID),
-        stakeTokens: Number(getStakingRecord.stakeToken || FRY_ASSET_ID),
-        totalStaked: StakerData.stakedAmount || 0,
-        poolId: _id,
-        appId : Number(stakingContractId),
-        wallet: activeAddress
-      };
-
-      await authAxios.post('/stakingtoken/add', stakingTokenPayload);
-
-      const { stakedAmount, stakeTime } = StakerData;
-
-      const apr_response = await authAxios.put(`/staking/update/${_id}`, {
-        aprRate: getStakingRecord.apr / 100,
-        totalAmountStaked: Number(stakedAmount) / 1_000_000,
-        totalStakers: 1,
-        stakingTime: stakeTime,
-      });
-
-      if (apr_response.status >= 200 && apr_response.status < 300) {
-        fetchData();
-        toast.success('Staking successful!');
-        setStackValue(0); // 🔁 Reset input
-      } else {
-        toast.error('Failed to update staking data.');
-      }
+      const pool = stacks.find(s => s._id === _id);
+      const stakeTokenId = pool?.stakeTokenId || FRY_ASSET_ID;
+      const tokenName = pool?.stakeTokenName || 'tokens';
+      await showFeeConfirmation('stakingDeposit', adjustedStackValue, stakeTokenId, 6, tokenName, `Stake ${stackValue} ${tokenName}`, {
+        type: 'stake', args: { stakingContractId, _id, adjustedStackValue }
+      })
     } catch (error: any) {
-      console.error('Error during staking operation:', error);
-      const msg = error?.response?.data?.message || error?.message || 'Error during staking operation.';
-      toast.error(msg);
+      toast.error(error?.message || 'Error preparing stake');
+      isStakingRef.current = false
     } finally {
       setIsStaking(false); // ✅ Done loading
+      isStakingRef.current = false
     }
   };
 
@@ -272,33 +380,41 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       return;
     }
 
-    setIsWithdrawing(true);
-
     try {
       await ensureAuth();
       const adjustedWithdrawValue = withdrawValue * 1_000_000;
-      const withdrawToken = await unstakeTokens(stakingContractId, adjustedWithdrawValue, activeAddress!, signer);
+      const stakeTokenId = poolData.stakeTokenId || FRY_ASSET_ID;
+      const tokenName = poolData.stakeTokenName || 'tokens';
+      await showFeeConfirmation('stakingWithdraw', adjustedWithdrawValue, stakeTokenId, 6, tokenName, `Withdraw ${withdrawValue} ${tokenName}`, {
+        type: 'withdraw', args: { stakingContractId, _id, adjustedWithdrawValue }
+      })
+    } catch (error: any) {
+      toast.error(error?.message || 'Error preparing withdrawal');
+      setIsWithdrawing(false);
+    }
+  };
+
+  const executeWithdraw = async (args: any) => {
+    setIsWithdrawing(true);
+    try {
+      const withdrawToken = await unstakeTokens(args.stakingContractId, args.adjustedWithdrawValue, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
 
       if (withdrawToken instanceof Error) {
-        console.error('Unstake failed:', withdrawToken.message);
         toast.error(`Transaction failed: ${withdrawToken.message}`);
         return;
       }
-
       if (!withdrawToken) {
         toast.error('Withdrawal failed due to invalid response');
         return;
       }
 
-      // Continue only if unstake was successful
-      const getStakingRecord = await getStakingData(stakingContractId, activeAddress!, signer);
-      const StakerData = await getUserData(stakingContractId, activeAddress!);
+      const getStakingRecord = await getStakingData(args.stakingContractId, activeAddress!, signer);
+      const StakerData = await getUserData(args.stakingContractId, activeAddress!);
 
       if (!getStakingRecord || typeof (getStakingRecord as { apr: number }).apr !== 'number') {
         toast.error('Invalid staking record received');
         return;
       }
-
       if (!StakerData || typeof StakerData.stakedAmount !== 'number') {
         toast.error('Invalid staker data received');
         return;
@@ -307,7 +423,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       const { stakedAmount, stakeTime } = StakerData;
       const calculateAPR = (getStakingRecord as { apr: number }).apr / 100;
 
-      const apr_response = await authAxios.put(`/staking/update/${_id}`, {
+      const apr_response = await authAxios.put(`/staking/update/${args._id}`, {
         aprRate: calculateAPR,
         totalAmountStaked: Number(stakedAmount) / 1_000_000,
         totalStakers: 1,
@@ -315,28 +431,28 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       });
 
       if (apr_response.status >= 200 && apr_response.status < 300) {
-        // ✅ Now safe to log withdrawal
         const logResponse = await authAxios.post('/withdraw/add', {
           tokens: Number(withdrawValue),
           wallet: activeAddress,
-          poolId: _id,
-          appId: Number(stakingContractId),
+          poolId: args._id,
+          appId: Number(args.stakingContractId),
         });
-
         if (logResponse.status === 201) {
           console.log("Withdrawal log saved:", logResponse.data);
         }
-
-        fetchData();
+        await new Promise(r => setTimeout(r, 500));
+        await fetchData();
+        fetchBalance();
+        const pool = stacks.find(s => s._id === args._id)
+        if (pool?.stakeTokenId && pool?.key) fetchTokenBalance(pool.key, pool.stakeTokenId)
         toast.success('Withdrawal successful');
         setWithdrawValue(0);
       } else {
         toast.error('Failed to update staking data');
       }
-
     } catch (error: any) {
       if (error?.message?.includes('Network mismatch')) {
-        toast.error('⚠️ Network mismatch: Please switch wallet to correct network.');
+        toast.error('Network mismatch: Please switch wallet to correct network.');
       } else {
         console.error('Error during withdrawal:', error);
         const msg = error?.response?.data?.message || error?.message || 'Error during withdrawal.';
@@ -354,16 +470,37 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
   const handleClaim = async (stakingContractId: number, _id: string) => {
     try {
       await ensureAuth();
-      const claimToken = await claimTokens(stakingContractId, activeAddress!, signer);
+      setIsClaimingId(_id);
+      const poolData = stacks.find(s => s._id === _id);
+      const rewardTokenId = poolData?.rewardTokenId || FRY_ASSET_ID;
+      const rewardTokenName = poolData?.rewardTokenName || 'tokens';
+
+      // Estimate reward for fee calculation
+      const est = await estimateStakingReward(stakingContractId, activeAddress!, signer);
+      const rewardMicro = est.reward > 0 ? est.reward : 1_000_000; // fallback to 1 token if 0
+
+      await showFeeConfirmation('stakingClaim', rewardMicro, est.rewardTokenId || rewardTokenId, 6, rewardTokenName,
+        `Claim rewards`, { type: 'claim', args: { stakingContractId, _id } })
+    } catch (error: any) {
+      console.error('Error during claim:', error);
+      const msg = error?.response?.data?.message || error?.message || 'Error during claim.';
+      toast.error(msg);
+      setIsClaimingId(null);
+    }
+  };
+
+  const executeClaim = async (args: any) => {
+    try {
+      const claimToken = await claimTokens(args.stakingContractId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
       console.log('claimToken:', claimToken);
 
       const { rewardClaimed, stakedAmount, updatedApr, tx, stakedTime } = claimToken;
-      
+
       const stakerData = {
         walletId: activeAddress,
         stakedAmount,
         stakeTime: stakedTime,
-        poolId: _id,
+        poolId: args._id,
         rewardClaimed,
       };
 
@@ -371,34 +508,24 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
         walletId: activeAddress,
         stakedAmount,
         stakedTime,
-        poolId: _id,
+        poolId: args._id,
         rewardClaimed,
       };
 
-      // const [stakerRes, claimRes] = await Promise.all([
-      //   axios.post(`${api_base_url}/stakerData/add`, stakerData),
-      //   axios.post(`${api_base_url}/claimreward/add`, claimData),
-      // ]);
-  
-      // if (stakerRes.status === 200 && claimRes.status === 201) {
-      //   toast.success('Rewards claimed successfully!');
-      //   setClaimedPools((prev) => [...prev, _id]); // ✅ Hide button
-      // } else {
-      //   toast.error('Claim processed, but log request failed.');
-      // }
-      
       const stakerRes = await authAxios.post('/stakerData/add', stakerData, {
         headers: { 'Content-Type': 'application/json' },
       });
 
-      // ✅ Call /claimreward/add API
       const claimResponse = await authAxios.post('/claimreward/add', claimData, {
         headers: { 'Content-Type': 'application/json' },
       });
 
       if (claimResponse.status === 201) {
         toast.success('Rewards claimed successfully');
-        setClaimedPools((prev) => [...prev, _id]);
+        setClaimedPools((prev) => [...prev, args._id]);
+        await new Promise(r => setTimeout(r, 500));
+        await fetchData();
+        fetchBalance();
       } else {
         toast.error('Reward claim logged, but backend response was not OK.');
       }
@@ -406,6 +533,90 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       console.error('Error during claim:', error);
       const msg = error?.response?.data?.message || error?.message || 'Error during claim.';
       toast.error(msg);
+    } finally {
+      setIsClaimingId(null);
+    }
+  };
+
+  const handleClaimAndWithdraw = async (stakingContractId: number, _id: string) => {
+    try {
+      await ensureAuth();
+      setIsClaimingId(_id);
+      const poolData = stacks.find(s => s._id === _id);
+      const rewardTokenId = poolData?.rewardTokenId || FRY_ASSET_ID;
+      const rewardTokenName = poolData?.rewardTokenName || 'tokens';
+
+      const est = await estimateStakingReward(stakingContractId, activeAddress!, signer);
+      const rewardMicro = est.reward > 0 ? est.reward : 1_000_000;
+
+      await showFeeConfirmation('stakingClaim', rewardMicro, est.rewardTokenId || rewardTokenId, 6, rewardTokenName,
+        'Claim & Withdraw', { type: 'claimAndWithdraw', args: { stakingContractId, _id } });
+    } catch (error: any) {
+      console.error('Error during claim & withdraw:', error);
+      toast.error(error?.message || 'Error during claim & withdraw');
+      setIsClaimingId(null);
+    }
+  };
+
+  const executeClaimAndWithdraw = async (args: any) => {
+    try {
+      // Step 1: Claim rewards
+      const claimResult = await claimTokens(args.stakingContractId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
+
+      if (claimResult.error) {
+        toast.error('Claim failed. Withdrawal not attempted.');
+        return;
+      }
+
+      const rewardClaimed = claimResult.rewardClaimed || 0;
+      const stakedAmount = claimResult.stakedAmount || 0;
+      const stakedTime = claimResult.stakedTime || 0;
+
+      // Log claim to backend
+      await authAxios.post('/stakerData/add', {
+        walletId: activeAddress, stakedAmount, stakeTime: stakedTime,
+        poolId: args._id, rewardClaimed,
+      }, { headers: { 'Content-Type': 'application/json' } });
+
+      await authAxios.post('/claimreward/add', {
+        walletId: activeAddress, stakedAmount, stakedTime,
+        poolId: args._id, rewardClaimed,
+      }, { headers: { 'Content-Type': 'application/json' } });
+
+      // Step 2: Withdraw full staked amount (if any)
+      if (stakedAmount > 0) {
+        const config = await fetchFeeConfig();
+        const pool = stacks.find(s => s._id === args._id);
+        const stakeTokenId = pool?.stakeTokenId || FRY_ASSET_ID;
+        const withdrawFee = calculateFeeSimple('stakingWithdraw', stakedAmount, config);
+
+        const withdrawResult = await unstakeTokens(
+          args.stakingContractId, stakedAmount, activeAddress!, signer,
+          withdrawFee.feeAmount, stakeTokenId, withdrawFee.feeRecipient
+        );
+
+        if (withdrawResult instanceof Error) {
+          toast.warning('Rewards claimed but withdrawal failed: ' + withdrawResult.message);
+        } else {
+          await authAxios.post('/withdraw/add', {
+            tokens: stakedAmount / 1_000_000, wallet: activeAddress,
+            poolId: args._id, appId: Number(args.stakingContractId),
+          });
+          toast.success('Rewards claimed and tokens withdrawn!');
+        }
+      } else {
+        toast.success('Rewards claimed (no tokens to withdraw).');
+      }
+
+      setClaimedPools(prev => [...prev, args._id]);
+      await new Promise(r => setTimeout(r, 500));
+      await fetchData();
+      fetchBalance();
+    } catch (error: any) {
+      console.error('Error during claim & withdraw:', error);
+      toast.error(error?.message || 'Error during claim & withdraw');
+    } finally {
+      setIsClaimingId(null);
     }
   };
 
@@ -424,6 +635,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
   }
 
   return (
+    <>
     <Table<DataType>
       className="web-table"
       columns={columns}
@@ -463,7 +675,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                   {/* stake */}{/* withdraw */}
                   <div className="flex gap-[24px] w-full justify-end">
                     {
-                      (showExpandable === 'Live' || showExpandable === 'MyLive') &&
+                      (showExpandable === 'Live' || showExpandable === 'MyLive' || showExpandable === 'Ended' || showExpandable === 'MyEnded') &&
                       <div>
                         <div className="flex flex-col gap-[4px]">
                           <div className="bg-[var(--input-bg)] rounded-[10px] flex gap-[13px] items-center">
@@ -477,7 +689,8 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                               className="input-wrapper text-[16px] w-full max-w-[150px]"
                               disabled={isStaking} // 🔒 disable while staking
                             />
-                            <p className="text-text_clr medium">Max</p>
+                            <p className="text-text_clr medium cursor-pointer hover:text-[var(--text-primary)]"
+                               onClick={() => setStackValue(tokenBalances[String(record.key)] || 0)}>Max</p>
                             <Button
                               text={isStaking ? "Processing..." : "Stake"}
                               className="button btn-primary"
@@ -488,7 +701,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                             />
 
                           </div>
-                          <p className="text-text_clr e-small">Balance: {fryBalance} fry_token</p> {/* 🔹 Updated to show actual balance */}
+                          <p className="text-text_clr e-small">Balance: {tokenBalances[String(record.key)]?.toFixed(2) || '0'} token</p>
                         </div>
                         <div className="flex flex-col gap-[4px]">
                           <div className="bg-[var(--input-bg)] rounded-[10px] flex gap-[13px] items-center">
@@ -502,7 +715,8 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                               className="input-wrapper text-[16px] w-full max-w-[150px]"
                               disabled={isWithdrawing}
                             />
-                            <p className="text-text_clr medium">Max</p>
+                            <p className="text-text_clr medium cursor-pointer hover:text-[var(--text-primary)]"
+                               onClick={() => setWithdrawValue(Number(record.totalAmountStaked) || 0)}>Max</p>
                             <Button
                               text={isWithdrawing ? "Processing..." : "Withdraw"}
                               onClick={() => handleWithdraw(record.stakingContractId, record._id)}
@@ -513,33 +727,37 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                             />
                           </div>
                           <p className="text-text_clr e-small">
-                            In Pool: {record.totalAmountStaked ? record.totalAmountStaked.toFixed(2) : '0'} fry_token
+                            In Pool: {record.totalAmountStaked ? record.totalAmountStaked.toFixed(2) : '0'} token
                           </p>
                         </div>
                       </div>
                     }
-                    {/* Claim */}
+                    {/* Claim & Withdraw */}
 
                     <div className="flex gap-[10px]">
                       {
                         (showExpandable === 'Ended' || showExpandable === 'MyEnded') &&
-                        record.userAddress?.toLowerCase() === activeAddress?.toLowerCase() && (
+                        activeAddress && (
                           isClaimingId === record._id ? (
-                            <p className="text-blue-500 font-medium mt-2">Claiming...</p>
+                            <p className="text-blue-500 font-medium mt-2">Processing...</p>
                           ) : claimedPools.includes(record._id) ? (
                             <p className="text-green font-semibold mt-2">✅ Rewards Claimed</p>
                           ) : (
                             <Button
-                              text="Claim"
+                              text={rewardLoading[String(record.key)] ? "Checking..." : "Claim & Withdraw"}
                               data-id="claim"
                               onClick={() => {
-                                setIsClaimingId(record._id) // Show spinner/status
-                                handleClaim(record.stakingContractId, record._id).finally(() => setIsClaimingId(null))
+                                setIsClaimingId(record._id)
+                                handleClaimAndWithdraw(record.stakingContractId, record._id).finally(() => setIsClaimingId(null))
                               }}
                               className="button btn-primary"
                               height={45}
-                              width={106}
-                              disabled={!!isClaimingId} // disable button while claiming
+                              width={156}
+                              disabled={
+                                !!isClaimingId ||
+                                rewardLoading[String(record.key)] ||
+                                (estimatedRewards[String(record.key)] !== undefined && estimatedRewards[String(record.key)] <= 0)
+                              }
                             />
                           )
                         )
@@ -569,6 +787,17 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       dataSource={stacks}
       scroll={{ x: '1000px' }}
     />
+    <FeeConfirmation
+      visible={feeModalVisible}
+      onConfirm={executePendingAction}
+      onCancel={cancelFeeModal}
+      actionLabel={feeActionLabel}
+      feePercent={feeCalc?.feePercent ?? 0}
+      feeAmountFormatted={feeAmountFormatted}
+      netAmountFormatted={netAmountFormatted}
+      loading={feeLoading}
+    />
+    </>
   )
 })
 

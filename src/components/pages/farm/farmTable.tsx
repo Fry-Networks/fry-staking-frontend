@@ -8,6 +8,7 @@ import CreateFarmWizard from '../../../Modals/website/CreateFarmWizard';
 import { useWallet } from '@txnlab/use-wallet';
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService';
 
+
 // Helper function to validate image URL (outside component to avoid recreation)
 const isValidImageUrl = (url: string | undefined | null): boolean => {
   if (!url || typeof url !== 'string') return false;
@@ -71,7 +72,7 @@ const FarmTable: React.FC = () => {
           const endsInDays = Math.ceil(endsIn / 86400);
 
           const poolData = farm.totalStaked || 0;
-          const tvl = `$${(poolData)}`; // Calculate TVL here
+          const tvl = poolData > 0 ? `${(poolData / 1_000_000).toLocaleString()} LP` : '0 LP';
 
           // Get token IDs for LP tokens and reward token
           const tokenAId = farm.lpToken?.tokenAId?.toString() || farm.lpToken?.tokenA?.toString();
@@ -192,10 +193,14 @@ const FarmTable: React.FC = () => {
             staked: `$${(farm.totalStaked / 1_000_000).toFixed(2)}`,
             reward: (
               <div>
-                {(farm.rewardTokenAmount / 1_000_000).toFixed(2)} {farm.rewardToken?.id}
+                {(farm.rewardTokenAmount / 1_000_000).toFixed(2)} {farm.rewardTokenSymbol || farm.rewardToken?.name || 'tokens'}
               </div>
             ),
             ends: `${endsInDays} ${endsInDays === 1 ? 'day' : 'days'}`,
+            stakeTokenId: Number(farm.lpToken?.tokenAId || farm.lpToken?.tokenA || 0),
+            rewardTokenId: Number(farm.rewardToken?.id || farm.rewardTokenId || 0),
+            stakeTokenName: farm.lpPairName || `${farm.lpToken?.tokenA || 'Token A'} / ${farm.lpToken?.tokenB || 'Token B'}`,
+            rewardTokenName: farm.rewardTokenSymbol || farm.rewardToken?.name || 'Token',
           };
         });
 

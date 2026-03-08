@@ -6,6 +6,15 @@ import { authService } from '../services/AuthService';
 export function useAuth() {
   const { activeAddress, signer } = useWallet();
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
+  const [isAdmin, setIsAdmin] = useState(authService.isAdmin());
+
+  // Sync state from the initial checkAuth (fired in App.tsx)
+  useEffect(() => {
+    authService.checkAuth().then(() => {
+      setIsAuthenticated(authService.isAuthenticated());
+      setIsAdmin(authService.isAdmin());
+    });
+  }, []);
 
   // Clear auth only when wallet actually changes, not on every mount
   const prevAddressRef = useRef(activeAddress);
@@ -13,6 +22,7 @@ export function useAuth() {
     if (prevAddressRef.current !== activeAddress) {
       authService.clearAuth();
       setIsAuthenticated(false);
+      setIsAdmin(false);
       prevAddressRef.current = activeAddress;
     }
   }, [activeAddress]);
@@ -25,8 +35,10 @@ export function useAuth() {
     try {
       await authService.authenticate(activeAddress, signer);
       setIsAuthenticated(true);
+      setIsAdmin(authService.isAdmin());
     } catch (err: any) {
       setIsAuthenticated(false);
+      setIsAdmin(false);
       if (err.message?.includes('cancelled') || err.message?.includes('CANCELLED')) {
         toast.error('Sign-in was cancelled. Please approve the signature to continue.');
         throw err;
@@ -39,11 +51,13 @@ export function useAuth() {
   const clearAuth = useCallback(() => {
     authService.clearAuth();
     setIsAuthenticated(false);
+    setIsAdmin(false);
   }, []);
 
   return {
     ensureAuth,
     isAuthenticated,
+    isAdmin,
     clearAuth,
   };
 }

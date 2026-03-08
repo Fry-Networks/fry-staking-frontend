@@ -1,5 +1,5 @@
 import { toast } from 'react-toastify'
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
 import type { TableColumnsType } from 'antd'
@@ -7,12 +7,15 @@ import { Table } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import Button from '../../shared/button'
 import Input from '../../shared/input'
-import { stakeTokens, claimRewards, unstakeTokens } from '../../../farming_func'
+import { stakeTokens, claimRewards, unstakeTokens, getUserStakeForPool, getAlgodClient } from '../../../farming_func'
 import axios from 'axios'
 import algosdk from 'algosdk'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
 import { authAxios } from '../../../services/apiClient'
 import { useAuth } from '../../../hooks/useAuth'
+import { fetchFeeConfig, calculateFeeSimple } from '../../../services/FeeService'
+import type { FeeCalculation } from '../../../services/FeeService'
+import FeeConfirmation from '../../shared/FeeConfirmation'
 
 interface DataType {
   key: React.Key
@@ -25,6 +28,8 @@ interface DataType {
   _id: string
   appId: number
   farmEndTime: string
+  stakeTokenId?: number
+  rewardTokenId?: number
 }
 
 export type TabOption = 'MyLive' | 'MyEnded' | 'Live' | 'Ended' | 'All'
@@ -46,9 +51,19 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
   const [withdrawLoadingKeys, setWithdrawLoadingKeys] = useState<React.Key[]>([])
   const [userStakes, setUserStakes] = useState<{ [key: string]: number }>({})
   const [poolData, setPoolData] = useState<{ [key: string]: number }>({})
+  const [lpBalances, setLpBalances] = useState<{ [key: string]: number }>({})
   const [claimButtonDisabled, setClaimButtonDisabled] = useState<{ [key: string]: boolean }>({})
   const [claimingKeys, setClaimingKeys] = useState<React.Key[]>([])
   const [isOptedIn, setIsOptedIn] = useState<boolean | null>(null)
+
+  // Fee confirmation state
+  const [feeModalVisible, setFeeModalVisible] = useState(false)
+  const [feeCalc, setFeeCalc] = useState<FeeCalculation | null>(null)
+  const [feeLoading, setFeeLoading] = useState(false)
+  const [pendingAction, setPendingAction] = useState<{ type: string; args: any } | null>(null)
+  const [feeActionLabel, setFeeActionLabel] = useState('')
+  const [feeAmountFormatted, setFeeAmountFormatted] = useState('')
+  const [netAmountFormatted, setNetAmountFormatted] = useState('')
 
   const { providers, clients, activeAccount, activeAddress, signer } = useWallet()
   const { ensureAuth } = useAuth()
@@ -94,11 +109,27 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     }
   }
 
-  const handleToggleExpand = async (key: React.Key, appId?: number) => {
+  const fetchLpBalance = async (key: React.Key, stakeTokenId: number) => {
+    if (!activeAddress || !stakeTokenId) return
+    try {
+      const algod = getAlgodClient()
+      const assetInfo = await algod.accountAssetInformation(activeAddress, stakeTokenId).do()
+      const balance = Number(assetInfo?.['asset-holding']?.amount ?? 0)
+      setLpBalances((prev) => ({ ...prev, [String(key)]: balance / 1_000_000 }))
+    } catch {
+      setLpBalances((prev) => ({ ...prev, [String(key)]: 0 }))
+    }
+  }
+
+  const handleToggleExpand = async (key: React.Key, appId?: number, stakeTokenId?: number) => {
     if (expandedKeys.includes(key)) {
       setExpandedKeys((prev) => prev.filter((rowKey) => rowKey !== key))
     } else {
       setExpandedKeys([key])
+
+      if (stakeTokenId) {
+        fetchLpBalance(key, stakeTokenId)
+      }
 
       if (appId) {
         try {
@@ -141,27 +172,90 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     }
   }
 
+  const isStakingRef = useRef(false)
+
+  // Fee confirmation helpers
+
+  const showFeeConfirmation = async (actionType: string, amountMicro: number, tokenAsaId: number, tokenDecimals: number, tokenName: string, label: string, action: { type: string; args: any }) => {
+    try {
+      setFeeLoading(true)
+      const config = await fetchFeeConfig()
+      const fee = calculateFeeSimple(actionType, amountMicro, config)
+
+      setFeeCalc(fee)
+      const divisor = Math.pow(10, tokenDecimals)
+      setFeeAmountFormatted(`${(fee.feeAmount / divisor).toFixed(tokenDecimals > 2 ? 4 : 2)} ${tokenName}`)
+      setNetAmountFormatted(`${(fee.netAmount / divisor).toFixed(tokenDecimals > 2 ? 4 : 2)} ${tokenName}`)
+      setFeeActionLabel(label)
+      setPendingAction({ ...action, args: { ...action.args, feeAmount: fee.feeAmount, feeTokenId: tokenAsaId, feeRecipient: fee.feeRecipient } })
+      setFeeModalVisible(true)
+    } catch (error: any) {
+      toast.error(error?.message || 'Error calculating fee')
+    } finally {
+      setFeeLoading(false)
+    }
+  }
+
+  const cancelFeeModal = () => {
+    setFeeModalVisible(false)
+    setPendingAction(null)
+    setFeeCalc(null)
+    setFeeAmountFormatted('')
+    setNetAmountFormatted('')
+    isStakingRef.current = false
+  }
+
+  const executePendingAction = async () => {
+    if (!pendingAction || !feeCalc) return
+    setFeeModalVisible(false)
+    const { type, args } = pendingAction
+
+    if (type === 'stake') await executeStake(args)
+    else if (type === 'withdraw') await executeWithdraw(args)
+    else if (type === 'claim') await executeClaim(args)
+    else if (type === 'claimAndWithdraw') await executeClaimAndWithdraw(args)
+
+    setPendingAction(null)
+    setFeeCalc(null)
+  }
+
   const handleStake = async (record: DataType) => {
+    if (isStakingRef.current) return
+    isStakingRef.current = true
+
     const keyStr = String(record.key)
     const amountStr = stakeInput[keyStr] || '0'
     const floatAmount = parseFloat(amountStr)
 
     if (isNaN(floatAmount) || floatAmount <= 0) {
       toast.error('Invalid stake amount')
+      isStakingRef.current = false
       return
     }
 
-    const stakeAmount = BigInt(Math.floor(floatAmount * 1_000_000))
+    const stakeAmount = Math.floor(floatAmount * 1_000_000)
 
     try {
       await ensureAuth()
+      const tokenId = record.stakeTokenId || FRY_ASSET_ID
+      const tokenName = (record as any).stakeTokenName || 'tokens'
+      await showFeeConfirmation('farmingDeposit', stakeAmount, tokenId, 6, tokenName, `Stake ${floatAmount} ${tokenName}`, {
+        type: 'stake', args: { record, stakeAmount, floatAmount, keyStr }
+      })
+    } catch (err) {
+      console.error('Staking failed:', err)
+      toast.error('Staking failed. Please try again.')
+      isStakingRef.current = false
+    }
+  }
+
+  const executeStake = async (args: any) => {
+    const { record, stakeAmount, floatAmount, keyStr } = args
+    try {
       setStakeLoadingKeys((prev) => [...prev, record.key])
 
-      // Perform the on-chain staking
-      const tx = await stakeTokens(record.appId, Number(stakeAmount), activeAddress!, signer)
-      toast.success('Stake successful')
+      const tx = await stakeTokens(record.appId, stakeAmount, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
 
-      // Prepare staking data for DB (based on updated schema)
       const stakingData = {
         tokens: floatAmount,
         wallet: activeAddress!,
@@ -172,20 +266,17 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
         claimedAt: null,
       }
 
-      // Log staking data in DB after staking
       await authAxios.post('/stakingfarmingtoken/add', stakingData)
+      toast.success('Stake successful')
 
-      // Fetch the updated staking balance from the backend
       const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/stakingfarmingtoken/pool/${record.appId}/user/${activeAddress}`)
       const updatedStake = res.data?.totalStaked
 
-      // Update the state with the new staking data
       setUserStakes((prev) => ({
         ...prev,
         [String(record.key)]: updatedStake ? updatedStake : 0,
       }))
 
-      // Fetch updated pool data (TVL)
       const poolRes = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/stakingfarmingtoken/pool/${record.appId}`)
       const updatedTotalTokens = poolRes.data?.totalBalance || 0
       setPoolData((prev) => ({
@@ -193,14 +284,16 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
         [String(record.key)]: updatedTotalTokens,
       }))
 
-      // Clear stake input and fetch data again
       setStakeInput((prev) => ({ ...prev, [keyStr]: '' }))
+      await new Promise(r => setTimeout(r, 500));
       await fetchData()
+      if (record.stakeTokenId) fetchLpBalance(record.key, record.stakeTokenId)
     } catch (err) {
       console.error('Staking failed:', err)
       toast.error('Staking failed. Please try again.')
     } finally {
       setStakeLoadingKeys((prev) => prev.filter((k) => k !== record.key))
+      isStakingRef.current = false
     }
   }
 
@@ -208,24 +301,33 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     const keyStr = String(record.key)
     const withdrawAmountStr = withdrawInput[keyStr] || '0'
     const floatAmount = parseFloat(withdrawAmountStr)
-    const unstakeAmount = BigInt(Math.floor(floatAmount * 1_000_000))
 
-    if (unstakeAmount <= 0) {
+    if (isNaN(floatAmount) || floatAmount <= 0) {
       toast.error('Withdraw amount must be greater than zero')
       return
     }
 
     try {
       await ensureAuth()
+      const adjustedWithdrawValue = floatAmount * 1_000_000
+      const tokenId = record.stakeTokenId || FRY_ASSET_ID
+      const tokenName = (record as any).stakeTokenName || 'tokens'
+      await showFeeConfirmation('farmingWithdraw', adjustedWithdrawValue, tokenId, 6, tokenName, `Withdraw ${floatAmount} ${tokenName}`, {
+        type: 'withdraw', args: { record, adjustedWithdrawValue, floatAmount, keyStr }
+      })
+    } catch (err: any) {
+      console.error('Withdrawal failed:', err)
+      toast.error(`Withdrawal failed: ${err.message || 'Unknown error'}`)
+    }
+  }
+
+  const executeWithdraw = async (args: any) => {
+    const { record, adjustedWithdrawValue, floatAmount, keyStr } = args
+    try {
       setWithdrawLoadingKeys((prev) => [...prev, record.key])
 
-      const value = withdrawInput[keyStr] as unknown as number
-      const adjustedWithdrawValue = value * 1_000_000
+      const withdrawToken = await unstakeTokens(record.appId, adjustedWithdrawValue, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
 
-      // Call the function to unstake (withdraw tokens)
-      const withdrawToken = await unstakeTokens(record.appId, adjustedWithdrawValue, activeAddress!, signer)
-
-      // Log the withdrawal data to DB after the withdrawal is successful
       await authAxios.post('/farmingwithdraw/add', {
         amount: floatAmount,
         userWallet: activeAddress!,
@@ -235,17 +337,14 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
 
       toast.success('Withdraw successful')
 
-      // Fetch the updated staking balance from the backend
       const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/stakingfarmingtoken/pool/${record.appId}/user/${activeAddress}`)
       const updatedStake = res.data?.totalStaked
 
-      // Update the user stake balance for the pool
       setUserStakes((prev) => ({
         ...prev,
         [String(record.key)]: updatedStake ? updatedStake : 0,
       }))
 
-      // Fetch updated pool data (TVL) after withdrawal
       const poolRes = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/stakingfarmingtoken/pool/${record.appId}`)
       const updatedTotalTokens = poolRes.data?.totalBalance || 0
       setPoolData((prev) => ({
@@ -253,9 +352,10 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
         [String(record.key)]: updatedTotalTokens,
       }))
 
-      // Clear withdraw input and fetch data again
       setWithdrawInput((prev) => ({ ...prev, [keyStr]: '' }))
+      await new Promise(r => setTimeout(r, 500));
       await fetchData()
+      if (record.stakeTokenId) fetchLpBalance(record.key, record.stakeTokenId)
     } catch (err: any) {
       console.error('Withdrawal failed:', err)
       toast.error(`Withdrawal failed: ${err.message || 'Unknown error'}`)
@@ -264,63 +364,152 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     }
   }
 
-  // const handleClaim = async (record: DataType) => {
-  //   const keyStr = String(record.key);
-
-  //   try {
-  //     setClaimingKeys((prev) => [...prev, record.key]);  // Start claiming process
-
-  //     // Call your claim function here
-  //     await claimRewards(record.appId, activeAddress!, signer); // Assume claimRewards is defined
-
-  //     toast.success('Claim successful');
-
-  //     // Update state or refetch data if needed
-  //     await fetchData();
-
-  //   } catch (error: unknown) {
-  //     if (error instanceof Error) {
-  //       toast.error(`${error.message}`);
-  //     } else {
-  //       toast.error('Claim failed: Unknown error');
-  //     }
-  //   } finally {
-  //     setClaimingKeys((prev) => prev.filter(k => k !== record.key));  // End claiming process
-  //   }
-  // };
-
   const handleClaim = async (record: DataType) => {
-    const keyStr = String(record.key)
-
     try {
       await ensureAuth()
       setClaimingKeys((prev) => [...prev, record.key])
 
-      // Step 1: Claim from contract
-      const result:any = await claimRewards(record.appId, activeAddress!, signer)
+      const rewardTokenId = record.rewardTokenId || FRY_ASSET_ID
+
+      // Estimate reward for fee calculation
+      let rewardMicro = 1_000_000 // default 1 token
+      try {
+        const stakeInfo = await getUserStakeForPool(record.appId, activeAddress!, signer)
+        if (stakeInfo && stakeInfo.reward > 0) {
+          rewardMicro = Math.floor(stakeInfo.reward * 1_000_000)
+        }
+      } catch { /* use default */ }
+
+      const rewardTokenName = (record as any).rewardTokenName || 'tokens'
+      await showFeeConfirmation('farmingClaim', rewardMicro, rewardTokenId, 6, rewardTokenName, `Claim rewards`, {
+        type: 'claim', args: { record }
+      })
+    } catch (error: any) {
+      console.error('Claim failed:', error)
+      toast.error(error.message || 'Claim failed')
+      setClaimingKeys((prev) => prev.filter((k) => k !== record.key))
+    }
+  }
+
+  const executeClaim = async (args: any) => {
+    const { record } = args
+    try {
+      let result: any
+      try {
+        result = await claimRewards(record.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+      } catch (error: any) {
+        const msg = error?.message || ''
+        if (msg.includes('Farming not active') || msg.includes('assert') || msg.includes('logic eval error')) {
+          toast.error('This farm was created before the update — rewards cannot be claimed after the farm ended. Please contact support.')
+          return
+        }
+        throw error
+      }
       toast.success('Claim successful')
 
-      // Step 2: Fetch user box to get stake + reward data
       const userBox = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/stakingfarmingtoken/pool/${record.appId}/user/${activeAddress}`)
-
       const { totalStaked, stakeTime } = userBox.data || {}
 
-      // Step 3: Log claim to database
       const dbResult = await authAxios.post('/claimfarmrewards/add', {
         walletId: activeAddress,
         poolId: String(record.appId),
         stakedAmount: totalStaked || 0,
         stakeStartTime: stakeTime || Math.floor(Date.now() / 1000),
         claimTime: Math.floor(Date.now() / 1000),
-        rewardClaimed: Number(result?.claimedAmount || 0), // If your claimRewards returns claimedAmount
+        rewardClaimed: Number(result?.claimedAmount || 0),
       })
 
       console.log(dbResult)
-
+      await new Promise(r => setTimeout(r, 500));
       await fetchData()
     } catch (error: any) {
       console.error('Claim failed:', error)
       toast.error(error.message || 'Claim failed')
+    } finally {
+      setClaimingKeys((prev) => prev.filter((k) => k !== record.key))
+    }
+  }
+
+  const handleClaimAndWithdraw = async (record: DataType) => {
+    try {
+      await ensureAuth()
+      setClaimingKeys((prev) => [...prev, record.key])
+
+      const rewardTokenId = record.rewardTokenId || FRY_ASSET_ID
+
+      let rewardMicro = 1_000_000
+      try {
+        const stakeInfo = await getUserStakeForPool(record.appId, activeAddress!, signer)
+        if (stakeInfo && stakeInfo.reward > 0) {
+          rewardMicro = Math.floor(stakeInfo.reward * 1_000_000)
+        }
+      } catch { /* use default */ }
+
+      const rewardTokenName = (record as any).rewardTokenName || 'tokens'
+      await showFeeConfirmation('farmingClaim', rewardMicro, rewardTokenId, 6, rewardTokenName, 'Claim & Withdraw', {
+        type: 'claimAndWithdraw', args: { record }
+      })
+    } catch (error: any) {
+      console.error('Claim & Withdraw failed:', error)
+      toast.error(error.message || 'Claim & Withdraw failed')
+      setClaimingKeys((prev) => prev.filter((k) => k !== record.key))
+    }
+  }
+
+  const executeClaimAndWithdraw = async (args: any) => {
+    const { record } = args
+    try {
+      // Step 1: Claim rewards
+      try {
+        await claimRewards(record.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+      } catch (error: any) {
+        const msg = error?.message || ''
+        if (msg.includes('Farming not active') || msg.includes('assert') || msg.includes('logic eval error')) {
+          toast.error('This farm was created before the update — rewards cannot be claimed after the farm ended. Please contact support.')
+          return
+        }
+        throw error
+      }
+
+      const userBox = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/stakingfarmingtoken/pool/${record.appId}/user/${activeAddress}`)
+      const { totalStaked, stakeTime } = userBox.data || {}
+
+      await authAxios.post('/claimfarmrewards/add', {
+        walletId: activeAddress,
+        poolId: String(record.appId),
+        stakedAmount: totalStaked || 0,
+        stakeStartTime: stakeTime || Math.floor(Date.now() / 1000),
+        claimTime: Math.floor(Date.now() / 1000),
+        rewardClaimed: 0,
+      })
+
+      toast.success('Rewards claimed!')
+
+      // Step 2: Withdraw staked tokens
+      const stakedAmount = userStakes[String(record.key)] * 1_000_000
+      if (stakedAmount > 0) {
+        const config = await fetchFeeConfig()
+        const stakeTokenId = record.stakeTokenId || FRY_ASSET_ID
+        const stakeTokenName = (record as any).stakeTokenName || 'tokens'
+        const withdrawFee = calculateFeeSimple('farmingWithdraw', stakedAmount, config)
+
+        await unstakeTokens(record.appId, stakedAmount, activeAddress!, signer, withdrawFee.feeAmount, stakeTokenId, withdrawFee.feeRecipient)
+
+        await authAxios.post('/farmingwithdraw/add', {
+          amount: stakedAmount / 1_000_000,
+          userWallet: activeAddress!,
+          poolId: String(record.appId),
+          farmingTokenId: String(record.appId),
+        })
+
+        toast.success('Tokens withdrawn!')
+      }
+
+      await new Promise(r => setTimeout(r, 500))
+      await fetchData()
+    } catch (error: any) {
+      console.error('Claim & Withdraw failed:', error)
+      toast.error(error.message || 'Claim & Withdraw failed')
     } finally {
       setClaimingKeys((prev) => prev.filter((k) => k !== record.key))
     }
@@ -366,7 +555,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                   height={36}
                   color="#808080"
                   className="cursor-pointer"
-                  onClick={() => handleToggleExpand(record.key, record.appId)}
+                  onClick={() => handleToggleExpand(record.key, record.appId, record.stakeTokenId)}
                 />
               </div>
             ),
@@ -420,7 +609,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                         {/* Right */}
                         <div className="flex gap-[24px] w-full justify-end">
                           {/* Show Stake and Withdraw buttons only if the farm is still live */}
-                          {(showExpandable === 'Live' || showExpandable === 'MyLive') && (
+                          {(showExpandable === 'Live' || showExpandable === 'MyLive' || showExpandable === 'Ended' || showExpandable === 'MyEnded') && (
                             // (currentTime < farmEndTime) &&
                             <>
                               {/* Stake */}
@@ -434,7 +623,8 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                                     onChange={(e) => setStakeInput((prev) => ({ ...prev, [record.key]: e.target.value }))}
                                     className="input-wrapper text-[16px] w-full max-w-[150px]"
                                   />
-                                  <p className="text-text_clr medium">Max</p>
+                                  <p className="text-text_clr medium cursor-pointer hover:text-[var(--text-primary)]"
+                                     onClick={() => setStakeInput((prev) => ({ ...prev, [record.key]: String(lpBalances[String(record.key)] || 0) }))}>Max</p>
                                   <Button
                                     text={stakeLoadingKeys.includes(record.key) ? 'Staking...' : 'Stake'}
                                     className="button btn-primary"
@@ -444,7 +634,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                                     disabled={stakeLoadingKeys.includes(record.key)}
                                   />
                                 </div>
-                                <p className="text-text_clr e-small">Balance: {userStakes[String(record.key)]?.toFixed(2) || '0'} token</p>
+                                <p className="text-text_clr e-small">Balance: {lpBalances[String(record.key)]?.toFixed(2) || '0'} token</p>
                               </div>
 
                               {/* Withdraw */}
@@ -458,7 +648,8 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                                     onChange={(e) => setWithdrawInput((prev) => ({ ...prev, [record.key]: e.target.value }))}
                                     className="input-wrapper text-[16px] w-full max-w-[150px]"
                                   />
-                                  <p className="text-text_clr medium">Max</p>
+                                  <p className="text-text_clr medium cursor-pointer hover:text-[var(--text-primary)]"
+                                     onClick={() => setWithdrawInput((prev) => ({ ...prev, [record.key]: String(userStakes[String(record.key)] || 0) }))}>Max</p>
                                   <Button
                                     text={withdrawLoadingKeys.includes(record.key) ? 'Withdrawing...' : 'Withdraw'}
                                     className="button btn-primary"
@@ -468,7 +659,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                                     disabled={withdrawLoadingKeys.includes(record.key)}
                                   />
                                 </div>
-                                <p className="text-text_clr e-small">In Pool: {poolData[String(record.key)]?.toFixed(2) || '0'} token</p>
+                                <p className="text-text_clr e-small">In Pool: {userStakes[String(record.key)]?.toFixed(2) || '0'} token</p>
                               </div>
                             </>
                           )}
@@ -481,17 +672,26 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                           <br />
                           Now: {new Date(currentTime).toLocaleString()}
                         </p> */}
-                          {/* Show Claim button if the farm has ended */}
-                          {(showExpandable == 'Live' || showExpandable == 'MyLive') && (
-                            // {/* // (currentTime > farmEndTime) && */}
-                            <Button
-                              text={claimingKeys.includes(record.key) ? 'Claiming...' : 'Claim'} // Show 'Claiming...' during process
-                              className="button btn-primary"
-                              height={45}
-                              width={106}
-                              onClick={() => handleClaim(record)} // Call the claim function on button click
-                              // disabled={claimButtonDisabled[String(record.key)]} // Disable if farm is not ended
-                            />
+                          {/* Claim button */}
+                          <Button
+                            text={claimingKeys.includes(record.key) ? 'Claiming...' : 'Claim'}
+                            className="button btn-primary"
+                            height={45}
+                            width={106}
+                            onClick={() => handleClaim(record)}
+                            disabled={claimingKeys.includes(record.key)}
+                          />
+                          {/* Claim & Withdraw for ended farms */}
+                          {(showExpandable === 'Ended' || showExpandable === 'MyEnded') &&
+                            userStakes[String(record.key)] > 0 && (
+                              <Button
+                                text={claimingKeys.includes(record.key) ? 'Processing...' : 'Claim & Withdraw'}
+                                className="button btn-primary"
+                                height={45}
+                                width={156}
+                                onClick={() => handleClaimAndWithdraw(record)}
+                                disabled={claimingKeys.includes(record.key)}
+                              />
                           )}
 
                           <Button
@@ -514,6 +714,16 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
         expandIconColumnIndex={-1}
         dataSource={farms}
         scroll={{ x: '1000px' }}
+      />
+      <FeeConfirmation
+        visible={feeModalVisible}
+        onConfirm={executePendingAction}
+        onCancel={cancelFeeModal}
+        actionLabel={feeActionLabel}
+        feePercent={feeCalc?.feePercent ?? 0}
+        feeAmountFormatted={feeAmountFormatted}
+        netAmountFormatted={netAmountFormatted}
+        loading={feeLoading}
       />
     </div>
   )

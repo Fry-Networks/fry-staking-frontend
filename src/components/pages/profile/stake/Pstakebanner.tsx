@@ -13,21 +13,19 @@ const PStakebanner = () => {
 
   const fetchStats = async () => {
     try {
-      const [allPoolsRes, stakerDataRes] = await Promise.allSettled([
+      const [allPoolsRes, stakeStatsRes] = await Promise.allSettled([
         axios.get(`${api_base_url}/staking/all`),
-        axios.get(`${api_base_url}/stakerdata/${activeAddress}`),
+        axios.get(`${api_base_url}/stakingtoken/user-staking-stats/${activeAddress}`),
       ])
 
       const allPools = allPoolsRes.status === 'fulfilled' ? allPoolsRes.value.data?.data || [] : []
-      const stakerRecords = stakerDataRes.status === 'fulfilled' ? stakerDataRes.value.data?.data || [] : []
+      const stakeStats = stakeStatsRes.status === 'fulfilled' && stakeStatsRes.value.data?.success
+        ? stakeStatsRes.value.data.data : { totalTVL: 0, myStake: 0, myReward: 0 }
 
       const poolsCreated = allPools.filter((p: any) => p.creatorId?.toLowerCase() === activeAddress?.toLowerCase()).length
-      const totalTvl = allPools
-        .filter((p: any) => p.creatorId?.toLowerCase() === activeAddress?.toLowerCase())
-        .reduce((sum: number, p: any) => sum + (p.totalAmountStaked || 0), 0)
-
-      const myStakes = stakerRecords.reduce((sum: number, r: any) => sum + (r.stakedAmount || 0), 0) / 1_000_000
-      const myRewards = stakerRecords.reduce((sum: number, r: any) => sum + (r.rewardClaimed || 0), 0) / 1_000_000
+      const totalTvl = stakeStats.totalTVL
+      const myStakes = stakeStats.myStake
+      const myRewards = stakeStats.myReward
 
       setStats({ poolsCreated, totalTvl, myStakes, myRewards })
     } catch (error) {
@@ -38,7 +36,7 @@ const PStakebanner = () => {
   const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 })
 
   return (
-    <div className="m-auto flex max-sm:flex-col w-full justify-between gap-[10px] bg-[var(--card-bg,white)] rounded-[18px] py-[32px] max-sm:gap-[30px] px-[40px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]">
+    <div className="m-auto flex max-sm:flex-col w-full justify-between gap-[10px] bg-[var(--bg-card)] rounded-[18px] py-[32px] max-sm:gap-[30px] px-[40px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]">
       <div className="flex flex-col items-center gap-[24px] max-sm:gap-[6px]">
         <p className="text-[var(--text-secondary)] tracking-[0.54px] large">Pools Created</p>
         <h3 className="small text-[var(--text-primary)] font-medium tracking-[1.08px]">
@@ -48,7 +46,7 @@ const PStakebanner = () => {
       <div className="flex flex-col items-center gap-[24px] max-sm:gap-[6px]">
         <p className="text-[var(--text-secondary)] tracking-[0.54px] large">Stake TVL</p>
         <h3 className="small text-[var(--text-primary)] font-medium tracking-[1.08px]">
-          <span className="text-red">$</span>{fmt(stats.totalTvl)}
+          {fmt(stats.totalTvl)}
         </h3>
       </div>
       <div className="flex flex-col items-center gap-[24px] max-sm:gap-[6px]">

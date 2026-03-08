@@ -40,7 +40,7 @@ export class SwapService {
   }
 
   /**
-   * Perform swap with cascading fallback: FolksRouter → Vestige → Deflex
+   * Perform swap: quote all providers first (no wallet), then execute with the best one (single wallet pop-up)
    */
   async performSwap(
     fromAssetId: number | string,
@@ -51,49 +51,78 @@ export class SwapService {
   ): Promise<SwapResult> {
     const numericFromAssetId = typeof fromAssetId === 'string' ? parseInt(fromAssetId, 10) : fromAssetId;
     const numericToAssetId = typeof toAssetId === 'string' ? parseInt(toAssetId, 10) : toAssetId;
-    const errors: string[] = [];
 
-    // Try FolksRouter
-    try {
-      const result = await this.tryFolksRouterSwap(
-        numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps
-      );
-      if (result.success) return result;
-      errors.push(`FolksRouter: ${result.error}`);
-    } catch (e) {
-      errors.push(`FolksRouter: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    // Phase 1: Get quotes from all providers (no wallet interaction)
+    const quotes = await this.compareQuotes(numericFromAssetId, numericToAssetId, amount);
+
+    if (!quotes.bestProvider) {
+      return {
+        success: false,
+        error: 'No swap providers could quote this token pair. Try a different pair or amount.',
+        provider: 'folksrouter'
+      };
     }
 
-    console.log('FolksRouter failed, trying Vestige Labs...');
-
-    // Try Vestige
+    // Phase 2: Execute with the best provider only (single wallet pop-up)
+    const provider = quotes.bestProvider;
     try {
-      const result = await this.tryVestigeSwap(
-        numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps
-      );
-      if (result.success) return result;
-      errors.push(`Vestige: ${result.error}`);
+      if (provider === 'folksrouter' && quotes.folksRouter) {
+        return await this.tryFolksRouterSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
+      } else if (provider === 'vestige' && quotes.vestige) {
+        return await this.tryVestigeSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
+      } else if (provider === 'deflex' && quotes.deflex) {
+        return await this.tryDeflexSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
+      }
     } catch (e) {
-      errors.push(`Vestige: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-
-    console.log('Vestige failed, trying Deflex...');
-
-    // Try Deflex
-    try {
-      const result = await this.tryDeflexSwap(
-        numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps
-      );
-      if (result.success) return result;
-      errors.push(`Deflex: ${result.error}`);
-    } catch (e) {
-      errors.push(`Deflex: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'Swap failed',
+        provider
+      };
     }
 
     return {
       success: false,
-      error: errors.join('; '),
-      provider: 'folksrouter'
+      error: 'Swap execution failed. Please try again.',
+      provider
+    };
+  }
+
+  /**
+   * Execute swap with a pre-selected provider, skipping the redundant compareQuotes() call.
+   * Use this when the caller already knows the best provider from a prior quote comparison.
+   */
+  async performSwapWithProvider(
+    fromAssetId: number | string,
+    toAssetId: number | string,
+    amount: number,
+    userAddress: string,
+    provider: SwapProvider,
+    slippageBps: number = 10
+  ): Promise<SwapResult> {
+    const numericFromAssetId = typeof fromAssetId === 'string' ? parseInt(fromAssetId, 10) : fromAssetId;
+    const numericToAssetId = typeof toAssetId === 'string' ? parseInt(toAssetId, 10) : toAssetId;
+
+    try {
+      if (provider === 'folksrouter') {
+        return await this.tryFolksRouterSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
+      } else if (provider === 'vestige') {
+        return await this.tryVestigeSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
+      } else if (provider === 'deflex') {
+        return { success: false, error: 'Deflex temporarily unavailable', provider: 'deflex' };
+      }
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'Swap failed',
+        provider
+      };
+    }
+
+    return {
+      success: false,
+      error: 'Swap execution failed. Please try again.',
+      provider
     };
   }
 
@@ -225,43 +254,8 @@ export class SwapService {
     userAddress: string,
     slippageBps: number = 10
   ): Promise<SwapResult> {
-    try {
-      const quote = await this.deflexClient.fetchSwapQuote(fromAssetId, toAssetId, amount);
-      const txnGroup = await this.deflexClient.prepareSwapTransactions(
-        userAddress, quote, slippageBps
-      );
-
-      // Decode all transactions from base64
-      const unsignedTxns = txnGroup.txns.map(t =>
-        new Uint8Array(Buffer.from(t.data, 'base64'))
-      );
-
-      // Sign transactions (wallet signs all, then we merge lsig blobs)
-      const signedTxns = await this.walletSignTransactions(unsignedTxns);
-
-      // Merge: use pre-signed lsig blob where available, otherwise use wallet-signed txn
-      const finalTxns = txnGroup.txns.map((t, i) =>
-        t.hasLogicSig && t.logicSigBlob
-          ? new Uint8Array(Buffer.from(t.logicSigBlob, 'base64'))
-          : signedTxns[i]
-      );
-
-      const result = await this.algodClient.sendRawTransaction(finalTxns).do();
-
-      return {
-        success: true,
-        txId: result.txId,
-        provider: 'deflex',
-        quote
-      };
-    } catch (error) {
-      console.error('Deflex swap failed:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Deflex swap failed',
-        provider: 'deflex'
-      };
-    }
+    // Deflex API cert expired — skip until renewed
+    return { success: false, error: 'Deflex temporarily unavailable', provider: 'deflex' };
   }
 
   /**
@@ -310,8 +304,8 @@ export class SwapService {
         };
         return this.vestigeClient.fetchSwapQuote(vestigeParams);
       })(),
-      // Deflex quote
-      this.deflexClient.fetchSwapQuote(numericFromAssetId, numericToAssetId, amount),
+      // Deflex quote — skipped: api.deflex.fi SSL cert expired (external issue)
+      Promise.reject(new Error('Deflex temporarily disabled')),
     ]);
 
     if (folksResult.status === 'fulfilled') {

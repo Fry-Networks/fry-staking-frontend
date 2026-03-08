@@ -13,7 +13,7 @@ import { PeraWalletConnect } from '@perawallet/connect'
 import { Buffer } from 'buffer'
 import { DeflexOrderRouterClient } from '@deflex/deflex-sdk-js'
 import { getSwapRoute } from '@tinymanorg/tinyman-js-sdk'
-import { FolksRouterClient, Network, SwapMode, SwapParams, SwapQuote, SwapService } from '../../../contracts'
+import { FolksRouterClient, Network, SwapMode, SwapParams, SwapProvider, SwapQuote, SwapService } from '../../../contracts'
 import type { VestigeSwapQuote } from '../../../contracts/VestigeLabsClient'
 import type { DeflexQuote } from '../../../contracts/DeflexClient'
 import algosdk, { Algodv2, decodeUnsignedTransaction, generateAccount } from 'algosdk'
@@ -79,7 +79,7 @@ const SwapMain = () => {
   ];
 
   // NEW: pin FRY (env) and manage top/all lists
-  const FRY_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID ?? 0)
+  const FRY_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946
 
   const [allCurrencies, setAllCurrencies] = useState<Currency[]>(FALLBACK_CURRENCIES)
   const [topCurrencies, setTopCurrencies] = useState<Currency[]>(
@@ -114,7 +114,10 @@ const SwapMain = () => {
         const defaultTokensList = tokenService.getDefaultTokens();
         const defaultCurrencies = defaultTokensList.map(token => tokenService.convertToCurrency(token));
         setDefaultTokens(defaultCurrencies);
-        
+        // Set defaults synchronously before any await to prevent race conditions
+        setSelectedRewards((prev) => prev ?? defaultCurrencies[0]);
+        setSelectedAlgoRewards((prev) => prev ?? defaultCurrencies[1]);
+
         const { all, top } = await tokenService.getTokensSorted();
         
         // Pin FRY token to the top if it exists
@@ -143,11 +146,12 @@ const SwapMain = () => {
         const defaultTokensList = tokenService.getDefaultTokens();
         const defaultCurrencies = defaultTokensList.map(token => tokenService.convertToCurrency(token));
         setDefaultTokens(defaultCurrencies);
-        
-        setAllCurrencies(FALLBACK_CURRENCIES);
-        setTopCurrencies(FALLBACK_CURRENCIES.slice(0, 20));
+        // Set defaults synchronously before any further state updates
         setSelectedRewards((prev) => prev ?? defaultCurrencies[0] ?? FALLBACK_CURRENCIES[0]);
         setSelectedAlgoRewards((prev) => prev ?? (defaultCurrencies[1] ?? FALLBACK_CURRENCIES[1]));
+
+        setAllCurrencies(FALLBACK_CURRENCIES);
+        setTopCurrencies(FALLBACK_CURRENCIES.slice(0, 20));
       } finally {
         setIsLoadingTokens(false);
       }
@@ -172,6 +176,7 @@ const SwapMain = () => {
     algoRewards: useRef<HTMLDivElement | null>(null),
   }
   const [isSwapping, setIsSwapping] = useState(false)
+  const isSwappingRef = useRef(false)
   const [swapAmount, setSwapAmount] = useState('0')
   const [fromBalance, setFromBalance] = useState<string>('--')
   const [toBalance, setToBalance] = useState<string>('--')
@@ -183,12 +188,8 @@ const SwapMain = () => {
   const folksRouterClient = new FolksRouterClient(Network.MAINNET)
   const [tokenPerAlgo, setTokenPerAlgo] = useState<string>('0');
 
-  useEffect(() => {
-    if (allCurrencies.length > 1) {
-      setSelectedRewards((prev) => prev ?? allCurrencies[0]);
-      setSelectedAlgoRewards((prev) => prev ?? allCurrencies[1]);
-    }
-  }, [allCurrencies]);
+  // Removed: allCurrencies useEffect was causing a race condition by setting
+  // selectedRewards to ALGO before fetchTokensFromDatabase could set it to FRY.
 
   // Fetch wallet balances when tokens or wallet change
   useEffect(() => {
@@ -316,7 +317,11 @@ const SwapMain = () => {
   const [priceRate, setPriceRate] = useState<string>('0');
   const [currentProvider, setCurrentProvider] = useState<string>('folksrouter');
   const [isQuoteLoading, setIsQuoteLoading] = useState(false);
+  const [slippageBps, setSlippageBps] = useState<number>(50);
+  const [showSlippageSettings, setShowSlippageSettings] = useState(false);
   const quoteAbortRef = useRef(false);
+  const quoteTimestampRef = useRef<number>(0);
+  const swapServiceRef = useRef<SwapService | null>(null);
 
   useEffect(() => {
     quoteAbortRef.current = false;
@@ -342,12 +347,13 @@ const SwapMain = () => {
 
         if (isNaN(microAmount) || microAmount <= 0) return;
 
-        // Initialize SwapService to check provider support and get quotes
+        // Initialize SwapService (reuse via ref)
         const swapService = new SwapService({
           network: Network.MAINNET,
           algodClient: algodMain,
           walletSignTransactions: walletSignTransactions
         });
+        swapServiceRef.current = swapService;
 
         // Try to get quotes from both providers
         const quoteComparison = await swapService.compareQuotes(
@@ -408,14 +414,15 @@ const SwapMain = () => {
         // Calculate price rate (price per token)
         const rate = toAmount / fromAmount;
 
-        // Calculate minimum received (with 0.5% slippage)
-        const minReceivedAmount = toAmount * 0.995;
+        // Calculate minimum received (with user-configured slippage)
+        const minReceivedAmount = toAmount * (1 - slippageBps / 10000);
 
         setTokenPerAlgo(toAmount.toFixed(selectedAlgoRewards.decimals));
         setMinReceived(minReceivedAmount.toFixed(selectedAlgoRewards.decimals));
         setPriceRate(formatPrice(rate));
         setPriceImpact(priceImpactValue);
         setCurrentProvider(provider);
+        quoteTimestampRef.current = Date.now();
 
       } catch (error: any) {
         if (quoteAbortRef.current) return;
@@ -445,7 +452,7 @@ const SwapMain = () => {
           setIsQuoteLoading(false);
         }
       }
-    }, 500); // Debounce api calls by 500ms
+    }, 1500); // Debounce api calls by 1500ms to reduce rate-limit pressure
 
     return () => {
       clearTimeout(debounceTimer);
@@ -514,12 +521,23 @@ const SwapMain = () => {
   }
 
   const performSwap = async () => {
+    if (isSwappingRef.current) return
+    isSwappingRef.current = true
+
     if (!activeAddress) {
       toast.error("Please connect your wallet");
+      isSwappingRef.current = false
       return;
     }
     if (!selectedRewards || !selectedAlgoRewards) {
       toast.error("Please select both tokens.");
+      isSwappingRef.current = false
+      return;
+    }
+
+    if (selectedRewards.id === selectedAlgoRewards.id) {
+      toast.error("Cannot swap a token for itself. Please select different tokens.");
+      isSwappingRef.current = false
       return;
     }
 
@@ -578,20 +596,38 @@ const SwapMain = () => {
         toast.warning(`High price impact: ${impactPct.toFixed(1)}%`);
       }
 
-      // Initialize SwapService with fallback support
-      const swapService = new SwapService({
+      // Reuse SwapService from quote phase, or create a new one
+      const swapService = swapServiceRef.current ?? new SwapService({
         network: Network.MAINNET,
         algodClient: algodMain,
         walletSignTransactions: walletSignTransactions
       });
 
-      const result = await swapService.performSwap(
-        selectedRewards.id,
-        selectedAlgoRewards.id,
-        microAmount,
-        activeAddress,
-        10 // slippage in bps
-      );
+      // If the quote is fresh (<30s), use the already-known best provider directly
+      // to avoid a redundant compareQuotes() call that doubles API requests
+      const quoteAge = Date.now() - quoteTimestampRef.current;
+      const provider = (currentProvider as SwapProvider) || 'folksrouter';
+
+      let result;
+      if (quoteAge < 30000 && quoteTimestampRef.current > 0) {
+        result = await swapService.performSwapWithProvider(
+          selectedRewards.id,
+          selectedAlgoRewards.id,
+          microAmount,
+          activeAddress,
+          provider,
+          slippageBps
+        );
+      } else {
+        // Quote is stale or missing — fall back to full quote+swap
+        result = await swapService.performSwap(
+          selectedRewards.id,
+          selectedAlgoRewards.id,
+          microAmount,
+          activeAddress,
+          slippageBps
+        );
+      }
 
       if (result.success) {
         const providerName = { folksrouter: 'FolksRouter', vestige: 'Vestige Labs', deflex: 'Deflex' }[result.provider] || result.provider;
@@ -604,6 +640,7 @@ const SwapMain = () => {
       toast.error("Swap failed: " + (err.message || "Unknown error"));
     } finally {
       setIsSwapping(false);
+      isSwappingRef.current = false
     }
   }
 
@@ -615,7 +652,7 @@ const SwapMain = () => {
         </div>
 
         <div className="bottom flex gap-[16px] max-md:flex-col">
-          <div className="max-w-[35%] max-md:max-w-full w-full px-[24px] pt-[29px] pb-[19px] rounded-[22px] bg-white shadow-md">
+          <div className="max-w-[35%] max-md:max-w-full w-full px-[24px] pt-[29px] pb-[19px] rounded-[22px] bg-[var(--bg-card)] shadow-md">
 
 
             <p className="mt-[6px] text-text_clr medium tracking-[0.48px]">
@@ -625,7 +662,7 @@ const SwapMain = () => {
 
             <div className="dropdwon-swap relative mt-[24px] flex flex-col gap-[16px]">
               {/* Dropdown 1 */}
-              <div className="algo-div flex flex-col bg-[#F5F5F5] rounded-[12px] p-[7px]">
+              <div className="algo-div flex flex-col bg-[var(--input-bg)] rounded-[12px] p-[7px]">
                <div className="flex gap-[10px] items-center justify-between">
                 <input
                   type="number"
@@ -637,7 +674,7 @@ const SwapMain = () => {
                 />
                 <div className="relative inline-block text-left" ref={dropdownRefs.rewards}>
                   <div
-                    className="flex items-center justify-between gap-[13px] cursor-pointer bg-white w-[126px] h-[46px] rounded-[6px] py-[9px] px-[12px]"
+                    className="flex items-center justify-between gap-[13px] cursor-pointer bg-[var(--bg-card)] w-[126px] h-[46px] rounded-[6px] py-[9px] px-[12px]"
                     onClick={() => toggleDropdown('rewards')}
                   >
                     {selectedRewards ? (
@@ -656,7 +693,7 @@ const SwapMain = () => {
                     </div>
                   </div>
                   {isOpenDropdowns.rewards && (
-                    <div className="absolute right-0 mt-2 px-[11px] py-[9px] w-[300px]  bg-white rounded-[10px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] z-10">
+                    <div className="absolute right-0 mt-2 px-[11px] py-[9px] w-[300px]  bg-[var(--bg-card)] rounded-[10px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] z-10">
                       <div className="py-[7px] px-[9px] mb-[16px] flex items-center gap-[8px] rounded-[10px] bg-gray shadow-sm">
                         <Icon icon="si:search-line" color="#A8A8A8" width={22} height={22} />
                         <input
@@ -704,7 +741,7 @@ const SwapMain = () => {
                                     onClick={() => selectCurrency(currency, 'rewards')}
                                   >
                                     <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
-                                    <span className="text-black font-medium">{currency.label}</span>
+                                    <span className="text-[var(--text-primary)] font-medium">{currency.label}</span>
                                   </li>
                                 ))}
                                 <li className="px-4 py-2 text-center text-green-500 text-sm">
@@ -734,7 +771,7 @@ const SwapMain = () => {
                                     onClick={() => selectCurrency(currency, 'rewards')}
                                   >
                                     <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
-                                    <span className="text-black font-medium">{currency.label}</span>
+                                    <span className="text-[var(--text-primary)] font-medium">{currency.label}</span>
                                   </li>
                                 ))}
                                 {allCurrencies.length > 100 && (
@@ -759,7 +796,7 @@ const SwapMain = () => {
               </div>
 
               {/* Dropdown 2 (Read-only) */}
-              <div className="eth-div flex flex-col bg-[#F5F5F5] rounded-[12px] p-[7px]">
+              <div className="eth-div flex flex-col bg-[var(--input-bg)] rounded-[12px] p-[7px]">
                <div className="flex gap-[10px] items-center justify-between">
                 <div className="relative w-full">
                   {isQuoteLoading ? (
@@ -785,7 +822,7 @@ const SwapMain = () => {
 
                 <div className="relative inline-block text-left" ref={dropdownRefs.algoRewards}>
                   <div
-                    className="flex items-center justify-between gap-[13px] cursor-pointer bg-white w-[126px] h-[50px] rounded-[6px] py-[9px] px-[12px]"
+                    className="flex items-center justify-between gap-[13px] cursor-pointer bg-[var(--bg-card)] w-[126px] h-[50px] rounded-[6px] py-[9px] px-[12px]"
                     onClick={() => toggleDropdown('algoRewards')}
                   >
                     {selectedAlgoRewards ? (
@@ -805,7 +842,7 @@ const SwapMain = () => {
                   </div>
 
                   {isOpenDropdowns.algoRewards && (
-                    <div className="absolute right-0 mt-2 px-[11px] py-[9px] w-[300px] bg-white rounded-[10px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] z-10">
+                    <div className="absolute right-0 mt-2 px-[11px] py-[9px] w-[300px] bg-[var(--bg-card)] rounded-[10px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)] z-10">
                       <div className="py-[7px] px-[9px] mb-[16px] flex items-center gap-[8px] rounded-[10px] bg-gray shadow-sm">
                         <Icon icon="si:search-line" color="#A8A8A8" width={22} height={22} />
                         <input
@@ -854,7 +891,7 @@ const SwapMain = () => {
                                     onClick={() => selectCurrency(currency, 'algoRewards')}
                                   >
                                     <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
-                                    <span className="text-black font-medium">{currency.label}</span>
+                                    <span className="text-[var(--text-primary)] font-medium">{currency.label}</span>
                                   </li>
                                 ))}
                                 <li className="px-4 py-2 text-center text-green-500 text-sm">
@@ -884,7 +921,7 @@ const SwapMain = () => {
                                     onClick={() => selectCurrency(currency, 'algoRewards')}
                                   >
                                     <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
-                                    <span className="text-black font-medium">{currency.label}</span>
+                                    <span className="text-[var(--text-primary)] font-medium">{currency.label}</span>
                                   </li>
                                 ))}
                                 {allCurrencies.length > 100 && (
@@ -920,18 +957,18 @@ const SwapMain = () => {
                     setSwapAmount(tokenPerAlgo);
                   }
                 }}
-                className="absolute left-1/2 transform -translate-x-1/2 top-[50px] cursor-pointer bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors"
+                className="absolute left-1/2 transform -translate-x-1/2 top-[50px] cursor-pointer bg-[var(--bg-secondary)] p-2 rounded-full hover:bg-[var(--bg-card-hover)] transition-colors"
                 aria-label="Swap tokens"
               >
                 <Icon icon="mdi:swap-vertical" width={24} height={24} color="#718096" />
               </button>
             </div>
 
-            <div className="data-div flex flex-col gap-[10px] px-[16px] py-[11px] bg-[#F9F9F9] rounded-[12px] mt-[17px]">
+            <div className="data-div flex flex-col gap-[10px] px-[16px] py-[11px] bg-[var(--bg-secondary)] rounded-[12px] mt-[17px]">
               <div className="flex justify-between items-center gap-[10px]">
                 <p className="text-text_clr medium tracking-[0.48px]">Minimum received</p>
                 <div className="flex items-center gap-[2px]">
-                  <p className="text-black medium tracking-[0.48px] font-medium">
+                  <p className="text-[var(--text-primary)] medium tracking-[0.48px] font-medium">
                     {minReceived} {selectedAlgoRewards?.code || ''}
                   </p>
                 </div>
@@ -939,17 +976,76 @@ const SwapMain = () => {
               <div className="flex justify-between items-center gap-[10px]">
                 <p className="text-text_clr medium tracking-[0.48px]">Price</p>
                 <div className="flex items-center gap-[2px]">
-                  <p className="text-black medium tracking-[0.48px] font-medium">
+                  <p className="text-[var(--text-primary)] medium tracking-[0.48px] font-medium">
                     1 {selectedRewards?.code || ''} = {priceRate} {selectedAlgoRewards?.code || ''}
                   </p>
                 </div>
               </div>
               <div className="flex justify-between items-center gap-[10px]">
                 <p className="text-text_clr medium tracking-[0.48px]">Max slippage</p>
-                <div className="flex items-center gap-[2px]">
-                  <p className="text-green medium tracking-[0.48px] font-medium">0.5%</p>
+                <div
+                  className="flex items-center gap-[4px] cursor-pointer"
+                  onClick={() => setShowSlippageSettings(!showSlippageSettings)}
+                >
+                  <p className={`medium tracking-[0.48px] font-medium ${
+                    slippageBps > 100 ? 'text-yellow-500' : slippageBps < 10 ? 'text-yellow-500' : 'text-green'
+                  }`}>
+                    {(slippageBps / 100).toFixed(slippageBps % 100 === 0 ? 1 : 2)}%
+                  </p>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                    className="text-text_clr">
+                    <circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                  </svg>
                 </div>
               </div>
+              {showSlippageSettings && (
+                <div className="flex flex-col gap-[8px] mt-[8px] p-[12px] bg-[var(--bg-card)] rounded-[10px] border border-[var(--border-color)]">
+                  <div className="flex gap-[6px]">
+                    {[
+                      { label: '0.1%', bps: 10 },
+                      { label: '0.5%', bps: 50 },
+                      { label: '1.0%', bps: 100 },
+                    ].map(({ label, bps }) => (
+                      <button
+                        key={bps}
+                        onClick={() => setSlippageBps(bps)}
+                        className={`px-[12px] py-[4px] rounded-[8px] text-sm font-medium transition-colors ${
+                          slippageBps === bps
+                            ? 'bg-green text-white'
+                            : 'bg-[var(--bg-secondary)] text-text_clr hover:bg-[var(--bg-tertiary)]'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <div className="flex items-center gap-[4px] ml-auto">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.01"
+                        max="5"
+                        value={(slippageBps / 100).toString()}
+                        onChange={(e) => {
+                          const pct = parseFloat(e.target.value);
+                          if (!isNaN(pct)) {
+                            const bps = Math.round(Math.min(500, Math.max(1, pct * 100)));
+                            setSlippageBps(bps);
+                          }
+                        }}
+                        className="w-[60px] px-[8px] py-[4px] rounded-[8px] bg-[var(--bg-secondary)] text-text_clr text-sm text-right border border-[var(--border-color)] focus:outline-none focus:border-green"
+                      />
+                      <span className="text-text_clr text-sm">%</span>
+                    </div>
+                  </div>
+                  {slippageBps < 10 && (
+                    <p className="text-yellow-500 text-xs">Low slippage — transaction may fail</p>
+                  )}
+                  {slippageBps > 100 && (
+                    <p className="text-yellow-500 text-xs">High slippage — you may receive significantly less</p>
+                  )}
+                </div>
+              )}
               <div className="flex justify-between items-center gap-[10px]">
                 <p className="text-text_clr medium tracking-[0.48px]">Price impact</p>
                 <div className="flex items-center gap-[2px]">
@@ -964,12 +1060,12 @@ const SwapMain = () => {
 
             {/* Provider Indicator */}
             <div className="mt-[13px] mb-[8px] flex items-center justify-center">
-              <div className="flex items-center gap-[8px] px-[12px] py-[6px] bg-gray-100 rounded-[8px]">
+              <div className="flex items-center gap-[8px] px-[12px] py-[6px] bg-[var(--bg-secondary)] rounded-[8px]">
                 <div className={`w-[8px] h-[8px] rounded-full ${
                   currentProvider === 'folksrouter' ? 'bg-blue-500' :
                   currentProvider === 'vestige' ? 'bg-green-500' : 'bg-purple-500'
                 }`}></div>
-                <span className="text-[12px] text-gray-600 font-medium">
+                <span className="text-[12px] text-[var(--text-secondary)] font-medium">
                   Powered by {
                     currentProvider === 'folksrouter' ? 'FolksRouter' :
                     currentProvider === 'vestige' ? 'Vestige Labs' : 'Deflex'
@@ -981,10 +1077,10 @@ const SwapMain = () => {
             <Button text={isSwapping ? "Swapping..." : "Swap"} className="button btn-primary" height={53} width="100%" onClick={performSwap} loading={isSwapping} disabled={isSwapping} />
           </div>
 
-                     <div className="chart max-w-[65%] max-md:max-w-full w-full px-[24px] pt-[19px] pb-[21px] rounded-[22px] bg-white shadow-md">
+                     <div className="chart max-w-[65%] max-md:max-w-full w-full px-[24px] pt-[19px] pb-[21px] rounded-[22px] bg-[var(--bg-card)] shadow-md">
              <div className="flex justify-between items-start mb-[20px]">
                <div>
-                 <h4 className="text-black tracking-[0.96px] mt-[3px]">
+                 <h4 className="text-[var(--text-primary)] tracking-[0.96px] mt-[3px]">
                    {selectedRewards && selectedAlgoRewards ?
                      `${selectedRewards.code}/${selectedAlgoRewards.code} Chart` :
                      'Select Tokens'
@@ -992,7 +1088,7 @@ const SwapMain = () => {
                  </h4>
                  <p className="text-text_clr text-sm mt-1">
                    {selectedRewards && selectedAlgoRewards ?
-                     `Current Price: ${tokenPerAlgo} ${selectedAlgoRewards.code} per ${selectedRewards.code} (Vestige Labs)` :
+                     `Current Price: 1 ${selectedRewards.code} = ${priceRate} ${selectedAlgoRewards.code} (Vestige Labs)` :
                      'Choose tokens to see price chart'
                    }
                  </p>

@@ -1,6 +1,6 @@
 import type { TableColumnsType } from 'antd'
 import { Table } from 'antd'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 
 interface DataType {
@@ -18,27 +18,16 @@ interface PoolParticipantsProps {
 }
 
 const PoolParticipants: React.FC<PoolParticipantsProps> = ({ appId }) => {
-  const [data, setData] = useState<DataType[]>([])
+  const [rawData, setRawData] = useState<any[]>([])
   const api_base_url = import.meta.env.VITE_API_BASE_URL
 
   useEffect(() => {
     const fetchParticipants = async () => {
       try {
         const res = await axios.get(`${api_base_url}/stakingtoken/${appId}`)
-        console.log(res)
         const result = res.data?.data
-
         if (Array.isArray(result)) {
-          const formatted = result.map((item: any, index: number) => ({
-            key: index + 1,
-            joinDate: new Date(item.createdAt).toLocaleString(),
-            name: '-', // You can update this later
-            walletAddress: item.wallet || 'N/A',
-            stakedAmount: `${item.totalStaked ? (item.totalStaked / 1_000_000).toFixed(2) : '0.00'} `,
-            rewardsEarned: '-', // Add reward logic if available
-            status: 'Active',
-          }))
-          setData(formatted)
+          setRawData(result)
         }
       } catch (error) {
         console.error('Failed to fetch participants:', error)
@@ -47,6 +36,31 @@ const PoolParticipants: React.FC<PoolParticipantsProps> = ({ appId }) => {
 
     if (appId) fetchParticipants()
   }, [appId])
+
+  const data = useMemo<DataType[]>(() => {
+    const walletMap = new Map<string, { totalStaked: number; latestDate: string }>()
+    for (const item of rawData) {
+      const wallet = item.wallet || 'N/A'
+      const existing = walletMap.get(wallet)
+      const staked = item.totalStaked || 0
+      const date = item.createdAt || ''
+      if (existing) {
+        existing.totalStaked += staked
+        if (date > existing.latestDate) existing.latestDate = date
+      } else {
+        walletMap.set(wallet, { totalStaked: staked, latestDate: date })
+      }
+    }
+    return Array.from(walletMap.entries()).map(([wallet, info], index) => ({
+      key: index + 1,
+      joinDate: info.latestDate ? new Date(info.latestDate).toLocaleString() : '-',
+      name: '-',
+      walletAddress: wallet,
+      stakedAmount: `${info.totalStaked ? (info.totalStaked / 1_000_000).toFixed(2) : '0.00'} `,
+      rewardsEarned: '-',
+      status: 'Active',
+    }))
+  }, [rawData])
 
   const columns: TableColumnsType<DataType> = [
     {
