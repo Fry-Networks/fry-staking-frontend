@@ -9,7 +9,7 @@ const Stake = () => {
   const [totals, setTotals] = useState({ totalTvl: 0, totalStaked: 0, totalRewards: 0 })
   return (
     <>
-      <div className="relative overflow-hidden">
+      <div className="relative overflow-hidden min-h-screen flex flex-col">
         <PageBg />
         <Navbar />
         <StakeTable setTotals={setTotals} />

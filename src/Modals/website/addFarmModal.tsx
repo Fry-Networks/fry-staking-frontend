@@ -145,7 +145,7 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
       return
     }
 
-    if (Number(rewardAmount) <= 0) {
+    if (Number(String(rewardAmount).replace(/,/g, '')) <= 0) {
       toast.error('Reward amount must be greater than 0.')
       return
     }
@@ -225,7 +225,7 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
         lpTokenA: Number(lpTokenA),
         lpTokenB: Number(lpTokenB),
         rewardToken: Number(rewardToken),
-        rewardAmount: Number(rewardAmount) * 1_000_000,
+        rewardAmount: Number(String(rewardAmount).replace(/,/g, '')) * 1_000_000,
         apr: 1000,
         lockPeriod: lockPeriodSeconds,
         farmStart: start,
@@ -246,7 +246,7 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
         creatorId: activeAddress,
         lpToken: { tokenA: String(lpTokenA), tokenB: String(lpTokenB) },
         rewardToken: { id: String(rewardToken) },
-        rewardTokenAmount: Number(rewardAmount) * 1_000_000,
+        rewardTokenAmount: Number(String(rewardAmount).replace(/,/g, '')) * 1_000_000,
         farmStartTime: start,
         farmEndTime: end,
         duration: parseInt(farmDuration) * 86400,

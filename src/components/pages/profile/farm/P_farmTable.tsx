@@ -24,6 +24,9 @@ export interface ProfileFarmPool {
   endTime: number
   status: FarmStatus
   isCreator: boolean
+  appId: number
+  rewardTokenId: number
+  stakeTokenId: number
 }
 
 function computeStatus(endTime: number): FarmStatus {
@@ -73,8 +76,8 @@ const P_FarmTable: React.FC = () => {
 
       // stakeFarmingTokens.poolId = appId (number), so match against farm.appId
       const participatedAppIds = new Set(farmTokenRecords.map((r: any) => String(r.poolId)))
-      // Legacy claim records use farm._id
-      const claimedFarmPoolIds = new Set(claimRecords.map((r: any) => r.poolId))
+      // Legacy claim records use farm._id — ensure String coercion for consistent matching
+      const claimedFarmPoolIds = new Set(claimRecords.map((r: any) => String(r.poolId)))
 
       // Build image map from TokenService (DB → Pera → Tinyman fallback chain)
       const imageMap: Record<string, string> = {}
@@ -90,7 +93,7 @@ const P_FarmTable: React.FC = () => {
       // Filter: user created them OR user has participated (staked or claimed)
       const userFarms = allFarms.filter((farm: any) => {
         const isCreator = farm.creatorId?.toLowerCase() === activeAddress.toLowerCase()
-        const hasParticipated = participatedAppIds.has(String(farm.appId)) || claimedFarmPoolIds.has(farm._id)
+        const hasParticipated = participatedAppIds.has(String(farm.appId)) || claimedFarmPoolIds.has(String(farm._id))
         return isCreator || hasParticipated
       })
 
@@ -121,6 +124,9 @@ const P_FarmTable: React.FC = () => {
           endTime,
           status: computeStatus(endTime),
           isCreator,
+          appId: farm.appId,
+          rewardTokenId: Number(rewardTokenId) || 0,
+          stakeTokenId: Number(farm.stakeTokenId || farm.lpToken?.tokenAId) || 0,
         }
       })
 
@@ -151,7 +157,7 @@ const P_FarmTable: React.FC = () => {
         </div>
       </div>
 
-      <P_FTable data={pools} loading={loading} activeFilter={activeFilter} />
+      <P_FTable data={pools} loading={loading} activeFilter={activeFilter} onRefresh={fetchUserFarms} />
     </div>
   )
 }

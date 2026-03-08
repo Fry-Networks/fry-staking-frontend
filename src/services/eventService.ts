@@ -1,0 +1,200 @@
+import axios from 'axios'
+import { authAxios } from './apiClient'
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL as string
+const api = axios.create({ baseURL: API_BASE })
+
+export interface EventChallenge {
+  _id: string
+  eventId: string
+  type: string
+  name: string
+  description?: string
+  pointsMultiplier: number
+  enabled: boolean
+  config?: {
+    minAmount?: number
+    specificPoolIds?: string[]
+    specificTokenIds?: number[]
+    streakBonusPerDay?: number
+  }
+}
+
+export interface AirdropTier {
+  rank: number
+  rankEnd: number
+  rewardFry: number
+}
+
+export interface FryEvent {
+  _id: string
+  name: string
+  description?: string
+  status: 'draft' | 'scheduled' | 'active' | 'ended' | 'cancelled'
+  startDate?: string
+  endDate?: string
+  airdropPoolFry: number
+  airdropDistribution: 'proportional' | 'tiered'
+  airdropTiers?: AirdropTier[]
+  minPointsToQualify: number
+  bannerImage?: string
+  totalParticipants: number
+  lastPointsUpdate?: string
+  challenges?: EventChallenge[]
+  autoSchedule?: {
+    enabled: boolean
+    templateName?: string
+    recurrence?: 'daily' | 'weekly' | 'biweekly' | 'monthly'
+    nextRunDate?: string
+  }
+}
+
+export interface ChallengePointEntry {
+  challengeId: string
+  challengeType: string
+  points: number
+  lastCalculated?: string
+}
+
+export interface LeaderboardEntry {
+  _id: string
+  wallet: string
+  totalPoints: number
+  rank: number
+  challengePoints: ChallengePointEntry[]
+  airdropAmount?: number
+  airdropStatus?: string
+}
+
+export interface UserPoints {
+  _id: string
+  eventId: string
+  wallet: string
+  totalPoints: number
+  rank: number | null
+  challengePoints: ChallengePointEntry[]
+  airdropAmount?: number
+  airdropTxId?: string
+  airdropStatus?: string
+}
+
+export async function fetchActiveEvents(): Promise<FryEvent[]> {
+  const { data } = await api.get('/events/active')
+  return data.data
+}
+
+export async function fetchAllEvents(): Promise<FryEvent[]> {
+  const { data } = await api.get('/events')
+  return data.data
+}
+
+export async function fetchEventById(id: string): Promise<FryEvent> {
+  const { data } = await api.get(`/events/${id}`)
+  return data.data
+}
+
+export async function fetchLeaderboard(
+  eventId: string,
+  limit = 50,
+  offset = 0
+): Promise<{ entries: LeaderboardEntry[]; total: number }> {
+  const { data } = await api.get(`/events/${eventId}/leaderboard`, {
+    params: { limit, offset },
+  })
+  return data.data
+}
+
+export async function fetchUserPoints(
+  eventId: string,
+  wallet: string
+): Promise<UserPoints> {
+  const { data } = await api.get(`/events/${eventId}/points/${wallet}`)
+  return data.data
+}
+
+// ─── Admin payload interfaces ───
+
+export interface CreateEventPayload {
+  name: string
+  description?: string
+  startDate?: string
+  endDate?: string
+  airdropPoolFry?: number
+  airdropDistribution?: 'proportional' | 'tiered'
+  airdropTiers?: AirdropTier[]
+  minPointsToQualify?: number
+  autoSchedule?: FryEvent['autoSchedule']
+  bannerImage?: string
+  status?: 'draft' | 'scheduled'
+}
+
+export interface CreateChallengePayload {
+  type: string
+  name: string
+  description?: string
+  pointsMultiplier?: number
+  enabled?: boolean
+  config?: EventChallenge['config']
+}
+
+// ─── Admin API functions ───
+
+export async function createEvent(payload: CreateEventPayload): Promise<FryEvent> {
+  const { data } = await authAxios.post('/events', payload)
+  return data.data
+}
+
+export async function updateEvent(id: string, payload: Partial<CreateEventPayload>): Promise<FryEvent> {
+  const { data } = await authAxios.put(`/events/${id}`, payload)
+  return data.data
+}
+
+export async function deleteEvent(id: string): Promise<void> {
+  await authAxios.delete(`/events/${id}`)
+}
+
+export async function activateEvent(id: string): Promise<FryEvent> {
+  const { data } = await authAxios.post(`/events/${id}/activate`)
+  return data.data
+}
+
+export async function endEvent(id: string): Promise<FryEvent> {
+  const { data } = await authAxios.post(`/events/${id}/end`)
+  return data.data
+}
+
+export async function cancelEvent(id: string): Promise<FryEvent> {
+  const { data } = await authAxios.post(`/events/${id}/cancel`)
+  return data.data
+}
+
+export async function addChallenge(eventId: string, payload: CreateChallengePayload): Promise<EventChallenge> {
+  const { data } = await authAxios.post(`/events/${eventId}/challenges`, payload)
+  return data.data
+}
+
+export async function updateChallenge(challengeId: string, payload: Partial<CreateChallengePayload>): Promise<EventChallenge> {
+  const { data } = await authAxios.put(`/events/challenges/${challengeId}`, payload)
+  return data.data
+}
+
+export async function removeChallenge(challengeId: string): Promise<void> {
+  await authAxios.delete(`/events/challenges/${challengeId}`)
+}
+
+export async function triggerPointCalculation(eventId: string): Promise<void> {
+  await authAxios.post(`/events/${eventId}/calculate-points`)
+}
+
+export async function triggerAirdrop(eventId: string): Promise<void> {
+  await authAxios.post(`/events/${eventId}/airdrop`)
+}
+
+export async function uploadEventBanner(eventId: string, file: File): Promise<string> {
+  const form = new FormData()
+  form.append('banner', file)
+  const { data } = await authAxios.post(`/events/${eventId}/banner`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data.data.bannerImage
+}

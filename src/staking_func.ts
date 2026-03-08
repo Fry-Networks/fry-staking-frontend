@@ -230,49 +230,10 @@ export const initStaking = async (
 
 //!Marketplace functions
 const BOX_PRICE = 2500 + 400 * 64
-export const stakeTokens = async (stakingId: number, stakeAmount: number, sender: string, signer: TransactionSigner) => {
+export const stakeTokens = async (stakingId: number, stakeAmount: number, sender: string, signer: TransactionSigner, feeAmount: number, feeTokenId: number, feeRecipient: string) => {
   try {
     const { stakingClient, algorandClient } = await createFryStakingClient(signer, sender, stakingId)
     let globalState: any = await stakingClient.getGlobalState()
-
-    const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
-    const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
-
-    if (!fryTokenId || fryTokenId === 0n) {
-      throw new Error('Invalid FRY token ID: token ID cannot be zero. Check VITE_FRY_TOKEN_ID env var.')
-    }
-
-    const gasTx = await algorandClient.send.assetTransfer({
-      sender,
-      signer,
-      receiver: import.meta.env.VITE_FEE_RECIPIENT,
-      amount: gasFee,
-      assetId: fryTokenId,
-    });
-
-    await authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        appId: stakingId,
-        userId: sender,
-        gasAmount: Number(gasFee),
-        gasType: 'stakingStake'
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          console.log('Gas fee logged:', data);
-        } else {
-          console.warn('Gas fee log response:', data.message);
-        }
-      })
-      .catch((err) => {
-        console.error('Error logging gas fee:', err);
-      });
 
     const boxTx = await algorandClient.transactions.payment({
       receiver: algosdk.getApplicationAddress(stakingId),
@@ -295,6 +256,41 @@ export const stakeTokens = async (stakingId: number, stakeAmount: number, sender
       .stakeTokens({ stakeAmount, boxTx, updatedApr: Math.floor(updatedApr * 100), stakeAxfer: assetTransfer })
       .then((res) => res)
       .catch((e) => e)
+
+    // Only send fee if contract call succeeded
+    if (tx instanceof Error) {
+      return tx
+    }
+
+    // Send fee in the transacted token AFTER successful contract call
+    if (feeAmount > 0) {
+      await algorandClient.send.assetTransfer({
+        sender,
+        signer,
+        receiver: feeRecipient,
+        amount: BigInt(feeAmount),
+        assetId: BigInt(feeTokenId),
+      });
+
+      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appId: stakingId,
+          userId: sender,
+          gasAmount: feeAmount,
+          gasType: 'stakingStake',
+          feeType: 'percentage',
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) console.log('Fee logged:', data);
+          else console.warn('Fee log response:', data.message);
+        })
+        .catch((err) => console.error('Error logging fee:', err));
+    }
+
     return tx
   } catch (e) {
     console.error('Error in stakeTokens:', e)
@@ -307,7 +303,10 @@ export const unstakeTokens = async (
   stakingId: number,
   unstakeAmount: number,
   sender: string,
-  signer: TransactionSigner
+  signer: TransactionSigner,
+  feeAmount: number,
+  feeTokenId: number,
+  feeRecipient: string
 ) => {
   try {
     const { stakingClient, algorandClient, algodClient } = await createFryStakingClient(signer, sender, stakingId)
@@ -329,7 +328,7 @@ export const unstakeTokens = async (
       updatedApr = 0
     }
 
-    // ✅ 3. Call contract
+    // Call contract
     const tx = await stakingClient
       .unstakeTokens(
         { unstakeAmount, updatedApr: Math.floor(updatedApr * 100) },
@@ -337,6 +336,35 @@ export const unstakeTokens = async (
       )
       .then((res) => res)
       .catch((e) => e)
+
+    // Send fee in the transacted token AFTER contract call
+    if (feeAmount > 0) {
+      await algorandClient.send.assetTransfer({
+        sender,
+        signer,
+        receiver: feeRecipient,
+        amount: BigInt(feeAmount),
+        assetId: BigInt(feeTokenId),
+      });
+
+      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appId: stakingId,
+          userId: sender,
+          gasAmount: feeAmount,
+          gasType: 'stakingWithdraw',
+          feeType: 'percentage',
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) console.log('Fee logged:', data);
+          else console.warn('Fee log response:', data.message);
+        })
+        .catch((err) => console.error('Error logging fee:', err));
+    }
 
     return tx
   } catch (e) {
@@ -349,7 +377,10 @@ export const unstakeTokens = async (
 export const claimTokens = async (
   stakingId: number,
   sender: string,
-  signer: TransactionSigner
+  signer: TransactionSigner,
+  feeAmount: number,
+  feeTokenId: number,
+  feeRecipient: string
 ) => {
   try {
     const { stakingClient, algorandClient } = await createFryStakingClient(signer, sender, stakingId)
@@ -359,46 +390,7 @@ export const claimTokens = async (
     const stakedAmount = Number(stakerData?.stakedAmount)
     const stakeTime = Number(stakerData?.stakeTime)
 
-    const gasFee = BigInt(import.meta.env.VITE_GAS_FEE);
-    const fryTokenId = BigInt(import.meta.env.VITE_FRY_TOKEN_ID);
-
-    if (!fryTokenId || fryTokenId === 0n) {
-      throw new Error('Invalid FRY token ID: token ID cannot be zero. Check VITE_FRY_TOKEN_ID env var.')
-    }
-
-    const gasTx = await algorandClient.send.assetTransfer({
-      sender,
-      signer,
-      receiver: import.meta.env.VITE_FEE_RECIPIENT,
-      amount: gasFee,
-      assetId: fryTokenId,
-    });
-
-    await authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        appId: stakingId,
-        userId: sender,
-        gasAmount: Number(gasFee),
-        gasType: 'stakingRewards'
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          console.log('Gas fee logged:', data);
-        } else {
-          console.warn('Gas fee log response:', data.message);
-        }
-      })
-      .catch((err) => {
-        console.error('Error logging gas fee:', err);
-      });
-
-    // ✅ 2. Calculate reward
+    // Calculate reward
     const reward =
       stakedAmount *
       (globalState?.apr?.asNumber() / 10000) *
@@ -409,7 +401,7 @@ export const claimTokens = async (
       100 *
       ((86400 * 360) / globalState.poolTime.asNumber())
 
-    // ✅ 3. Call contract method
+    // Call contract method
     const tx = await stakingClient
       .claimTokens(
         { updatedApr: Math.floor(updatedApr * 100) },
@@ -418,7 +410,36 @@ export const claimTokens = async (
       .then((res) => res)
       .catch((e) => e)
 
-    // ✅ 4. Return useful data
+    // Send fee in the reward token AFTER contract call
+    if (feeAmount > 0) {
+      await algorandClient.send.assetTransfer({
+        sender,
+        signer,
+        receiver: feeRecipient,
+        amount: BigInt(feeAmount),
+        assetId: BigInt(feeTokenId),
+      });
+
+      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appId: stakingId,
+          userId: sender,
+          gasAmount: feeAmount,
+          gasType: 'stakingClaim',
+          feeType: 'percentage',
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) console.log('Fee logged:', data);
+          else console.warn('Fee log response:', data.message);
+        })
+        .catch((err) => console.error('Error logging fee:', err));
+    }
+
+    // Return useful data
     return {
       tx,
       updatedApr: Math.floor(updatedApr * 100),
@@ -432,6 +453,25 @@ export const claimTokens = async (
   }
 }
 
+
+export const estimateStakingReward = async (stakingId: number, sender: string, signer: TransactionSigner) => {
+  const { stakingClient } = await createFryStakingClient(signer, sender, stakingId)
+  const globalState: any = await stakingClient.getGlobalState()
+  const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946
+
+  try {
+    const stakerData = await getUserData(stakingId, sender)
+    const stakedAmount = Number(stakerData.stakedAmount)
+    const stakeTime = Number(stakerData.stakeTime)
+    const reward = stakedAmount *
+      (globalState?.apr?.asNumber() / 10000) *
+      ((Math.floor(Date.now() / 1000) - stakeTime) / 31104000)
+    const rewardTokenId = globalState?.rewardToken?.asNumber() || FRY_ASSET_ID
+    return { reward: Math.floor(reward), rewardTokenId }
+  } catch {
+    return { reward: 0, rewardTokenId: globalState?.rewardToken?.asNumber() || FRY_ASSET_ID }
+  }
+}
 
 /**
  * @deprecated takeOutAsset is not routed in the current TEAL contract.

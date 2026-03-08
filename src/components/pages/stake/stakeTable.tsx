@@ -7,12 +7,13 @@ import Button from '../../shared/button'
 import STable from './sTable'
 import Stakebanner from './stakebanner'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
+import { fetchPriceMap } from '../../../services/PriceService'
+
+const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 
 interface StakeTableProps {
   setTotals: (totals: { totalTvl: number; totalStaked: number; totalRewards: number }) => void
 }
-const USDC_ID = 31566704 // Algorand USDC ASA id
-
 // Helper function to validate image URL (outside component to avoid recreation)
 const isValidImageUrl = (url: string | undefined | null): boolean => {
   if (!url || typeof url !== 'string') return false;
@@ -30,7 +31,6 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
   const [isaddStakeOpen, setisaddStakeOpen] = useState(false)
   const [stacks, setStacks] = useState<any[]>([])
   const [originalData, setOriginalData] = useState<any[]>([])
-  const [currentTime, setCurrentTime] = useState(Math.floor(Date.now() / 1000))
   const [tvlData, setTvlData] = useState<{ [key: string]: number }>({}) // Token prices for TVL calculations
   const [tokenImages, setTokenImages] = useState<{ [key: string]: string }>({}) // Token images from database
   // const [activeTab, setActiveTab] = useState<'Live' | 'Ended' | 'All'>('Live')
@@ -59,7 +59,7 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
       const imageMap: { [key: string]: string } = {};
       
       tokens.forEach(token => {
-        priceMap[token.id.toString()] = token.price || 1; // Use token price or default to 1
+        priceMap[token.id.toString()] = token.price ?? 0;
         // Only use database image if it's valid, otherwise use Tinyman fallback
         const dbImage = token.image;
         if (isValidImageUrl(dbImage)) {
@@ -104,8 +104,7 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
     // }, 0)
 
     const totalRewards = filteredData.reduce((sum, item) => {
-      const reward = typeof item.reward === 'number' ? item.reward : parseFloat(item.reward?.props?.children?.[1]) || 0;
-      return sum + reward;
+      return sum + (item.rewardTokenAmount ? item.rewardTokenAmount / 1_000_000 : 0);
     }, 0);
 
     return { totalTvl, totalStaked, totalRewards }
@@ -127,40 +126,6 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
     return undefined
   }, [searchToken])
 
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      setCurrentTime(Math.floor(Date.now() / 1000))
-    }, 1000)
-    return () => clearInterval(intervalId)
-  }, [])
-
-  useEffect(() => {
-    if (originalData.length > 0) {
-      updateRewards()
-    }
-  }, [currentTime])
-
-  // const calculateReward = (stakingAmount: number, aprRate: number, stakingTime: number, currentTime: number): number => {
-  //   if (isNaN(stakingAmount) || isNaN(aprRate) || isNaN(stakingTime)) return 0
-  //   const normalizedStakeTime = (currentTime - stakingTime) / 31536000
-  //   const reward = stakingAmount * aprRate * normalizedStakeTime
-  //   return parseFloat(reward.toFixed(3))
-  // }
-
-  // const calculateReward = (
-  //   staked: number,
-  //   aprScaled: number, // APR in scaled form e.g. 1200000
-  //   secondsStaked: number
-  // ): number => {
-  //   const reward = (staked * aprScaled * ((secondsStaked * 100) / 31104000)) / 1_000_000
-  //   return Number(reward.toFixed(3))
-  // }
-
-  const calculateReward = (staked: number, aprScaled: number, secondsStaked: number) => {
-    const reward = (staked * aprScaled * (secondsStaked / 31104000)) / 1_000_000
-    return Number(reward.toFixed(3))
-  }
-
 
   const fetchAllPools = async () => {
     try {
@@ -174,79 +139,15 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
       console.error('Error fetching all pools:', error)
     }
   }
-async function fetchAlgoUsd(): Promise<number> {
-  const r = await axios.get('https://api1.binance.com/api/v3/ticker/price', {
-    params: { symbol: 'ALGOUSDT' },
-  })
-  return parseFloat(r.data?.price ?? '0')
-}
-
-async function fetchTinymanPool(a: number, b: number) {
-  // Tinyman Analytics v1 pool endpoint (order-insensitive, try both just in case)
-  const tryUrls = [
-    `https://mainnet.analytics.tinyman.org/api/v1/pool/${a}/${b}/`,
-    `https://mainnet.analytics.tinyman.org/api/v1/pool/${b}/${a}/`,
-  ]
-  for (const url of tryUrls) {
-    try {
-      const res = await axios.get(url, { timeout: 10000 })
-      if (res.status === 200 && res.data) return res.data
-    } catch {
-      // try next
-    }
-  }
-  throw new Error('Pool not found')
-}
-
-async function getAsaUsdPrice(asaId: number): Promise<number> {
-  try {
-    // 1) Prefer ASA/USDC pool -> direct USD price
-    const usdcPool = await fetchTinymanPool(asaId, USDC_ID)
-    const r = usdcPool?.reserves || usdcPool?.data?.reserves || usdcPool
-    const reserveA = Number(r?.[asaId] ?? r?.asset_1 ?? 0)
-    const reserveUSDC = Number(r?.[USDC_ID] ?? r?.asset_2 ?? 0)
-    if (reserveA > 0 && reserveUSDC > 0) {
-      return reserveUSDC / reserveA
-    }
-  } catch {
-    // ignore; fallback below
-  }
-
-  // 2) Fallback: ASA/ALGO pool -> multiply by ALGO/USD
-  const algoUsd = await fetchAlgoUsd()
-  const ALGO_ASSET_ID = 0 // ALGO is native (represented as 0 in Tinyman analytics)
-  const algoPool = await fetchTinymanPool(asaId, ALGO_ASSET_ID)
-  const r2 = algoPool?.reserves || algoPool?.data?.reserves || algoPool
-
-  // Detect which key is ASA vs ALGO
-  const reserveAsa =
-    Number(r2?.[asaId]) ??
-    Number(r2?.asset_1_id === asaId ? r2?.asset_1 : r2?.asset_2) ?? 0
-  const reserveAlgo =
-    Number(r2?.[ALGO_ASSET_ID]) ??
-    Number(r2?.asset_1_id === ALGO_ASSET_ID ? r2?.asset_1 : r2?.asset_2) ?? 0
-
-  if (reserveAsa > 0 && reserveAlgo > 0) {
-    const priceAsaInAlgo = reserveAlgo / reserveAsa
-    return priceAsaInAlgo * algoUsd
-  }
-
-  // 3) Last resort
-  return 1
-}
+// Price oracle functions moved to services/PriceService.ts
 // Updated processPoolData to use database token data
-const processPoolData = async (result: any[], images: { [key: string]: string } = {}) => {
+const processPoolData = async (result: any[], images: { [key: string]: string } = {}, prices: { [key: string]: number } = {}) => {
   const databaseImages = images;
 
   const transformedData = result.map((item: any, index: number) => {
     const now = Math.floor(Date.now() / 1000)
     const secondsLeft = item.stakingEndTime - now
     const daysLeft = Math.floor(secondsLeft / 86400)
-
-    const normalizedStakedAmount = item.totalAmountStaked
-    const secondsStaked = now - item.stakingTime
-    const scaledApr = item.aprRate
-    const finalReward = calculateReward(normalizedStakedAmount, scaledApr, secondsStaked)
 
     const stakeTokenId = (item?.stakeToken?.id ?? item?.stakeTokenId)?.toString()
     const rewardTokenId = (item?.rewardToken?.id ?? item?.rewardTokenId)?.toString()
@@ -263,9 +164,8 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       ? rewardDbImage 
       : `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`;
 
-    // Use database prices with fallback to calculated prices
-    const usdPrice = tvlData[stakeTokenId] || 1
-    const tvlUsd = normalizedStakedAmount * usdPrice
+    const usdPrice = prices[stakeTokenId] ?? tvlData[stakeTokenId] ?? 0
+    const tvlUsd = item.totalAmountStaked * usdPrice
 
     return {
       _id: item._id,
@@ -329,9 +229,14 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       ),
       tvl: `$ ${Number(tvlUsd.toFixed(3)).toString().replace(/(\.\d*?)0+$/, '$1')}`,
       apr: `${item.aprRate}%`,
-      staked: `$ ${Number(tvlUsd.toFixed(3)).toString().replace(/(\.\d*?)0+$/, '$1')}`,
+      staked: `${Number(item.totalAmountStaked.toFixed(2)).toLocaleString()} ${item?.stakeToken?.name || 'tokens'}`,
       poolTime: item.duration / 86400,
-      reward: Number(finalReward.toFixed(3)),
+      reward: (
+        <p className="text-text_clr text-[15px] font-medium">
+          {(item.rewardTokenAmount / 1_000_000).toLocaleString()} {item?.rewardToken?.name || 'tokens'}
+        </p>
+      ),
+      rewardTokenAmount: item.rewardTokenAmount,
       ends: (
         <p className="text-text_clr small font-medium">
           {daysLeft >= 0 ? `${Math.max(daysLeft, 1)} ${Math.max(daysLeft, 1) === 1 ? 'day' : 'days'}` : 'Ended'}
@@ -340,11 +245,14 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       stakingContractId: Number(item.stakingContractId),
       stakingTime: item.stakingTime,
       stakingEndTime: item.stakingEndTime,
-      tvlReward: finalReward * usdPrice,
       totalAmountStaked: item.totalAmountStaked,
       userAddress: item.creatorId,
       isGated: item.isGated || false,
       gateConfig: item.gateConfig || {},
+      stakeTokenId: Number(stakeTokenId) || FRY_ASSET_ID,
+      rewardTokenId: Number(rewardTokenId) || FRY_ASSET_ID,
+      stakeTokenName: item?.stakeToken?.name || 'Token',
+      rewardTokenName: item?.rewardToken?.name || 'Token',
     }
   })
 
@@ -354,24 +262,6 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
   const handleTabSwitch = (tab: TabOption) => {
     setActiveTab(tab);
   };
-
-  const updateRewards = () => {
-    const updatedData = filteredData.map((item) => {
-      //   const stakedInDollars = parseFloat(item.staked.replace('$', '').trim())
-      //   const finalReward = calculateReward(stakedInDollars, parseFloat(item.apr), item.stakingTime, currentTime)
-      const stakedInFRY = item.totalAmountStaked
-      const apr = parseFloat(item.apr) > 1 ? parseFloat(item.apr) / 100 : parseFloat(item.apr)
-      const secondsStaked = currentTime - item.stakingTime
-      const finalReward = calculateReward(stakedInFRY, apr, secondsStaked)
-
-      return {
-        ...item,
-        reward: <p className="text-text_clr text-[15px] font-medium">$ {finalReward.toFixed(3)}</p>,
-      }
-    })
-
-    setFilteredData(updatedData)
-  }
 
   const filterPools = (data: any[]) => {
     const now = Math.floor(Date.now() / 1000)
@@ -413,14 +303,27 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
   useEffect(() => {
     const loadData = async () => {
       const { imageMap } = await fetchTokenData()
-      // Fetch pools after token images are loaded, using the imageMap directly
-      // Use fetchAllPools but pass imageMap to ensure it uses the latest images
       try {
         const response = await axios.get(`${api_base_url}/staking/all`, {
           params: { tokenName: searchToken },
           headers: { 'Content-Type': 'application/json' },
         })
-        processPoolData(response.data.data, imageMap)
+        const pools = response.data.data
+
+        // Collect unique stake token ASA IDs and fetch real prices
+        const asaIds = [...new Set(pools.map((p: any) =>
+          Number(p?.stakeToken?.id ?? p?.stakeTokenId)
+        ).filter((id: number) => !isNaN(id) && id > 0))] as number[]
+
+        let realPrices: Record<string, number> = {}
+        try {
+          realPrices = await fetchPriceMap(asaIds)
+          setTvlData(prev => ({ ...prev, ...realPrices }))
+        } catch (err) {
+          console.error('Failed to fetch live prices:', err)
+        }
+
+        processPoolData(pools, imageMap, realPrices)
       } catch (error) {
         console.error('Error fetching all pools:', error)
       }

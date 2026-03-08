@@ -75,6 +75,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
   const [selectedRewards, setSelectedRewards] = useState<Currency | null>(null)
   const [selectedAlgoRewards, setSelectedAlgoRewards] = useState<Currency | null>(null)
   const [isVerifying, setIsVerifying] = useState(false)
+  const isVerifyingRef = useRef(false)
   const api_base_url = import.meta.env.VITE_API_BASE_URL;
 
   const dropdownRefs = {
@@ -298,6 +299,9 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
   }, [])
 
   const handleVerifyDetails = async () => {
+    if (isVerifyingRef.current) return
+    isVerifyingRef.current = true
+
     if (
       !selectedStakingToken ||
       !selectedRewards ||
@@ -308,18 +312,21 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
       !activeAddress
     ) {
       toast.error('Please fill in all the details')
+      isVerifyingRef.current = false
       return
     }
 
     // Validate that reward token is not ALGO (tokenId 0) as it requires special handling
     if (selectedRewards.tokenId === 0) {
       toast.error('ALGO cannot be used as a reward token. Please select a different token.')
+      isVerifyingRef.current = false
       return
     }
 
     // Validate reward amount
     if (reward <= 0) {
       toast.error('Reward amount must be greater than 0')
+      isVerifyingRef.current = false
       return
     }
 
@@ -538,6 +545,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
       })
     } finally {
       setIsVerifying(false)
+      isVerifyingRef.current = false
     }
   }
 

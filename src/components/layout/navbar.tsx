@@ -10,6 +10,8 @@ import Transact from '../Transact'
 import { useTheme } from '../../contexts/ThemeContext'
 import DailyRewardsModal from '../../Modals/website/DailyRewardsModal'
 import { fetchRewardsStatus } from '../../services/rewardsApi'
+import { fetchActiveEvents } from '../../services/eventService'
+import BetaBanner from '../shared/BetaBanner'
 
 const Navbar: React.FC = () => {
   const { isDark } = useTheme();
@@ -23,6 +25,7 @@ const Navbar: React.FC = () => {
   const [openDemoModal, setOpenDemoModal] = useState<boolean>(false);
   const [openRewardsModal, setOpenRewardsModal] = useState(false)
   const [rewardsAvailable, setRewardsAvailable] = useState(false)
+  const [hasActiveEvents, setHasActiveEvents] = useState(false)
   const { activeAddress } = useWallet();
 
   useEffect(() => {
@@ -35,6 +38,20 @@ const Navbar: React.FC = () => {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
+  }, [])
+
+  // Listen for openDailyRewards event from FeeConfirmation/FryFeeBanner
+  useEffect(() => {
+    const handler = () => setOpenRewardsModal(true)
+    window.addEventListener('openDailyRewards', handler)
+    return () => window.removeEventListener('openDailyRewards', handler)
+  }, [])
+
+  // Events notification badge
+  useEffect(() => {
+    fetchActiveEvents()
+      .then(events => setHasActiveEvents(events.length > 0))
+      .catch(() => {})
   }, [])
 
   // Rewards notification dot + auto-open
@@ -105,6 +122,19 @@ const Navbar: React.FC = () => {
                 }
               >
                 Farm
+              </NavLink>
+            </li>
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/events"
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase relative ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                Events
+                {hasActiveEvents && (
+                  <span className="absolute -top-1 -right-2 w-[8px] h-[8px] bg-[#DE0308] rounded-full" />
+                )}
               </NavLink>
             </li>
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
@@ -242,6 +272,20 @@ const Navbar: React.FC = () => {
             </li>
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
+                to="/events"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase relative ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                Events
+                {hasActiveEvents && (
+                  <span className="absolute -top-1 -right-2 w-[8px] h-[8px] bg-[#DE0308] rounded-full" />
+                )}
+              </NavLink>
+            </li>
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
                 to="/profile"
                 onClick={onClose}
                 className={({ isActive }) =>
@@ -337,6 +381,7 @@ const Navbar: React.FC = () => {
           }
         }}
       />
+      <BetaBanner />
     </>
   )
 }

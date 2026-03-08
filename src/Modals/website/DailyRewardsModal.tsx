@@ -61,6 +61,7 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
   const turnstileRef = useRef<HTMLDivElement | null>(null)
   const turnstileWidgetId = useRef<string | null>(null)
   const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const claimingRef = useRef(false)
 
   // Fetch config + status on open
   useEffect(() => {
@@ -171,9 +172,12 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
   }, [activeTab])
 
   const handleClaim = useCallback(async () => {
+    if (claimingRef.current) return
     if (!activeAddress || !status?.canClaim || claiming) return
+    claimingRef.current = true
     if (TURNSTILE_SITE_KEY && !turnstileToken) {
       toast.error('Please complete the CAPTCHA verification')
+      claimingRef.current = false
       return
     }
 
@@ -211,6 +215,7 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
       }
     } finally {
       setClaiming(false)
+      claimingRef.current = false
     }
   }, [activeAddress, status, claiming, turnstileToken, ensureAuth])
 
@@ -287,9 +292,10 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
         {/* Streak calendar */}
         <div className="grid grid-cols-7 gap-2">
           {rewardSchedule.slice(0, 7).map((amount, i) => {
-            const isCompleted = i < status.currentStreak
-            const isCurrent = i === status.currentStreak
-            const isFuture = i > status.currentStreak
+            const normalizedStreak = status.currentStreak % (status.maxStreak || 7)
+            const isCompleted = i < normalizedStreak
+            const isCurrent = i === normalizedStreak
+            const isFuture = i > normalizedStreak
 
             return (
               <div
