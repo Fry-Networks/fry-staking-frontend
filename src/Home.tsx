@@ -21,6 +21,7 @@ import FarmPoolStats from './pages/farmPoolStats'
 import Profile from './pages/profile'
 import Stake from './pages/stake'
 import StakePoolStats from './pages/stakePoolStats'
+import Events from './pages/events'
 import Swap from './pages/swap'
 import TransactionHistory from './pages/transactionHistory'
 
@@ -44,6 +45,10 @@ const appRouter = createBrowserRouter([
   {
     path: '/farm',
     element: <Farm />,
+  },
+  {
+    path: '/events',
+    element: <Events />,
   },
   {
     path: '/profile',

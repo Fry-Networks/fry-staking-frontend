@@ -61,6 +61,7 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
   const turnstileRef = useRef<HTMLDivElement | null>(null)
   const turnstileWidgetId = useRef<string | null>(null)
   const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const claimingRef = useRef(false)
 
   // Fetch config + status on open
   useEffect(() => {
@@ -171,9 +172,12 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
   }, [activeTab])
 
   const handleClaim = useCallback(async () => {
+    if (claimingRef.current) return
     if (!activeAddress || !status?.canClaim || claiming) return
+    claimingRef.current = true
     if (TURNSTILE_SITE_KEY && !turnstileToken) {
       toast.error('Please complete the CAPTCHA verification')
+      claimingRef.current = false
       return
     }
 
@@ -211,6 +215,7 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
       }
     } finally {
       setClaiming(false)
+      claimingRef.current = false
     }
   }, [activeAddress, status, claiming, turnstileToken, ensureAuth])
 
@@ -287,9 +292,10 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
         {/* Streak calendar */}
         <div className="grid grid-cols-7 gap-2">
           {rewardSchedule.slice(0, 7).map((amount, i) => {
-            const isCompleted = i < status.currentStreak
-            const isCurrent = i === status.currentStreak
-            const isFuture = i > status.currentStreak
+            const normalizedStreak = status.currentStreak % (status.maxStreak || 7)
+            const isCompleted = i < normalizedStreak
+            const isCurrent = i === normalizedStreak
+            const isFuture = i > normalizedStreak
 
             return (
               <div
@@ -450,6 +456,31 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
             </div>
             <div className="text-xl font-bold font-apex" style={{ color: 'var(--text-heading)' }}>
               {formatCountdown(cooldownSeconds)}
+            </div>
+          </div>
+        ) : status.hasActivePosition === false ? (
+          <div className="text-center py-4">
+            <div className="flex flex-col items-center gap-3">
+              <Icon icon="mdi:lock-outline" width={32} style={{ color: 'var(--text-secondary)' }} />
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Stake or farm any amount to unlock daily FRY rewards.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+                  style={{ backgroundColor: '#EF4444', border: 'none' }}
+                  onClick={() => { onClose(); window.location.href = '/stake'; }}
+                >
+                  Start Staking
+                </button>
+                <button
+                  className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                  style={{ borderColor: '#EF4444', color: '#EF4444', border: '2px solid #EF4444', background: 'transparent' }}
+                  onClick={() => { onClose(); window.location.href = '/farm'; }}
+                >
+                  Start Farming
+                </button>
+              </div>
             </div>
           </div>
         ) : (

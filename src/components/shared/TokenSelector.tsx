@@ -139,7 +139,10 @@ const TokenSelector: React.FC<TokenSelectorProps> = ({ label, selected, onSelect
           )}
 
           {!loading && !error && results.length === 0 && debouncedQuery.trim().length >= 2 && (
-            <div className="px-4 py-2 text-center text-gray-500 text-sm">No tokens found</div>
+            <div className="px-4 py-3 text-center text-sm">
+              <p className="text-gray-500">No tokens found for &ldquo;{debouncedQuery.trim()}&rdquo;</p>
+              <p className="text-gray-400 mt-1">Try searching by ASA ID instead (e.g. 31566704)</p>
+            </div>
           )}
 
           {!loading && !debouncedQuery.trim() && results.length > 0 && (

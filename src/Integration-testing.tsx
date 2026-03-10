@@ -57,7 +57,7 @@ const Home: React.FC<HomeProps> = () => {
 
   const stake = async () => {
     try {
-      const staking = await stakeTokens(stakingID, 1000 * 1000000, activeAddress!, signer)
+      const staking = await stakeTokens(stakingID, 1000 * 1000000, activeAddress!, signer, 1000000, 2485314946, '')
       console.log(staking)
     } catch (e) {
       console.log(e)
@@ -66,7 +66,7 @@ const Home: React.FC<HomeProps> = () => {
 
   const unstake = async () => {
     try {
-      const staking = await unstakeTokens(stakingID, 1000 * 1000000, activeAddress!, signer)
+      const staking = await unstakeTokens(stakingID, 1000 * 1000000, activeAddress!, signer, 1000000, 2485314946, '')
       console.log(staking)
     } catch (e) {
       console.log(e)
@@ -75,7 +75,7 @@ const Home: React.FC<HomeProps> = () => {
 
   const claim = async () => {
     try {
-      const staking = await claimTokens(stakingID, activeAddress!, signer)
+      const staking = await claimTokens(stakingID, activeAddress!, signer, 1000000, 2485314946, '')
       console.log(staking)
     } catch (e) {
       console.log(e)

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Icon } from '@iconify/react';
 import TokenSelector from './TokenSelector';
 import TokenImage from './TokenImage';
-import { lookupAsa, discoverLpTokens } from '../../services/TokenDiscoveryService';
+import { lookupAsa, discoverLpTokens, searchTokens } from '../../services/TokenDiscoveryService';
 import type { DiscoveredToken, LpPool } from '../../services/TokenDiscoveryService';
 
 interface LPTokenSelectorProps {
@@ -59,15 +59,43 @@ const LPTokenSelector: React.FC<LPTokenSelectorProps> = ({ onSelect }) => {
     }
   };
 
-  const handlePasteSelect = () => {
+  const handlePasteSelect = async () => {
     if (!pasteToken) return;
     const id = pasteToken.id;
     setPasteSelected(true);
+
+    // Try to resolve underlying pair from LP token name
+    // Tinyman format: "TinymanPool2.0 FRY-USDC"
+    let tokenAId = id;
+    let tokenBId = id;
+    let pairName = `${pasteToken.symbol} (LP)`;
+
+    const match = pasteToken.name.match(/^TinymanPool[\d.]+\s+(.+)-(.+)$/);
+    if (match) {
+      const [, symbolA, symbolB] = match;
+      try {
+        const [tokensA, tokensB] = await Promise.all([
+          searchTokens(symbolA),
+          searchTokens(symbolB),
+        ]);
+        const foundA = tokensA.find(t => t.symbol.toUpperCase() === symbolA.toUpperCase());
+        const foundB = tokensB.find(t => t.symbol.toUpperCase() === symbolB.toUpperCase());
+        if (foundA && foundB) {
+          tokenAId = foundA.id;
+          tokenBId = foundB.id;
+          pairName = `${foundA.symbol}/${foundB.symbol}`;
+        }
+      } catch (e) {
+        console.warn('Failed to resolve LP pair tokens:', e);
+      }
+    }
+
     onSelect({
-      lpTokenA: id,
-      lpTokenB: id,
+      lpTokenA: tokenAId,
+      lpTokenB: tokenBId,
       lpAsaId: id,
-      pairName: `${pasteToken.symbol} (LP)`,
+      dex: pasteToken.name.includes('Tinyman') ? 'Tinyman' : undefined,
+      pairName,
     });
   };
 

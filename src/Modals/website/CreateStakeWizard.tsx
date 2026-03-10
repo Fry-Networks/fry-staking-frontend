@@ -6,7 +6,12 @@ import dayjs from 'dayjs';
 import { useWallet } from '@txnlab/use-wallet';
 import { initStaking } from '../../staking_func';
 import { authAxios } from '../../services/apiClient';
+import { authFetch } from '../../services/apiClient';
 import { useAuth } from '../../hooks/useAuth';
+import { fetchFeeConfig, calculateFeeSimple, FEE_RECIPIENT } from '../../services/FeeService';
+import * as algokit from '@algorandfoundation/algokit-utils';
+import algosdk from 'algosdk';
+import { getAlgodConfigFromViteEnvironment } from '../../utils/network/getAlgoClientConfigs';
 import TokenSelector from '../../components/shared/TokenSelector';
 import TokenImage from '../../components/shared/TokenImage';
 import type { DiscoveredToken } from '../../services/TokenDiscoveryService';
@@ -188,10 +193,52 @@ const CreateStakeWizard: React.FC<CreateStakeWizardProps> = ({
       const durationSeconds = actualDuration * 86400;
       const lockPeriodSeconds = actualLock * 86400;
 
+      const rewardAmountMicro = Number(rewardAmount) * 1_000_000;
+
+      // Pool creation fee: 0.5% of reward tokens
+      const feeConfig = await fetchFeeConfig();
+      const feeCalc = calculateFeeSimple('poolCreation', rewardAmountMicro, feeConfig);
+
+      if (feeCalc.feeAmount > 0) {
+        const algodConfig = getAlgodConfigFromViteEnvironment();
+        const algorandClient = algokit.AlgorandClient.fromConfig({ algodConfig });
+        algorandClient.setDefaultSigner(signer);
+
+        if (rewardToken.id === 0) {
+          await algorandClient.send.payment({
+            sender: activeAddress,
+            signer,
+            receiver: FEE_RECIPIENT,
+            amount: algokit.microAlgos(feeCalc.feeAmount),
+          });
+        } else {
+          await algorandClient.send.assetTransfer({
+            sender: activeAddress,
+            signer,
+            receiver: FEE_RECIPIENT,
+            amount: BigInt(feeCalc.feeAmount),
+            assetId: BigInt(rewardToken.id),
+          });
+        }
+
+        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: activeAddress,
+            gasAmount: feeCalc.feeAmount,
+            gasType: 'poolCreationFee',
+            feeType: 'percentage',
+          }),
+        }).catch((err) => console.error('Error logging fee:', err));
+
+        toast.info(`Pool creation fee: ${(feeCalc.feeAmount / 1_000_000).toFixed(2)} ${rewardToken.symbol || 'tokens'} (${feeCalc.feePercent}%)`);
+      }
+
       const appId = await initStaking(
         stakeToken.id,
         rewardToken.id,
-        Number(rewardAmount) * 1_000_000,
+        feeCalc.netAmount,
         durationSeconds,
         start,
         lockPeriodSeconds,
@@ -209,7 +256,7 @@ const CreateStakeWizard: React.FC<CreateStakeWizardProps> = ({
         stakingEndTime: start + durationSeconds,
         duration: durationSeconds,
         aprRate: Math.floor(Number(desiredApr) * 100) / 100,
-        rewardTokenAmount: Number(rewardAmount) * 1_000_000,
+        rewardTokenAmount: feeCalc.netAmount,
         stakingContractId: String(appId),
         lockPeriod: lockPeriodSeconds,
         isGated,

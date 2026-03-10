@@ -6,6 +6,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL as string;
 class AuthService {
   private pendingAuth: Promise<void> | null = null;
   private _authenticated = false;
+  private _isAdmin = false;
   private _wallet: string | null = null;
   private checkAuthPromise: Promise<boolean> | null = null;
 
@@ -17,8 +18,13 @@ class AuthService {
     return this._wallet;
   }
 
+  isAdmin(): boolean {
+    return this._isAdmin;
+  }
+
   clearAuth(): void {
     this._authenticated = false;
+    this._isAdmin = false;
     this._wallet = null;
     this.pendingAuth = null;
     // Tell backend to clear the HttpOnly cookie
@@ -40,10 +46,12 @@ class AuthService {
       const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
       const data = await res.json();
       this._authenticated = data.authenticated === true;
+      this._isAdmin = data.isAdmin === true;
       this._wallet = data.wallet || null;
       return this._authenticated;
     } catch {
       this._authenticated = false;
+      this._isAdmin = false;
       this._wallet = null;
       return false;
     }
@@ -53,7 +61,10 @@ class AuthService {
     activeAddress: string,
     signer: TransactionSigner,
   ): Promise<void> {
-    if (this._authenticated && this._wallet === activeAddress) return;
+    if (this._authenticated && this._wallet === activeAddress) {
+      await this.checkAuth();
+      if (this._authenticated) return;
+    }
 
     // Coalesce concurrent auth attempts
     if (this.pendingAuth) return this.pendingAuth;
@@ -131,6 +142,9 @@ class AuthService {
 
     this._authenticated = true;
     this._wallet = activeAddress;
+
+    // Fetch admin status from /auth/me now that cookie is set
+    await this._checkAuth();
   }
 }
 

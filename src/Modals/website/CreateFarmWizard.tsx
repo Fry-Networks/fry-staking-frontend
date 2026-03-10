@@ -6,7 +6,12 @@ import dayjs from 'dayjs';
 import { useWallet } from '@txnlab/use-wallet';
 import * as farming from '../../farming_func';
 import { authAxios } from '../../services/apiClient';
+import { authFetch } from '../../services/apiClient';
 import { useAuth } from '../../hooks/useAuth';
+import { fetchFeeConfig, calculateFeeSimple, FEE_RECIPIENT } from '../../services/FeeService';
+import * as algokit from '@algorandfoundation/algokit-utils';
+import algosdk from 'algosdk';
+import { getAlgodConfigFromViteEnvironment } from '../../utils/network/getAlgoClientConfigs';
 import LPTokenSelector from '../../components/shared/LPTokenSelector';
 import TokenSelector from '../../components/shared/TokenSelector';
 import TokenImage from '../../components/shared/TokenImage';
@@ -183,7 +188,7 @@ const CreateFarmWizard: React.FC<CreateFarmWizardProps> = ({
       case 2:
         return farmStart !== null && actualDuration > 0 && Number(lockPeriod) > 0;
       case 3: {
-        const base = Number(desiredApr) > 0 && Number(rewardAmount) > 0;
+        const base = Number(desiredApr) > 0 && Number(String(rewardAmount).replace(/,/g, '')) > 0;
         if (!isAdvancedMode) return base;
         return base && Number(distributionRate) > 0 && (distributionType !== 'custom' || Number(customScheduleDays) > 0);
       }
@@ -229,12 +234,54 @@ const CreateFarmWizard: React.FC<CreateFarmWizardProps> = ({
 
       const fryToken = import.meta.env.VITE_FRY_TOKEN_ID;
 
+      const rewardAmountMicro = Number(String(rewardAmount).replace(/,/g, '')) * 1_000_000;
+
+      // Pool creation fee: 0.5% of reward tokens
+      const feeConfig = await fetchFeeConfig();
+      const feeCalc = calculateFeeSimple('poolCreation', rewardAmountMicro, feeConfig);
+
+      if (feeCalc.feeAmount > 0) {
+        const algodConfig = getAlgodConfigFromViteEnvironment();
+        const algorandClient = algokit.AlgorandClient.fromConfig({ algodConfig });
+        algorandClient.setDefaultSigner(signer);
+
+        if (rewardToken.id === 0) {
+          await algorandClient.send.payment({
+            sender: activeAddress,
+            signer,
+            receiver: FEE_RECIPIENT,
+            amount: algokit.microAlgos(feeCalc.feeAmount),
+          });
+        } else {
+          await algorandClient.send.assetTransfer({
+            sender: activeAddress,
+            signer,
+            receiver: FEE_RECIPIENT,
+            amount: BigInt(feeCalc.feeAmount),
+            assetId: BigInt(rewardToken.id),
+          });
+        }
+
+        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: activeAddress,
+            gasAmount: feeCalc.feeAmount,
+            gasType: 'poolCreationFee',
+            feeType: 'percentage',
+          }),
+        }).catch((err) => console.error('Error logging fee:', err));
+
+        toast.info(`Pool creation fee: ${(feeCalc.feeAmount / 1_000_000).toFixed(2)} ${rewardToken.symbol || 'tokens'} (${feeCalc.feePercent}%)`);
+      }
+
       // Deploy smart contract
       const result = await farming.initFarming(signer, activeAddress, {
         lpTokenA: lpSelection.lpTokenA,
         lpTokenB: lpSelection.lpTokenB,
         rewardToken: rewardToken.id,
-        rewardAmount: Number(rewardAmount) * 1_000_000,
+        rewardAmount: feeCalc.netAmount,
         apr: calculatedApr,
         lockPeriod: lockPeriodSeconds,
         farmStart: start,
@@ -254,7 +301,7 @@ const CreateFarmWizard: React.FC<CreateFarmWizardProps> = ({
         creatorId: activeAddress,
         lpToken: { tokenA: String(lpSelection.lpTokenA), tokenB: String(lpSelection.lpTokenB) },
         rewardToken: { id: String(rewardToken.id), name: rewardToken.name },
-        rewardTokenAmount: Number(rewardAmount) * 1_000_000,
+        rewardTokenAmount: feeCalc.netAmount,
         farmStartTime: start,
         farmEndTime: end,
         duration: durationSeconds,
@@ -574,9 +621,9 @@ const CreateFarmWizard: React.FC<CreateFarmWizardProps> = ({
               {isRewardOverridden && (
                 <p className="text-xs text-yellow-500">(manual override)</p>
               )}
-              {rewardToken && Number(rewardAmount) > 0 && (
+              {rewardToken && Number(String(rewardAmount).replace(/,/g, '')) > 0 && (
                 <p className="text-xs text-[var(--text-secondary)]">
-                  Will distribute {Number(rewardAmount).toLocaleString()} {rewardToken.symbol} total
+                  Will distribute {Number(String(rewardAmount).replace(/,/g, '')).toLocaleString()} {rewardToken.symbol} total
                 </p>
               )}
             </div>
@@ -695,17 +742,17 @@ const CreateFarmWizard: React.FC<CreateFarmWizardProps> = ({
               <div className="flex justify-between">
                 <span className="text-[var(--text-secondary)] text-sm">Reward Amount</span>
                 <span className="font-medium text-sm">
-                  {Number(rewardAmount).toLocaleString()} {rewardToken?.symbol || ''}
+                  {Number(String(rewardAmount).replace(/,/g, '')).toLocaleString()} {rewardToken?.symbol || ''}
                   {isRewardOverridden && <span className="text-yellow-500 text-xs ml-1">(manual)</span>}
                 </span>
               </div>
 
               {/* Reward Value */}
-              {effectivePrice && Number(rewardAmount) > 0 && (
+              {effectivePrice && Number(String(rewardAmount).replace(/,/g, '')) > 0 && (
                 <div className="flex justify-between">
                   <span className="text-[var(--text-secondary)] text-sm">Reward Value</span>
                   <span className="font-medium text-sm">
-                    ~${(Number(rewardAmount) * effectivePrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    ~${(Number(String(rewardAmount).replace(/,/g, '')) * effectivePrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </span>
                 </div>
               )}
