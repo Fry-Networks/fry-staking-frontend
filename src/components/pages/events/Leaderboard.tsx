@@ -73,7 +73,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ eventId, activeWallet }) => {
       align: 'right' as const,
       render: (points: number) => (
         <span className="text-[var(--text-heading)] font-medium">
-          {Math.floor(points).toLocaleString()}
+          {points >= 1 ? points.toLocaleString(undefined, { maximumFractionDigits: 2 }) : points.toFixed(4)}
         </span>
       ),
     },

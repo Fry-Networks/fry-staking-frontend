@@ -36,6 +36,7 @@ export interface RewardsStatus {
   totalClaims: number
   rewardSchedule: number[]
   circuitBreakerLevel: string
+  hasActivePosition: boolean
 }
 
 export interface ClaimResult {

@@ -17,6 +17,8 @@ import { useAuth } from '../../../hooks/useAuth'
 import { fetchFeeConfig, calculateFeeSimple } from '../../../services/FeeService'
 import type { FeeCalculation } from '../../../services/FeeService'
 import FeeConfirmation from '../../shared/FeeConfirmation'
+import StakeModal from '../../shared/StakeModal'
+import WithdrawModal from '../../shared/WithdrawModal'
 
 interface DataType {
   [x: string]: any
@@ -28,6 +30,7 @@ interface DataType {
   reward: string
   ends: string
   stakingContractId: number
+  stakeTokenName?: string
   _id: string
 }
 
@@ -67,6 +70,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
   const [isClaimingId, setIsClaimingId] = useState<string | null>(null); // Holds the _id of the pool being claimed
   const [estimatedRewards, setEstimatedRewards] = useState<Record<string, number>>({})
   const [rewardLoading, setRewardLoading] = useState<Record<string, boolean>>({})
+  const [userStakes, setUserStakes] = useState<Record<string, number>>({})
 
   // Fee confirmation state
   const [feeModalVisible, setFeeModalVisible] = useState(false)
@@ -76,6 +80,11 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
   const [feeActionLabel, setFeeActionLabel] = useState('')
   const [feeAmountFormatted, setFeeAmountFormatted] = useState('')
   const [netAmountFormatted, setNetAmountFormatted] = useState('')
+
+  // Modal state
+  const [stakeModalOpen, setStakeModalOpen] = useState(false)
+  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
+  const [modalTarget, setModalTarget] = useState<{ appId: number; stakeTokenId: number; stakeTokenName: string; userStake: number } | null>(null)
 
   const navigate = useNavigate()
 
@@ -93,16 +102,22 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
     )
     if (isExpanding) {
       if (stakeTokenId) fetchTokenBalance(key, stakeTokenId)
-      // Estimate reward for grey-out logic
-      if (activeAddress && signer) {
+      // Fetch user's individual staked amount from smart contract
+      if (activeAddress) {
         const pool = stacks.find(s => s.key === key)
         if (pool?.stakingContractId) {
           const k = String(key)
-          setRewardLoading(prev => ({ ...prev, [k]: true }))
-          estimateStakingReward(pool.stakingContractId, activeAddress, signer)
-            .then(est => setEstimatedRewards(prev => ({ ...prev, [k]: est.reward })))
-            .catch(() => {}) // on error, leave undefined = button stays enabled
-            .finally(() => setRewardLoading(prev => ({ ...prev, [k]: false })))
+          getUserData(pool.stakingContractId, activeAddress)
+            .then(data => setUserStakes(prev => ({ ...prev, [k]: Number(data.stakedAmount || 0) / 1_000_000 })))
+            .catch(() => setUserStakes(prev => ({ ...prev, [k]: 0 })))
+          // Estimate reward for grey-out logic
+          if (signer) {
+            setRewardLoading(prev => ({ ...prev, [k]: true }))
+            estimateStakingReward(pool.stakingContractId, activeAddress, signer)
+              .then(est => setEstimatedRewards(prev => ({ ...prev, [k]: est.reward })))
+              .catch(() => {}) // on error, leave undefined = button stays enabled
+              .finally(() => setRewardLoading(prev => ({ ...prev, [k]: false })))
+          }
         }
       }
     }
@@ -183,18 +198,15 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
   const columns: TableColumnsType<DataType> = [
     { title: <div className=" w-[350px]">Pool </div>, dataIndex: 'pool', key: 'pool' },
     {
-      title: (
-        <div className="flex items-center gap-[2px]">
-          TVL
-          <Icon icon="solar:arrow-down-outline" width={18} height={21} color="var(--text-primary)" />
-        </div>
-      ),
+      title: 'TVL',
       dataIndex: 'tvl',
       key: 'tvl',
+      sorter: (a, b) => (parseFloat(a.tvl.replace(/[$,\s]/g, '')) || 0) - (parseFloat(b.tvl.replace(/[$,\s]/g, '')) || 0),
+      defaultSortOrder: 'descend' as const,
       render: (value) => <p className="text-text_clr font-medium medium">{value}</p>,
     },
-    { title: 'APR', dataIndex: 'apr', key: 'apr', render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
-    { title: 'STAKED', dataIndex: 'staked', key: 'staked', render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
+    { title: 'APR', dataIndex: 'apr', key: 'apr', sorter: (a, b) => (parseFloat(a.apr) || 0) - (parseFloat(b.apr) || 0), render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
+    { title: 'STAKED', dataIndex: 'staked', key: 'staked', sorter: (a, b) => (a.totalAmountStaked || 0) - (b.totalAmountStaked || 0), render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
     {
       title: 'REWARD',
       dataIndex: 'reward',
@@ -207,6 +219,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
           title: 'ENDS',
           dataIndex: 'ends',
           key: 'ends',
+          sorter: (a: DataType, b: DataType) => (a.stakingEndTime || 0) - (b.stakingEndTime || 0),
           render: (value: string, record: DataType) => (
             <div className="flex items-center justify-between gap-[20px]">
               <div className="max-w-[71px]">
@@ -373,7 +386,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       return;
     }
 
-    const userStakedAmount = Number(poolData.totalAmountStaked) || 0;
+    const userStakedAmount = userStakes[String(poolData.key)] || 0;
 
     if (withdrawValue > userStakedAmount) {
       toast.error(`Withdraw amount exceeds staked amount (${userStakedAmount} fry_token)`);
@@ -648,93 +661,78 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
               <div className="expandable">
                 <div className="flex items-center gap-[10px] justify-between pr-[50px] max-xxxl:pr-[0px]">
 
-                <Button
-                        text="Staking Addr"
-                        className="button btn-red-border"
-                        height={45}
-                        width={156}
-                        onClick={() => {
-                          // Redirect to Pera Wallet (mobile/web compatible)
-                          window.open('https://explorer.perawallet.app/application/' + record.stakingContractId, '_blank');
-                        }}
-                      />
                   {/* Left */}
-                  {showExpandable === 'Live' && (
-                    <div className="flex flex-col gap-[4px]">
-                      <Button text="Get FRY" className="button btn-red-border" height={45} width={106} />
-                      {/* <a
-                  className="text-link underline small cursor-pointer"
-                  target="blank"
-                  href={`https://lora.algokit.io/${networkName}/application/${record.stakingContractId}`}
-                >
-                  Contract
-                </a> */}
-                    </div>
-                  )}
+                  <div className="flex flex-col gap-[4px]">
+                    <Button
+                      text={`Get ${record.stakeTokenName || 'Token'}`}
+                      className="button btn-red-border"
+                      height={45}
+                      width={156}
+                      onClick={() => window.open(
+                        `https://app.tinyman.org/#/swap?asset_in=0&asset_out=${record.stakeTokenId}`,
+                        '_blank'
+                      )}
+                    />
+                    <a
+                      href={`https://explorer.perawallet.app/application/${record.stakingContractId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline mt-1"
+                    >
+                      View Contract ↗
+                    </a>
+                  </div>
                   {/* Right */}
                   {/* stake */}{/* withdraw */}
                   <div className="flex gap-[24px] w-full justify-end">
                     {
                       (showExpandable === 'Live' || showExpandable === 'MyLive' || showExpandable === 'Ended' || showExpandable === 'MyEnded') &&
-                      <div>
-                        <div className="flex flex-col gap-[4px]">
-                          <div className="bg-[var(--input-bg)] rounded-[10px] flex gap-[13px] items-center">
-                            <Input
-                              type="number"
-                              name="number"
-                              placeholder="0"
-                              id="stake"
-                              value={stackValue || ''}
-                              onChange={(e) => setStackValue(Number(e.target.value))}
-                              className="input-wrapper text-[16px] w-full max-w-[150px]"
-                              disabled={isStaking} // 🔒 disable while staking
-                            />
-                            <p className="text-text_clr medium cursor-pointer hover:text-[var(--text-primary)]"
-                               onClick={() => setStackValue(tokenBalances[String(record.key)] || 0)}>Max</p>
-                            <Button
-                              text={isStaking ? "Processing..." : "Stake"}
-                              className="button btn-primary"
-                              onClick={() => handleStack(record.stakingContractId, record._id)}
-                              height={45}
-                              width={106}
-                              disabled={isStaking} // 🔒 disable button
-                            />
-
-                          </div>
-                          <p className="text-text_clr e-small">Balance: {tokenBalances[String(record.key)]?.toFixed(2) || '0'} token</p>
-                        </div>
-                        <div className="flex flex-col gap-[4px]">
-                          <div className="bg-[var(--input-bg)] rounded-[10px] flex gap-[13px] items-center">
-                            <Input
-                              type="number"
-                              name="number"
-                              id="withdraw"
-                              value={withdrawValue}
-                              onChange={(e) => setWithdrawValue(Number(e.target.value))}
-                              placeholder="0"
-                              className="input-wrapper text-[16px] w-full max-w-[150px]"
-                              disabled={isWithdrawing}
-                            />
-                            <p className="text-text_clr medium cursor-pointer hover:text-[var(--text-primary)]"
-                               onClick={() => setWithdrawValue(Number(record.totalAmountStaked) || 0)}>Max</p>
-                            <Button
-                              text={isWithdrawing ? "Processing..." : "Withdraw"}
-                              onClick={() => handleWithdraw(record.stakingContractId, record._id)}
-                              className="button btn-primary"
-                              height={45}
-                              width={106}
-                              disabled={isWithdrawing}
-                            />
-                          </div>
-                          <p className="text-text_clr e-small">
-                            In Pool: {record.totalAmountStaked ? record.totalAmountStaked.toFixed(2) : '0'} token
-                          </p>
-                        </div>
+                      <div className="flex gap-[10px]">
+                        <Button
+                          text="Stake"
+                          className="button btn-primary"
+                          height={45}
+                          width={106}
+                          onClick={() => {
+                            setModalTarget({
+                              appId: record.stakingContractId,
+                              stakeTokenId: record.stakeTokenId || FRY_ASSET_ID,
+                              stakeTokenName: record.stakeTokenName || 'tokens',
+                              userStake: userStakes[String(record.key)] || 0,
+                            })
+                            setStakeModalOpen(true)
+                          }}
+                        />
+                        <Button
+                          text="Withdraw"
+                          className="button btn-primary"
+                          height={45}
+                          width={106}
+                          onClick={() => {
+                            setModalTarget({
+                              appId: record.stakingContractId,
+                              stakeTokenId: record.stakeTokenId || FRY_ASSET_ID,
+                              stakeTokenName: record.stakeTokenName || 'tokens',
+                              userStake: userStakes[String(record.key)] || 0,
+                            })
+                            setWithdrawModalOpen(true)
+                          }}
+                        />
                       </div>
                     }
                     {/* Claim & Withdraw */}
 
                     <div className="flex gap-[10px]">
+                      {activeAddress && (
+                        <Button
+                          text={isClaimingId === record._id ? 'Claiming...' : 'Claim'}
+                          className="button btn-primary"
+                          height={45}
+                          width={106}
+                          onClick={() => handleClaim(record.stakingContractId, record._id)}
+                          disabled={!!isClaimingId}
+                        />
+                      )}
                       {
                         (showExpandable === 'Ended' || showExpandable === 'MyEnded') &&
                         activeAddress && (
@@ -797,6 +795,29 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       netAmountFormatted={netAmountFormatted}
       loading={feeLoading}
     />
+    {modalTarget && (
+      <>
+        <StakeModal
+          visible={stakeModalOpen}
+          onClose={() => { setStakeModalOpen(false); setModalTarget(null) }}
+          onSuccess={async () => { setStakeModalOpen(false); setModalTarget(null); await fetchData(); fetchBalance() }}
+          appId={modalTarget.appId}
+          stakeTokenId={modalTarget.stakeTokenId}
+          stakeTokenName={modalTarget.stakeTokenName}
+          isLpFarm={false}
+        />
+        <WithdrawModal
+          visible={withdrawModalOpen}
+          onClose={() => { setWithdrawModalOpen(false); setModalTarget(null) }}
+          onSuccess={async () => { setWithdrawModalOpen(false); setModalTarget(null); await fetchData(); fetchBalance() }}
+          appId={modalTarget.appId}
+          stakeTokenId={modalTarget.stakeTokenId}
+          stakeTokenName={modalTarget.stakeTokenName}
+          userStake={modalTarget.userStake}
+          isLpFarm={false}
+        />
+      </>
+    )}
     </>
   )
 })

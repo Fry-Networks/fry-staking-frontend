@@ -458,6 +458,31 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
               {formatCountdown(cooldownSeconds)}
             </div>
           </div>
+        ) : status.hasActivePosition === false ? (
+          <div className="text-center py-4">
+            <div className="flex flex-col items-center gap-3">
+              <Icon icon="mdi:lock-outline" width={32} style={{ color: 'var(--text-secondary)' }} />
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Stake or farm any amount to unlock daily FRY rewards.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
+                  style={{ backgroundColor: '#EF4444', border: 'none' }}
+                  onClick={() => { onClose(); window.location.href = '/stake'; }}
+                >
+                  Start Staking
+                </button>
+                <button
+                  className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                  style={{ borderColor: '#EF4444', color: '#EF4444', border: '2px solid #EF4444', background: 'transparent' }}
+                  onClick={() => { onClose(); window.location.href = '/farm'; }}
+                >
+                  Start Farming
+                </button>
+              </div>
+            </div>
+          </div>
         ) : (
           <button
             className="w-full py-3 rounded-lg font-bold font-apex text-white text-base transition-all cursor-pointer"

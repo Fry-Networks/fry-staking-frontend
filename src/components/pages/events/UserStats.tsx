@@ -44,7 +44,11 @@ const UserStats: React.FC<UserStatsProps> = ({ eventId, wallet }) => {
         <div className="text-center">
           <p className="text-text_clr text-sm mb-1">Total Points</p>
           <p className="text-[var(--text-heading)] text-3xl font-bold font-apex">
-            {points?.totalPoints ? Math.floor(points.totalPoints).toLocaleString() : '0'}
+            {points?.totalPoints
+              ? points.totalPoints >= 1
+                ? points.totalPoints.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                : points.totalPoints.toFixed(4)
+              : '0'}
           </p>
         </div>
       </div>
@@ -62,7 +66,7 @@ const UserStats: React.FC<UserStatsProps> = ({ eventId, wallet }) => {
                     <span className="text-[var(--text-heading)] text-sm">{config.name}</span>
                   </div>
                   <span className="text-[var(--text-heading)] font-medium text-sm">
-                    {Math.floor(cp.points).toLocaleString()} pts
+                    {cp.points >= 1 ? cp.points.toLocaleString(undefined, { maximumFractionDigits: 2 }) : cp.points.toFixed(4)} pts
                   </span>
                 </div>
               )

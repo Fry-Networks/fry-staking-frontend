@@ -386,6 +386,15 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
                   <p className="text-[var(--text-secondary)] small">
                     {farm?.isCreator ? 'You created this farm' : 'You have farmed in this pool'}
                   </p>
+                  {isLoading ? (
+                    <p className="text-blue-500 text-sm flex items-center gap-1">
+                      <Icon icon="eos-icons:loading" width={14} /> Estimating rewards...
+                    </p>
+                  ) : estimatedRewards[k] !== undefined && (
+                    <p className="text-[var(--text-primary)] font-medium text-sm">
+                      Pending Rewards: ~{estimatedRewards[k].toFixed(2)} {farm?.rewardTokenName || 'tokens'}
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-[10px]">
                   {farm && activeAddress && (

@@ -1,4 +1,6 @@
 import axios from 'axios'
+import { poolUtils, PoolStatus } from '@tinymanorg/tinyman-js-sdk'
+import { getAlgodClient } from '../farming_func'
 
 const USDC_ID = 31566704
 const PRICE_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
@@ -21,8 +23,11 @@ export async function fetchAlgoUsd(): Promise<number> {
 
   // Primary: Vestige (free, no rate limit)
   try {
-    const r = await axios.get('https://free-api.vestige.fi/asset/0/price', { timeout: 8000 })
-    const price = r.data?.USD ?? r.data?.price
+    const r = await axios.get(`https://api.vestigelabs.org/assets/price`, {
+      params: { asset_ids: 0, denominating_asset_id: USDC_ID },
+      timeout: 8000,
+    })
+    const price = r.data?.[0]?.price
     if (price && price > 0) { setCachedPrice('algo-usd', price); return price }
   } catch { /* fallback */ }
 
@@ -85,8 +90,11 @@ export async function getAsaUsdPrice(asaId: number): Promise<number> {
 
   // 0) Vestige free API (no rate limit)
   try {
-    const r = await axios.get(`https://free-api.vestige.fi/asset/${asaId}/price`, { timeout: 8000 })
-    const price = r.data?.USD ?? r.data?.price
+    const r = await axios.get(`https://api.vestigelabs.org/assets/price`, {
+      params: { asset_ids: asaId, denominating_asset_id: USDC_ID },
+      timeout: 8000,
+    })
+    const price = r.data?.[0]?.price
     if (price && price > 0) { setCachedPrice(`asa-${asaId}`, price); return price }
   } catch { /* fallback */ }
 
@@ -141,6 +149,55 @@ export async function getAsaUsdPrice(asaId: number): Promise<number> {
 
   // 4) No price available
   return 0
+}
+
+/**
+ * Compute the USD price of one LP token for a Tinyman V2 pool.
+ * Uses on-chain pool data via Tinyman SDK (the analytics API is dead).
+ */
+export async function getLpTokenUsdPrice(
+  tokenAId: number,
+  tokenBId: number,
+  tokenADecimals = 6,
+  tokenBDecimals = 6,
+): Promise<number> {
+  const cacheKey = `lp-${[tokenAId, tokenBId].sort((a, b) => a - b).join('-')}`
+  const cached = getCachedPrice(cacheKey)
+  if (cached !== null) return cached
+
+  try {
+    const [priceA, priceB] = await Promise.all([
+      getAsaUsdPrice(tokenAId),
+      getAsaUsdPrice(tokenBId),
+    ])
+
+    const algod = getAlgodClient()
+
+    const pool = await poolUtils.v2.getPoolInfo({
+      client: algod as any,
+      network: 'mainnet',
+      asset1ID: tokenAId,
+      asset2ID: tokenBId,
+    })
+
+    if (pool.status !== PoolStatus.READY || !pool.issuedPoolTokens) return 0
+
+    const reserveA = Number(pool.asset1Reserves ?? 0)
+    const reserveB = Number(pool.asset2Reserves ?? 0)
+    const issuedLP = Number(pool.issuedPoolTokens)
+
+    if (issuedLP <= 0) return 0
+
+    const valueA = (reserveA / 10 ** tokenADecimals) * priceA
+    const valueB = (reserveB / 10 ** tokenBDecimals) * priceB
+
+    // LP tokens have 6 decimals
+    const lpPrice = (valueA + valueB) / (issuedLP / 1e6)
+    setCachedPrice(cacheKey, lpPrice)
+    return lpPrice
+  } catch {
+    return 0
+  }
 }
 
 /**

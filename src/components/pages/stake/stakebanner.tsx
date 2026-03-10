@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
+import { fetchPriceMap } from '../../../services/PriceService'
 
 interface StakeStats {
-  totalTVL: number
-  myStake: number
-  myReward: number
+  tvlUsd: number
+  myStakeUsd: number
+  myRewardUsd: number
 }
 
 interface StakeBannerProps {
@@ -13,31 +14,79 @@ interface StakeBannerProps {
 
 const Stakebanner: React.FC<StakeBannerProps> = ({ wallet }) => {
   const [stats, setStats] = useState<StakeStats>({
-    totalTVL: 0,
-    myStake: 0,
-    myReward: 0,
+    tvlUsd: 0,
+    myStakeUsd: 0,
+    myRewardUsd: 0,
   })
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchStats = async () => {
       if (!wallet) return
 
       try {
-        const res = await axios.get(
-          `${import.meta.env.VITE_API_BASE_URL}/stakingtoken/user-staking-stats/${wallet}`
-        )
+        const api = import.meta.env.VITE_API_BASE_URL
 
-        if (res.data.success) {
-          const { totalTVL, myStake, myReward } = res.data.data
-          setStats({ totalTVL, myStake, myReward })
+        // Fetch user stats + pool list in parallel
+        const [statsRes, poolsRes] = await Promise.all([
+          axios.get(`${api}/stakingtoken/user-staking-stats/${wallet}`),
+          axios.get(`${api}/staking/all`),
+        ])
+
+        const userStats = statsRes.data?.success ? statsRes.data.data : { totalTVL: 0, myStake: 0, myReward: 0 }
+        const pools: any[] = poolsRes.data?.data || []
+
+        // Collect unique token IDs (stake + reward)
+        const stakeTokenIds: number[] = []
+        const rewardTokenIds: number[] = []
+        for (const p of pools) {
+          const sid = Number(p?.stakeToken?.id ?? p?.stakeTokenId)
+          const rid = Number(p?.rewardToken?.id ?? p?.rewardTokenId)
+          if (!isNaN(sid) && sid > 0) stakeTokenIds.push(sid)
+          if (!isNaN(rid) && rid > 0) rewardTokenIds.push(rid)
         }
+        const allIds = [...new Set([...stakeTokenIds, ...rewardTokenIds])]
+
+        // Fetch prices
+        const prices = allIds.length > 0 ? await fetchPriceMap(allIds) : {}
+
+        // Compute TVL in USD (sum per-pool)
+        let tvlUsd = 0
+        let tvlTokens = 0
+        for (const p of pools) {
+          const sid = (p?.stakeToken?.id ?? p?.stakeTokenId)?.toString()
+          const amount = Number(p.totalAmountStaked || 0)
+          const price = prices[sid] ?? 0
+          tvlUsd += amount * price
+          tvlTokens += amount
+        }
+
+        // Weighted-average price for user stake conversion
+        const avgPrice = tvlTokens > 0 ? tvlUsd / tvlTokens : 0
+        const myStakeUsd = (userStats.myStake || 0) * avgPrice
+
+        // Reward USD: use average reward token price
+        const uniqueRewardIds = [...new Set(rewardTokenIds)]
+        let rewardPrice = 0
+        if (uniqueRewardIds.length > 0) {
+          const total = uniqueRewardIds.reduce((sum, id) => sum + (prices[id.toString()] ?? 0), 0)
+          rewardPrice = total / uniqueRewardIds.length
+        }
+        const myRewardUsd = (userStats.myReward || 0) * rewardPrice
+
+        setStats({ tvlUsd, myStakeUsd, myRewardUsd })
       } catch (error) {
         console.error('Failed to fetch staking stats:', error)
+      } finally {
+        setLoading(false)
       }
     }
 
     fetchStats()
   }, [wallet])
+
+  const fmt = (v: number) =>
+    `$ ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
   return (
     <div className="w-full mt-[40px] mb-[47px]">
@@ -45,19 +94,19 @@ const Stakebanner: React.FC<StakeBannerProps> = ({ wallet }) => {
         <div className="flex flex-col items-center gap-[24px] sm-s:gap-[6px]">
           <p className="text-text_clr tracking-[0.54px] large">Stake TVL</p>
           <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
-            {stats.totalTVL.toLocaleString()} tokens
+            {loading ? '...' : fmt(stats.tvlUsd)}
           </h3>
         </div>
         <div className="flex flex-col items-center gap-[24px] sm-s:gap-[6px]">
           <p className="text-text_clr tracking-[0.54px] large">My Stakes</p>
           <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
-            {stats.myStake.toLocaleString()} tokens
+            {loading ? '...' : fmt(stats.myStakeUsd)}
           </h3>
         </div>
         <div className="flex flex-col items-center gap-[24px] sm-s:gap-[6px]">
           <p className="text-text_clr tracking-[0.54px] large">My Reward</p>
           <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
-            {Number(stats.myReward).toFixed(6)} tokens
+            {loading ? '...' : fmt(stats.myRewardUsd)}
           </h3>
         </div>
       </div>

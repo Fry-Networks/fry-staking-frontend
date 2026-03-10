@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Icon } from '@iconify/react';
+import { Spin } from 'antd';
 import axios from 'axios';
 import Button from '../../shared/button';
 import FTable, { TabOption } from './fTable';
@@ -7,6 +8,7 @@ import Farmbanner from './farmbanner';
 import CreateFarmWizard from '../../../Modals/website/CreateFarmWizard';
 import { useWallet } from '@txnlab/use-wallet';
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService';
+import { getLpTokenUsdPrice } from '../../../services/PriceService';
 
 
 // Helper function to validate image URL (outside component to avoid recreation)
@@ -28,6 +30,7 @@ const FarmTable: React.FC = () => {
   const [originalData, setOriginalData] = useState<any[]>([]);
   const [isAddFarmOpen, setIsAddFarmOpen] = useState(false);
   const [tokenImages, setTokenImages] = useState<{ [key: string]: string }>({});
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabOption>('Live');
 
   // Fetch token images from database
@@ -66,13 +69,46 @@ const FarmTable: React.FC = () => {
       // Use database images with fallback to Tinyman
       const databaseImages = Object.keys(images).length > 0 ? images : tokenImages;
 
+      // Fetch LP token USD prices for unique pairs
+      const pairMap = new Map<string, { tokenAId: number; tokenBId: number }>();
+      for (const farm of data) {
+        const aId = Number(farm.lpToken?.tokenAId || farm.lpToken?.tokenA || 0);
+        const bId = Number(farm.lpToken?.tokenBId || farm.lpToken?.tokenB || 0);
+        if (aId > 0 && bId > 0 && aId !== bId) {
+          const key = [aId, bId].sort((a, b) => a - b).join('-');
+          if (!pairMap.has(key)) pairMap.set(key, { tokenAId: aId, tokenBId: bId });
+        }
+      }
+
+      const lpPriceResults = await Promise.allSettled(
+        [...pairMap.entries()].map(async ([key, pair]) => ({
+          key,
+          price: await getLpTokenUsdPrice(pair.tokenAId, pair.tokenBId),
+        }))
+      );
+
+      const lpPrices: Record<string, number> = {};
+      for (const r of lpPriceResults) {
+        if (r.status === 'fulfilled' && r.value.price > 0) {
+          lpPrices[r.value.key] = r.value.price;
+        }
+      }
+
       // Map ALL farms (no tab filtering here — filtering happens client-side)
       const mapped = data.map((farm: any, index: number) => {
           const endsIn = Math.max(0, farm.farmEndTime - now);
           const endsInDays = Math.ceil(endsIn / 86400);
 
           const poolData = farm.totalStaked || 0;
-          const tvl = poolData > 0 ? `${(poolData / 1_000_000).toLocaleString()} LP` : '0 LP';
+          const lpHuman = poolData / 1_000_000;
+          const aId = Number(farm.lpToken?.tokenAId || farm.lpToken?.tokenA || 0);
+          const bId = Number(farm.lpToken?.tokenBId || farm.lpToken?.tokenB || 0);
+          const pairKey = [aId, bId].sort((a, b) => a - b).join('-');
+          const lpPrice = lpPrices[pairKey] ?? 0;
+          const tvlUsd = lpHuman * lpPrice;
+          const tvl = poolData > 0
+            ? (tvlUsd > 0 ? `$ ${tvlUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${lpHuman.toLocaleString()} LP`)
+            : '0 LP';
 
           // Get token IDs for LP tokens and reward token
           const tokenAId = farm.lpToken?.tokenAId?.toString() || farm.lpToken?.tokenA?.toString();
@@ -190,7 +226,9 @@ const FarmTable: React.FC = () => {
             ),
             tvl: tvl, // TVL value is displayed here
             apr: `${farm.aprRate}%`,
-            staked: `$${(farm.totalStaked / 1_000_000).toFixed(2)}`,
+            staked: tvlUsd > 0
+              ? `$ ${tvlUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : `${lpHuman.toLocaleString()} LP`,
             reward: (
               <div>
                 {(farm.rewardTokenAmount / 1_000_000).toFixed(2)} {farm.rewardTokenSymbol || farm.rewardToken?.name || 'tokens'}
@@ -198,6 +236,7 @@ const FarmTable: React.FC = () => {
             ),
             ends: `${endsInDays} ${endsInDays === 1 ? 'day' : 'days'}`,
             stakeTokenId: Number(farm.lpToken?.tokenAId || farm.lpToken?.tokenA || 0),
+            stakeTokenBId: Number(farm.lpToken?.tokenBId || farm.lpToken?.tokenB || 0),
             rewardTokenId: Number(farm.rewardToken?.id || farm.rewardTokenId || 0),
             stakeTokenName: farm.lpPairName || `${farm.lpToken?.tokenA || 'Token A'} / ${farm.lpToken?.tokenB || 'Token B'}`,
             rewardTokenName: farm.rewardTokenSymbol || farm.rewardToken?.name || 'Token',
@@ -236,8 +275,13 @@ const FarmTable: React.FC = () => {
   // Initial load: fetch token images then farms (once)
   useEffect(() => {
     const loadData = async () => {
-      const images = await fetchTokenImages();
-      fetchAllFarms(images);
+      setLoading(true);
+      try {
+        const images = await fetchTokenImages();
+        await fetchAllFarms(images);
+      } finally {
+        setLoading(false);
+      }
     };
     loadData();
   }, []);
@@ -303,7 +347,11 @@ const FarmTable: React.FC = () => {
         </div>
 
         <div className="bottom">
-          {farms.length === 0 ? (
+          {loading ? (
+            <div className="flex justify-center items-center py-20">
+              <Spin size="large" />
+            </div>
+          ) : farms.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-8 bg-[var(--bg-card)] rounded-lg shadow-sm">
               <Icon icon="mdi:folder-open-outline" className="w-16 h-16 text-gray-400 mb-4" />
               <h3 className="text-xl font-semibold text-[var(--text-heading)] mb-2">No Farms Found</h3>

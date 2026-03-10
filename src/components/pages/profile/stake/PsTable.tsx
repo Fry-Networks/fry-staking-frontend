@@ -369,6 +369,15 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
                   <p className="text-[var(--text-secondary)] small">
                     {pool?.isCreator ? 'You created this pool' : 'You have staked in this pool'}
                   </p>
+                  {isLoading ? (
+                    <p className="text-blue-500 text-sm flex items-center gap-1">
+                      <Icon icon="eos-icons:loading" width={14} /> Estimating rewards...
+                    </p>
+                  ) : estimatedRewards[k] !== undefined && (
+                    <p className="text-[var(--text-primary)] font-medium text-sm">
+                      Pending Rewards: ~{(estimatedRewards[k] / 1_000_000).toFixed(2)} {pool?.rewardTokenName || 'tokens'}
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-[10px]">
                   {pool && activeAddress && (

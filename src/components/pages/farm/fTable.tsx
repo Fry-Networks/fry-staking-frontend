@@ -16,6 +16,8 @@ import { useAuth } from '../../../hooks/useAuth'
 import { fetchFeeConfig, calculateFeeSimple } from '../../../services/FeeService'
 import type { FeeCalculation } from '../../../services/FeeService'
 import FeeConfirmation from '../../shared/FeeConfirmation'
+import StakeModal from '../../shared/StakeModal'
+import WithdrawModal from '../../shared/WithdrawModal'
 
 interface DataType {
   key: React.Key
@@ -29,6 +31,7 @@ interface DataType {
   appId: number
   farmEndTime: string
   stakeTokenId?: number
+  stakeTokenBId?: number
   rewardTokenId?: number
 }
 
@@ -55,6 +58,11 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
   const [claimButtonDisabled, setClaimButtonDisabled] = useState<{ [key: string]: boolean }>({})
   const [claimingKeys, setClaimingKeys] = useState<React.Key[]>([])
   const [isOptedIn, setIsOptedIn] = useState<boolean | null>(null)
+
+  // Modal state
+  const [stakeModalOpen, setStakeModalOpen] = useState(false)
+  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
+  const [modalTarget, setModalTarget] = useState<{ appId: number; stakeTokenId: number; stakeTokenBId: number; pairName: string; userStake: number } | null>(null)
 
   // Fee confirmation state
   const [feeModalVisible, setFeeModalVisible] = useState(false)
@@ -518,18 +526,15 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
   const columns: TableColumnsType<DataType> = [
     { title: <div className="w-[350px]">Pool</div>, dataIndex: 'pool', key: 'pool' },
     {
-      title: (
-        <div className="flex items-center gap-[2px]">
-          TVL
-          <Icon icon="solar:arrow-down-outline" width={18} height={21} color="var(--text-primary)" />
-        </div>
-      ),
+      title: 'TVL',
       dataIndex: 'tvl',
       key: 'tvl',
-      render: (value) => <p className="text-text_clr font-medium medium">{value}</p>, // Display TVL value
+      sorter: (a, b) => (parseFloat(a.tvl.replace(/[$,\s]/g, '')) || 0) - (parseFloat(b.tvl.replace(/[$,\s]/g, '')) || 0),
+      defaultSortOrder: 'descend' as const,
+      render: (value) => <p className="text-text_clr font-medium medium">{value}</p>,
     },
-    { title: 'APR', dataIndex: 'apr', key: 'apr', render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
-    { title: 'STAKED', dataIndex: 'staked', key: 'staked', render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
+    { title: 'APR', dataIndex: 'apr', key: 'apr', sorter: (a, b) => (parseFloat(a.apr) || 0) - (parseFloat(b.apr) || 0), render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
+    { title: 'STAKED', dataIndex: 'staked', key: 'staked', sorter: (a, b) => (parseFloat(a.staked.replace(/[$,\s]/g, '')) || 0) - (parseFloat(b.staked.replace(/[$,\s]/g, '')) || 0), render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
     {
       title: 'REWARD',
       dataIndex: 'reward',
@@ -542,6 +547,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
             title: 'ENDS',
             dataIndex: 'ends',
             key: 'ends',
+            sorter: (a: DataType, b: DataType) => Number(a.farmEndTime || 0) - Number(b.farmEndTime || 0),
             render: (value: string, record: DataType) => (
               <div className="flex items-center justify-between gap-[20px]">
                 {(showExpandable == 'Live' || showExpandable == 'MyLive') && (
@@ -594,16 +600,28 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                       <div className="flex items-center gap-[10px] justify-between pr-[50px] max-xxxl:pr-[0px]">
                         {/* Left */}
                         <div className="flex flex-col gap-[4px]">
-                          <Button
-                            text="Farm"
-                            className="button btn-red-border"
-                            height={45}
-                            width={156}
-                            onClick={() => {
-                              // Redirect to Pera Wallet (mobile/web compatible)
-                              window.open('https://explorer.perawallet.app/application/' + record.appId, '_blank')
-                            }}
-                          />
+                          {record.stakeTokenId && record.stakeTokenBId && record.stakeTokenId !== record.stakeTokenBId && (
+                            <Button
+                              text="Get LP Tokens"
+                              className="button btn-red-border"
+                              height={45}
+                              width={156}
+                              onClick={() => {
+                                window.open(
+                                  `https://app.tinyman.org/#/pool/${record.stakeTokenId}/${record.stakeTokenBId}/add-liquidity`,
+                                  '_blank'
+                                )
+                              }}
+                            />
+                          )}
+                          <a
+                            href={`https://explorer.perawallet.app/application/${record.appId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline mt-1"
+                          >
+                            View Contract ↗
+                          </a>
                         </div>
 
                         {/* Right */}
@@ -614,53 +632,67 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                             <>
                               {/* Stake */}
                               <div className="flex flex-col gap-[4px]">
-                                <div className="bg-[var(--input-bg)] rounded-[10px] flex gap-[13px] items-center">
-                                  <Input
-                                    type="number"
-                                    name="stake"
-                                    placeholder="0"
-                                    value={stakeInput[record.key] || ''}
-                                    onChange={(e) => setStakeInput((prev) => ({ ...prev, [record.key]: e.target.value }))}
-                                    className="input-wrapper text-[16px] w-full max-w-[150px]"
-                                  />
-                                  <p className="text-text_clr medium cursor-pointer hover:text-[var(--text-primary)]"
-                                     onClick={() => setStakeInput((prev) => ({ ...prev, [record.key]: String(lpBalances[String(record.key)] || 0) }))}>Max</p>
+                                {record.stakeTokenId && record.stakeTokenBId && record.stakeTokenId !== record.stakeTokenBId ? (
                                   <Button
-                                    text={stakeLoadingKeys.includes(record.key) ? 'Staking...' : 'Stake'}
+                                    text="Stake"
                                     className="button btn-primary"
                                     height={45}
                                     width={106}
-                                    onClick={() => handleStake(record)}
-                                    disabled={stakeLoadingKeys.includes(record.key)}
+                                    onClick={() => {
+                                      setModalTarget({
+                                        appId: record.appId,
+                                        stakeTokenId: record.stakeTokenId!,
+                                        stakeTokenBId: record.stakeTokenBId!,
+                                        pairName: (record as any).stakeTokenName || 'LP',
+                                        userStake: userStakes[String(record.key)] || 0,
+                                      })
+                                      setStakeModalOpen(true)
+                                    }}
                                   />
-                                </div>
-                                <p className="text-text_clr e-small">Balance: {lpBalances[String(record.key)]?.toFixed(2) || '0'} token</p>
+                                ) : (
+                                  <>
+                                    <div className="bg-[var(--input-bg)] rounded-[10px] flex gap-[13px] items-center">
+                                      <Input
+                                        type="number"
+                                        name="stake"
+                                        placeholder="0"
+                                        value={stakeInput[record.key] || ''}
+                                        onChange={(e) => setStakeInput((prev) => ({ ...prev, [record.key]: e.target.value }))}
+                                        className="input-wrapper text-[16px] w-full max-w-[150px]"
+                                      />
+                                      <p className="text-text_clr medium cursor-pointer hover:text-[var(--text-primary)]"
+                                         onClick={() => setStakeInput((prev) => ({ ...prev, [record.key]: String(lpBalances[String(record.key)] || 0) }))}>Max</p>
+                                      <Button
+                                        text={stakeLoadingKeys.includes(record.key) ? 'Staking...' : 'Stake'}
+                                        className="button btn-primary"
+                                        height={45}
+                                        width={106}
+                                        onClick={() => handleStake(record)}
+                                        disabled={stakeLoadingKeys.includes(record.key)}
+                                      />
+                                    </div>
+                                    <p className="text-text_clr e-small">Balance: {lpBalances[String(record.key)]?.toFixed(2) || '0'} token</p>
+                                  </>
+                                )}
                               </div>
 
                               {/* Withdraw */}
-                              <div className="flex flex-col gap-[4px]">
-                                <div className="bg-[var(--input-bg)] rounded-[10px] flex gap-[13px] items-center">
-                                  <Input
-                                    type="number"
-                                    name="withdraw"
-                                    placeholder="0"
-                                    value={withdrawInput[record.key] || ''}
-                                    onChange={(e) => setWithdrawInput((prev) => ({ ...prev, [record.key]: e.target.value }))}
-                                    className="input-wrapper text-[16px] w-full max-w-[150px]"
-                                  />
-                                  <p className="text-text_clr medium cursor-pointer hover:text-[var(--text-primary)]"
-                                     onClick={() => setWithdrawInput((prev) => ({ ...prev, [record.key]: String(userStakes[String(record.key)] || 0) }))}>Max</p>
-                                  <Button
-                                    text={withdrawLoadingKeys.includes(record.key) ? 'Withdrawing...' : 'Withdraw'}
-                                    className="button btn-primary"
-                                    height={45}
-                                    width={106}
-                                    onClick={() => handleWithdraw(record)}
-                                    disabled={withdrawLoadingKeys.includes(record.key)}
-                                  />
-                                </div>
-                                <p className="text-text_clr e-small">In Pool: {userStakes[String(record.key)]?.toFixed(2) || '0'} token</p>
-                              </div>
+                              <Button
+                                text="Withdraw"
+                                className="button btn-primary"
+                                height={45}
+                                width={106}
+                                onClick={() => {
+                                  setModalTarget({
+                                    appId: record.appId,
+                                    stakeTokenId: record.stakeTokenId!,
+                                    stakeTokenBId: record.stakeTokenBId || 0,
+                                    pairName: (record as any).stakeTokenName || 'LP',
+                                    userStake: userStakes[String(record.key)] || 0,
+                                  })
+                                  setWithdrawModalOpen(true)
+                                }}
+                              />
                             </>
                           )}
                           {/* <p>
@@ -725,6 +757,33 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
         netAmountFormatted={netAmountFormatted}
         loading={feeLoading}
       />
+      {modalTarget && (
+        <>
+          <StakeModal
+            visible={stakeModalOpen}
+            onClose={() => { setStakeModalOpen(false); setModalTarget(null) }}
+            onSuccess={() => { setStakeModalOpen(false); setModalTarget(null); fetchData() }}
+            appId={modalTarget.appId}
+            stakeTokenId={modalTarget.stakeTokenId}
+            stakeTokenName={modalTarget.pairName}
+            isLpFarm={true}
+            stakeTokenBId={modalTarget.stakeTokenBId}
+            pairName={modalTarget.pairName}
+          />
+          <WithdrawModal
+            visible={withdrawModalOpen}
+            onClose={() => { setWithdrawModalOpen(false); setModalTarget(null) }}
+            onSuccess={() => { setWithdrawModalOpen(false); setModalTarget(null); fetchData() }}
+            appId={modalTarget.appId}
+            stakeTokenId={modalTarget.stakeTokenId}
+            stakeTokenName={modalTarget.pairName}
+            userStake={modalTarget.userStake}
+            isLpFarm={modalTarget.stakeTokenBId !== 0 && modalTarget.stakeTokenId !== modalTarget.stakeTokenBId}
+            stakeTokenBId={modalTarget.stakeTokenBId}
+            pairName={modalTarget.pairName}
+          />
+        </>
+      )}
     </div>
   )
 }

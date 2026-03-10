@@ -1,6 +1,7 @@
 import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
 import axios from 'axios'
+import { Spin } from 'antd'
 import React, { useEffect, useState } from 'react'
 import CreateStakeWizard from '../../../Modals/website/CreateStakeWizard'
 import Button from '../../shared/button'
@@ -40,6 +41,7 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
   const [activeTab, setActiveTab] = useState<TabOption>('Live')
 
   const [filteredData, setFilteredData] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchToken, setSearchToken] = useState<string>('')
 
   const { activeAddress } = useWallet()
@@ -302,8 +304,9 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
 
   useEffect(() => {
     const loadData = async () => {
-      const { imageMap } = await fetchTokenData()
+      setLoading(true)
       try {
+        const { imageMap } = await fetchTokenData()
         const response = await axios.get(`${api_base_url}/staking/all`, {
           params: { tokenName: searchToken },
           headers: { 'Content-Type': 'application/json' },
@@ -326,6 +329,8 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
         processPoolData(pools, imageMap, realPrices)
       } catch (error) {
         console.error('Error fetching all pools:', error)
+      } finally {
+        setLoading(false)
       }
     }
     loadData()
@@ -412,7 +417,11 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
           </div>
 
           <div className="bottom">
-            {stacks.length === 0 ? (
+            {loading ? (
+              <div className="flex justify-center items-center py-20">
+                <Spin size="large" />
+              </div>
+            ) : stacks.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-8 bg-[var(--bg-card)] rounded-lg shadow-sm">
                 <Icon icon="mdi:folder-open-outline" className="w-16 h-16 text-gray-400 mb-4" />
                 <h3 className="text-xl font-semibold text-[var(--text-heading)] mb-2">No Pools Found</h3>
