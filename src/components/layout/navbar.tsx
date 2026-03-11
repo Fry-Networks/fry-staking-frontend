@@ -126,6 +126,16 @@ const Navbar: React.FC = () => {
             </li>
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
+                to="/nft-stake"
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                NFT Stake
+              </NavLink>
+            </li>
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
                 to="/events"
                 className={({ isActive }) =>
                   `cursor-pointer p-[10px] uppercase relative ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
@@ -268,6 +278,17 @@ const Navbar: React.FC = () => {
                 }
               >
                 Farm
+              </NavLink>
+            </li>
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/nft-stake"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                NFT Stake
               </NavLink>
             </li>
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">

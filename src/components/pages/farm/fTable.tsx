@@ -582,6 +582,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
 
   />
 )}
+      <div className="w-full overflow-x-auto">
       <Table<DataType>
         className="web-table"
         columns={columns}
@@ -608,7 +609,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                               width={156}
                               onClick={() => {
                                 window.open(
-                                  `https://app.tinyman.org/#/pool/${record.stakeTokenId}/${record.stakeTokenBId}/add-liquidity`,
+                                  `https://app.tinyman.org/pool/${record.stakeTokenId}/${record.stakeTokenBId}/add-liquidity`,
                                   '_blank'
                                 )
                               }}
@@ -747,6 +748,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
         dataSource={farms}
         scroll={{ x: '1000px' }}
       />
+      </div>
       <FeeConfirmation
         visible={feeModalVisible}
         onConfirm={executePendingAction}

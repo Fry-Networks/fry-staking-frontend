@@ -129,16 +129,27 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
     }
 
     turnstileRef.current = node
+    setTurnstileToken(null)
     if (!node || !TURNSTILE_SITE_KEY) return
 
     const doRender = () => {
       if (!turnstileRef.current || !(window as any).turnstile) return
-      if (turnstileWidgetId.current) return
+      // Remove stale widget before re-rendering
+      if (turnstileWidgetId.current) {
+        try { ;(window as any).turnstile.remove(turnstileWidgetId.current) } catch (_) {}
+        turnstileWidgetId.current = null
+      }
       const isDark = document.documentElement.classList.contains('dark')
       turnstileWidgetId.current = (window as any).turnstile.render(turnstileRef.current, {
         sitekey: TURNSTILE_SITE_KEY,
         callback: (token: string) => setTurnstileToken(token),
-        'expired-callback': () => setTurnstileToken(null),
+        'expired-callback': () => {
+          setTurnstileToken(null)
+          // Auto-reset on expiry so user doesn't get stuck
+          if (turnstileWidgetId.current && (window as any).turnstile) {
+            try { ;(window as any).turnstile.reset(turnstileWidgetId.current) } catch (_) {}
+          }
+        },
         theme: isDark ? 'dark' : 'light',
       })
     }
@@ -146,16 +157,26 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
     if ((window as any).turnstile) {
       doRender()
     } else {
+      // Poll for turnstile availability instead of relying on one-time load event
+      let attempts = 0
+      const poll = setInterval(() => {
+        attempts++
+        if ((window as any).turnstile) {
+          clearInterval(poll)
+          doRender()
+        } else if (attempts >= 50) {
+          clearInterval(poll)
+        }
+      }, 100)
+
+      // Also load the script if not already present
       const existing = document.querySelector(
         'script[src*="challenges.cloudflare.com/turnstile"]'
       ) as HTMLScriptElement | null
-      if (existing) {
-        existing.addEventListener('load', doRender, { once: true })
-      } else {
+      if (!existing) {
         const script = document.createElement('script')
         script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
         script.async = true
-        script.addEventListener('load', doRender, { once: true })
         document.head.appendChild(script)
       }
     }

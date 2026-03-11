@@ -22,6 +22,8 @@ import Profile from './pages/profile'
 import Stake from './pages/stake'
 import StakePoolStats from './pages/stakePoolStats'
 import Events from './pages/events'
+import NftStake from './pages/nftStake'
+import NftPoolStats from './pages/nftPoolStats'
 import Swap from './pages/swap'
 import TransactionHistory from './pages/transactionHistory'
 
@@ -45,6 +47,14 @@ const appRouter = createBrowserRouter([
   {
     path: '/farm',
     element: <Farm />,
+  },
+  {
+    path: '/nft-stake',
+    element: <NftStake />,
+  },
+  {
+    path: '/nft-pool-stats',
+    element: <NftPoolStats />,
   },
   {
     path: '/events',

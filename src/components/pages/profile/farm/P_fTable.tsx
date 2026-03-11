@@ -366,6 +366,7 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
 
   return (
     <>
+    <div className="w-full overflow-x-auto">
     <Table<DataType>
       className="web-table"
       columns={columns}
@@ -428,6 +429,7 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
       dataSource={tableData}
       scroll={{ x: '900px' }}
     />
+    </div>
     <FeeConfirmation
       visible={feeModalVisible}
       onConfirm={executePendingAction}

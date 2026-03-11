@@ -71,6 +71,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
   const [estimatedRewards, setEstimatedRewards] = useState<Record<string, number>>({})
   const [rewardLoading, setRewardLoading] = useState<Record<string, boolean>>({})
   const [userStakes, setUserStakes] = useState<Record<string, number>>({})
+  const [userStakeTimes, setUserStakeTimes] = useState<Record<string, number>>({})
 
   // Fee confirmation state
   const [feeModalVisible, setFeeModalVisible] = useState(false)
@@ -108,7 +109,10 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
         if (pool?.stakingContractId) {
           const k = String(key)
           getUserData(pool.stakingContractId, activeAddress)
-            .then(data => setUserStakes(prev => ({ ...prev, [k]: Number(data.stakedAmount || 0) / 1_000_000 })))
+            .then(data => {
+              setUserStakes(prev => ({ ...prev, [k]: Number(data.stakedAmount || 0) / 1_000_000 }))
+              setUserStakeTimes(prev => ({ ...prev, [k]: Number(data.stakeTime || 0) }))
+            })
             .catch(() => setUserStakes(prev => ({ ...prev, [k]: 0 })))
           // Estimate reward for grey-out logic
           if (signer) {
@@ -649,6 +653,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
 
   return (
     <>
+    <div className="w-full overflow-x-auto">
     <Table<DataType>
       className="web-table"
       columns={columns}
@@ -669,7 +674,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                       height={45}
                       width={156}
                       onClick={() => window.open(
-                        `https://app.tinyman.org/#/swap?asset_in=0&asset_out=${record.stakeTokenId}`,
+                        `https://app.tinyman.org/swap?asset_in=0&asset_out=${record.stakeTokenId}`,
                         '_blank'
                       )}
                     />
@@ -681,6 +686,26 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                     >
                       View Contract ↗
                     </a>
+                    {(() => {
+                      const k = String(record.key)
+                      const stakeTime = userStakeTimes[k]
+                      const lockSecs = record.lockPeriod || 0
+                      if (stakeTime && lockSecs > 0) {
+                        const unlockTime = stakeTime + lockSecs
+                        const now = Math.floor(Date.now() / 1000)
+                        if (now < unlockTime) {
+                          const daysLeft = Math.ceil((unlockTime - now) / 86400)
+                          return (
+                            <p className="text-xs text-yellow-500 mt-1">
+                              🔒 Unlocks in {daysLeft} {daysLeft === 1 ? 'day' : 'days'} ({new Date(unlockTime * 1000).toLocaleDateString()})
+                            </p>
+                          )
+                        } else if (userStakes[k] > 0) {
+                          return <p className="text-xs text-green mt-1">🔓 Unlocked — ready to withdraw</p>
+                        }
+                      }
+                      return null
+                    })()}
                   </div>
                   {/* Right */}
                   {/* stake */}{/* withdraw */}
@@ -785,6 +810,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       dataSource={stacks}
       scroll={{ x: '1000px' }}
     />
+    </div>
     <FeeConfirmation
       visible={feeModalVisible}
       onConfirm={executePendingAction}

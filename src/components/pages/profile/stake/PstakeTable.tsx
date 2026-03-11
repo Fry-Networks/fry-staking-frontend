@@ -78,9 +78,14 @@ const PstakeTable: React.FC = () => {
       const stakerRecords = stakerDataRes.status === 'fulfilled' ? stakerDataRes.value.data?.data || [] : []
 
       // Build a set of pool IDs where the user has staked (merge both sources)
+      // Include both _id and appId/stakingContractId matches for robustness
       const stakedPoolIds = new Set([
         ...stakingTokenRecords.map((r: any) => r.poolId),
         ...stakerRecords.map((r: any) => r.poolId),
+      ])
+      const stakedAppIds = new Set([
+        ...stakingTokenRecords.map((r: any) => String(r.appId || r.stakingContractId)).filter(Boolean),
+        ...stakerRecords.map((r: any) => String(r.appId || r.stakingContractId)).filter(Boolean),
       ])
       // Build a map of poolId -> stakedAmount for display (take MAX per source, then greater of the two)
       const stakerMaxMap: Record<string, number> = {}
@@ -113,7 +118,7 @@ const PstakeTable: React.FC = () => {
       // Filter pools: user created them OR user has staked in them
       const userPools = allPools.filter((pool: any) => {
         const isCreator = pool.creatorId?.toLowerCase() === activeAddress.toLowerCase()
-        const hasStaked = stakedPoolIds.has(pool._id)
+        const hasStaked = stakedPoolIds.has(pool._id) || stakedAppIds.has(String(pool.stakingContractId || pool.appId))
         return isCreator || hasStaked
       })
 

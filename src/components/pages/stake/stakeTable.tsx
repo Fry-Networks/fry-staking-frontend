@@ -43,6 +43,7 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
   const [filteredData, setFilteredData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchToken, setSearchToken] = useState<string>('')
+  const [userStakedPoolIds, setUserStakedPoolIds] = useState<Set<string>>(new Set())
 
   const { activeAddress } = useWallet()
 
@@ -249,12 +250,15 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       stakingEndTime: item.stakingEndTime,
       totalAmountStaked: item.totalAmountStaked,
       userAddress: item.creatorId,
+      isCreator: item.creatorId?.toLowerCase() === activeAddress?.toLowerCase(),
+      hasUserStake: userStakedPoolIds.has(item._id),
       isGated: item.isGated || false,
       gateConfig: item.gateConfig || {},
       stakeTokenId: Number(stakeTokenId) || FRY_ASSET_ID,
       rewardTokenId: Number(rewardTokenId) || FRY_ASSET_ID,
       stakeTokenName: item?.stakeToken?.name || 'Token',
       rewardTokenName: item?.rewardToken?.name || 'Token',
+      lockPeriod: item.lockPeriod || 0,
     }
   })
 
@@ -271,7 +275,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
     return data.filter((item) => {
       const isEnded = item.stakingEndTime <= now
       const isLive = item.stakingEndTime > now
-      const belongsToWallet = item?.userAddress?.toLowerCase() === activeAddress?.toLowerCase()
+      const belongsToWallet = item.isCreator || item.hasUserStake
 
       switch (activeTab) {
         case 'MyLive':
@@ -291,6 +295,19 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
   }
 
 
+  // Re-filter when user stake data changes
+  useEffect(() => {
+    if (userStakedPoolIds.size > 0 && originalData.length > 0) {
+      // Update hasUserStake flags in existing data
+      const updated = originalData.map(item => ({
+        ...item,
+        isCreator: item.userAddress?.toLowerCase() === activeAddress?.toLowerCase(),
+        hasUserStake: userStakedPoolIds.has(item._id),
+      }))
+      setOriginalData(updated)
+    }
+  }, [userStakedPoolIds])
+
   useEffect(() => {
     const filtered = filterPools(originalData)
     setFilteredData(filtered)
@@ -301,6 +318,24 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
     setTotals(totals)
     setStacks(filteredData)
   }, [filteredData])
+
+  // Fetch user's staked pool IDs when wallet connects
+  useEffect(() => {
+    if (!activeAddress) {
+      setUserStakedPoolIds(new Set())
+      return
+    }
+    const fetchUserStakes = async () => {
+      try {
+        const res = await axios.get(`${api_base_url}/stakingtoken/wallet/${activeAddress}`)
+        const records = res.data?.data || []
+        setUserStakedPoolIds(new Set(records.map((r: any) => r.poolId)))
+      } catch {
+        setUserStakedPoolIds(new Set())
+      }
+    }
+    fetchUserStakes()
+  }, [activeAddress])
 
   useEffect(() => {
     const loadData = async () => {

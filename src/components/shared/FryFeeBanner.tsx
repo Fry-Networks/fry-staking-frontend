@@ -1,7 +1,7 @@
 import React from 'react'
 import { Icon } from '@iconify/react'
 
-const TINYMAN_BUY_URL = 'https://app.tinyman.org/#/swap?asset_in=31566704&asset_out=2485314946'
+const TINYMAN_BUY_URL = 'https://app.tinyman.org/swap?asset_in=31566704&asset_out=2485314946'
 
 const FryFeeBanner: React.FC = () => {
   return (

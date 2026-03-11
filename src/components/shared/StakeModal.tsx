@@ -68,6 +68,23 @@ const StakeModal: React.FC<StakeModalProps> = ({
   const [lpBalance, setLpBalance] = useState<bigint>(0n)
   const [lpBalanceLoading, setLpBalanceLoading] = useState(false)
 
+  // Calculate max stakeable amount after fee deduction
+  const getMaxStakeAmount = useCallback(async (rawBalance: bigint, decimals: number): Promise<string> => {
+    const feeType = isLpFarm ? 'farmingDeposit' : 'stakingDeposit'
+    try {
+      const feeConfig = await fetchFeeConfig()
+      const configKey = feeType === 'farmingDeposit' ? 'farmingDepositFeePercent' : 'stakingDepositFeePercent'
+      const feePercent = (feeConfig[configKey as keyof typeof feeConfig] as number) ?? 0
+      if (feePercent > 0) {
+        const maxMicro = Math.floor(Number(rawBalance) * 100 / (100 + feePercent))
+        return (maxMicro / Math.pow(10, decimals)).toString()
+      }
+    } catch (e) {
+      console.warn('Fee config fetch failed for MAX, using raw balance:', e)
+    }
+    return (Number(rawBalance) / Math.pow(10, decimals)).toString()
+  }, [isLpFarm])
+
   const displayName = isLpFarm ? (pairName || stakeTokenName) : stakeTokenName
   const tokenNames = isLpFarm ? (pairName || '').split('/') : []
   const tokenAName = tokenNames[0]?.trim() || 'Token A'
@@ -77,6 +94,30 @@ const StakeModal: React.FC<StakeModalProps> = ({
   const inputDecimals = 6
 
   const algod = getAlgodClient()
+
+  const refreshBalance = useCallback(async () => {
+    if (!activeAddress) return 0n
+    setBalanceLoading(true)
+    try {
+      const fresh = await getAssetBalance(algod, activeAddress, inputAssetId)
+      setBalance(fresh)
+      return fresh
+    } finally {
+      setBalanceLoading(false)
+    }
+  }, [activeAddress, inputAssetId])
+
+  const refreshLpBalance = useCallback(async () => {
+    if (!activeAddress || !pool) return 0n
+    setLpBalanceLoading(true)
+    try {
+      const fresh = await getAssetBalance(algod, activeAddress, pool.poolTokenID!)
+      setLpBalance(fresh)
+      return fresh
+    } finally {
+      setLpBalanceLoading(false)
+    }
+  }, [activeAddress, pool])
 
   // Fetch pool info on open (LP farm only)
   useEffect(() => {
@@ -170,6 +211,14 @@ const StakeModal: React.FC<StakeModalProps> = ({
     const amount = parseFloat(amountStr)
     if (!activeAddress || !signer || isNaN(amount) || amount <= 0) return
 
+    // Pre-flight: verify balance is still sufficient
+    const stakeAmountMicroBig = BigInt(Math.floor(amount * 1_000_000))
+    const freshBal = isAdvancedLp ? await refreshLpBalance() : await refreshBalance()
+    if (stakeAmountMicroBig > freshBal) {
+      toast.error('Balance changed — please adjust your amount and try again')
+      return
+    }
+
     setStep('staking')
     const stakeAmountMicro = Math.floor(amount * 1_000_000)
 
@@ -223,11 +272,18 @@ const StakeModal: React.FC<StakeModalProps> = ({
       }
       setStep('error')
     }
-  }, [inputAmount, lpStakeAmount, activeAddress, signer, appId, pool, isLpFarm, showAdvanced, stakeTokenId])
+  }, [inputAmount, lpStakeAmount, activeAddress, signer, appId, pool, isLpFarm, showAdvanced, stakeTokenId, refreshBalance, refreshLpBalance])
 
   // Execute ZAP (LP farm default mode)
   const handleExecuteZap = useCallback(async () => {
     if (!quote || !pool || !activeAddress || !signer || !signTransactions) return
+
+    // Pre-flight: verify balance is still sufficient
+    const freshBal = await refreshBalance()
+    if (inputAmountMicro > freshBal) {
+      toast.error('Balance changed — please adjust your amount and try again')
+      return
+    }
 
     setError('')
 
@@ -310,7 +366,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
 
       setStep('error')
     }
-  }, [quote, pool, activeAddress, signer, signTransactions, inputAssetId, inputAmountMicro, appId])
+  }, [quote, pool, activeAddress, signer, signTransactions, inputAssetId, inputAmountMicro, appId, refreshBalance])
 
   const handleClose = () => {
     setStep('input')
@@ -347,7 +403,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
             ) : (
               <span
                 className="cursor-pointer hover:text-[var(--text-primary)]"
-                onClick={() => setInputAmount((Number(balance) / Math.pow(10, inputDecimals)).toString())}
+                onClick={async () => { const f = await refreshBalance(); setInputAmount(await getMaxStakeAmount(f, inputDecimals)) }}
               >
                 {(Number(balance) / Math.pow(10, inputDecimals)).toFixed(2)} {stakeTokenName}
               </span>
@@ -363,7 +419,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
             className="flex-1 bg-transparent focus:outline-none text-[var(--text-primary)] text-lg"
           />
           <button
-            onClick={() => setInputAmount((Number(balance) / Math.pow(10, inputDecimals)).toString())}
+            onClick={async () => { const f = await refreshBalance(); setInputAmount(await getMaxStakeAmount(f, inputDecimals)) }}
             className="text-sm text-blue-500 font-medium hover:text-blue-400"
           >
             MAX
@@ -449,7 +505,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
             ) : (
               <span
                 className="cursor-pointer hover:text-[var(--text-primary)]"
-                onClick={() => setInputAmount((Number(balance) / Math.pow(10, inputDecimals)).toString())}
+                onClick={async () => { const f = await refreshBalance(); setInputAmount(await getMaxStakeAmount(f, inputDecimals)) }}
               >
                 {(Number(balance) / Math.pow(10, inputDecimals)).toFixed(2)} {inputTokenName}
               </span>
@@ -465,7 +521,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
             className="flex-1 bg-transparent focus:outline-none text-[var(--text-primary)] text-lg"
           />
           <button
-            onClick={() => setInputAmount((Number(balance) / Math.pow(10, inputDecimals)).toString())}
+            onClick={async () => { const f = await refreshBalance(); setInputAmount(await getMaxStakeAmount(f, inputDecimals)) }}
             className="text-sm text-blue-500 font-medium hover:text-blue-400"
           >
             MAX
@@ -571,7 +627,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
                   ) : (
                     <span
                       className="cursor-pointer hover:text-[var(--text-primary)]"
-                      onClick={() => setLpStakeAmount((Number(lpBalance) / 1e6).toString())}
+                      onClick={async () => { const f = await refreshLpBalance(); setLpStakeAmount(await getMaxStakeAmount(f, 6)) }}
                     >
                       {(Number(lpBalance) / 1e6).toFixed(4)}
                     </span>
@@ -587,7 +643,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
                   className="flex-1 bg-transparent focus:outline-none text-[var(--text-primary)] text-lg"
                 />
                 <button
-                  onClick={() => setLpStakeAmount((Number(lpBalance) / 1e6).toString())}
+                  onClick={async () => { const f = await refreshLpBalance(); setLpStakeAmount(await getMaxStakeAmount(f, 6)) }}
                   className="text-sm text-blue-500 font-medium hover:text-blue-400"
                 >
                   MAX

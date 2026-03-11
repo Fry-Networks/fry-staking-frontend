@@ -477,35 +477,6 @@ export const stakeTokens = async (
       amount: algokit.microAlgos(BOX_PRICE),
     });
 
-    // Send fee in the transacted token BEFORE contract call
-    if (feeAmount > 0) {
-      await algorandClient.send.assetTransfer({
-        sender,
-        signer,
-        receiver: feeRecipient,
-        amount: BigInt(feeAmount),
-        assetId: BigInt(feeTokenId),
-      });
-
-      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appId: stakingId,
-          userId: sender,
-          gasAmount: feeAmount,
-          gasType: 'farmingDeposit',
-          feeType: 'percentage',
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) console.log('Fee logged:', data);
-          else console.warn('Fee log response:', data.message);
-        })
-        .catch((err) => console.error('Error logging fee:', err));
-    }
-
     // Prepare stake_pay and stake_axfer according to the token type
     let stakePay, stakeAxfer;
     if (stakeTokenId === 0) {
@@ -548,7 +519,43 @@ export const stakeTokens = async (
       stake_pay: stakePay,
       stake_axfer: stakeAxfer,
       box_tx: boxTx,
-    });
+    })
+      .then((res) => res)
+      .catch((e) => e);
+
+    // Only send fee if contract call succeeded
+    if (result instanceof Error) {
+      return result;
+    }
+
+    // Send fee in the transacted token AFTER successful contract call
+    if (feeAmount > 0) {
+      await algorandClient.send.assetTransfer({
+        sender,
+        signer,
+        receiver: feeRecipient,
+        amount: BigInt(feeAmount),
+        assetId: BigInt(feeTokenId),
+      });
+
+      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appId: stakingId,
+          userId: sender,
+          gasAmount: feeAmount,
+          gasType: 'farmingDeposit',
+          feeType: 'percentage',
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) console.log('Fee logged:', data);
+          else console.warn('Fee log response:', data.message);
+        })
+        .catch((err) => console.error('Error logging fee:', err));
+    }
 
     return result;
   } catch (error) {

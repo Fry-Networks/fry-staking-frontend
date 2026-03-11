@@ -257,6 +257,9 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
         fryRewardFee: 0,
         aprRate: 0,
         appId: String(appId),
+        lpPairName: `${selectedTokenA?.tokenSymbol || 'Token A'} / ${selectedTokenB?.tokenSymbol || 'Token B'}`,
+        rewardTokenName: selectedRewardToken?.tokenName || '',
+        rewardTokenSymbol: selectedRewardToken?.tokenSymbol || '',
       }
 
       const response = await authAxios.post('/farming/add', payload)
@@ -486,7 +489,7 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
         const defaultLpList = defaultCurrencies.filter((t) => t.tokenId !== 0);
         const lpList = defaultLpList.length > 0 ? defaultLpList : sortedTokens.filter((t) => t.tokenId !== 0);
         setSelectedTokenA(lpList[0] || null);
-        setSelectedTokenB(lpList[1] || lpList[0] || null);
+        setSelectedTokenB(null);  // User must explicitly choose Token B
         // Reward token can be any (prefer default tokens first)
         const rewardDefault = defaultCurrencies[0] || sortedTokens.find((t) => isFryToken(t)) || sortedTokens[0] || null;
         setSelectedRewardToken(rewardDefault);
@@ -494,24 +497,24 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
         setFormData((prev) => ({
           ...prev,
           lpTokenA: (lpList[0]?.tokenId ?? '').toString(),
-          lpTokenB: ((lpList[1] || lpList[0])?.tokenId ?? '').toString(),
+          lpTokenB: '',
           rewardToken: (rewardDefault?.tokenId ?? '').toString(),
         }));
       } else {
         setAllTokens(currencies);
-        
+
         // Defaults: LP tokens exclude ALGO, use default tokens first
         const defaultLpList = defaultCurrencies.filter((t) => t.tokenId !== 0);
         const lpList = defaultLpList.length > 0 ? defaultLpList : currencies.filter((t) => t.tokenId !== 0);
         setSelectedTokenA(lpList[0] || null);
-        setSelectedTokenB(lpList[1] || lpList[0] || null);
+        setSelectedTokenB(null);  // User must explicitly choose Token B
         const rewardDefault2 = defaultCurrencies[0] || currencies[0] || null;
         setSelectedRewardToken(rewardDefault2);
         // Sync formData so validation sees the auto-selected tokens
         setFormData((prev) => ({
           ...prev,
           lpTokenA: (lpList[0]?.tokenId ?? '').toString(),
-          lpTokenB: ((lpList[1] || lpList[0])?.tokenId ?? '').toString(),
+          lpTokenB: '',
           rewardToken: (rewardDefault2?.tokenId ?? '').toString(),
         }));
       }
@@ -543,14 +546,14 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
       const defaultLpList = defaultCurrencies.filter((t) => t.tokenId !== 0);
       const lpList = defaultLpList.length > 0 ? defaultLpList : fallbackTokens.filter((t) => t.tokenId !== 0);
       setSelectedTokenA(lpList[0] || null);
-      setSelectedTokenB(lpList[1] || lpList[0] || null);
+      setSelectedTokenB(null);  // User must explicitly choose Token B
       const rewardDefault3 = defaultCurrencies[0] || fallbackTokens[0] || null;
       setSelectedRewardToken(rewardDefault3);
       // Sync formData so validation sees the auto-selected tokens
       setFormData((prev) => ({
         ...prev,
         lpTokenA: (lpList[0]?.tokenId ?? '').toString(),
-        lpTokenB: ((lpList[1] || lpList[0])?.tokenId ?? '').toString(),
+        lpTokenB: '',
         rewardToken: (rewardDefault3?.tokenId ?? '').toString(),
       }));
     }
