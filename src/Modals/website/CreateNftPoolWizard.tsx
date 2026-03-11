@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
+import { Icon } from '@iconify/react'
 import { Modal, Steps, DatePicker, Radio } from 'antd'
 import { toast } from 'react-toastify'
 import dayjs from 'dayjs'
@@ -56,6 +57,8 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
   const [collectionMode, setCollectionMode] = useState(0)
   const [collectionCreator, setCollectionCreator] = useState('')
   const [whitelistInput, setWhitelistInput] = useState('')
+  const [useCustomName, setUseCustomName] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   // Step 1: Reward Model
   const [rewardModel, setRewardModel] = useState(0)
@@ -84,6 +87,22 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
       .map((s) => Number(s.trim()))
       .filter((n) => !isNaN(n) && n > 0)
   }, [whitelistInput])
+
+  // Auto-fill creator address with connected wallet
+  useEffect(() => {
+    if (activeAddress && !collectionCreator) {
+      setCollectionCreator(activeAddress)
+    }
+  }, [activeAddress])
+
+  // Auto-generate pool name from collection + reward model
+  useEffect(() => {
+    if (!useCustomName) {
+      const modelSuffix = rewardModel === 0 ? 'NFT Staking' : rewardModel === 1 ? 'NFT Pool' : 'NFT Farm'
+      const prefix = collectionCreator.trim() ? collectionCreator.slice(0, 8) + '...' : ''
+      setPoolName(prefix ? `${prefix} ${modelSuffix}` : modelSuffix)
+    }
+  }, [collectionCreator, rewardModel, useCustomName])
 
   const getDepositAmount = (): number => {
     switch (rewardModel) {
@@ -122,12 +141,19 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
     setWithdrawFeeBps('0')
     setClaimFeeBps('800')
     setDeployStatus('')
+    setUseCustomName(false)
+    setShowAdvanced(false)
   }
 
   const canProceed = (step: number): boolean => {
     switch (step) {
-      case 0:
-        return poolName.trim().length > 0 && (collectionMode !== 0 || collectionCreator.trim().length > 0)
+      case 0: {
+        const needsCreator = collectionMode === 0 || collectionMode === 2
+        const needsWhitelist = collectionMode === 1 || collectionMode === 2
+        return poolName.trim().length > 0
+          && (!needsCreator || collectionCreator.trim().length > 0)
+          && (!needsWhitelist || whitelistedAsaIds.length > 0)
+      }
       case 1:
         return true // Just picking a radio
       case 2: {
@@ -302,45 +328,6 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
             <p className="text-[var(--text-secondary)] text-sm">Set up your NFT collection and pool details.</p>
 
             <div className="flex flex-col gap-[10px]">
-              <p className="large text-[var(--text-primary)]">Pool Name</p>
-              <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                <Input
-                  type="text"
-                  placeholder="My NFT Staking Pool"
-                  value={poolName}
-                  onChange={(e) => setPoolName(e.target.value)}
-                  className="input-wrapper text-[16px] w-full"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-[10px]">
-              <p className="large text-[var(--text-primary)]">Description (optional)</p>
-              <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                <Input
-                  type="text"
-                  placeholder="Describe your pool"
-                  value={poolDescription}
-                  onChange={(e) => setPoolDescription(e.target.value)}
-                  className="input-wrapper text-[16px] w-full"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-[10px]">
-              <p className="large text-[var(--text-primary)]">Pool Image URL (optional)</p>
-              <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                <Input
-                  type="text"
-                  placeholder="https://..."
-                  value={poolImage}
-                  onChange={(e) => setPoolImage(e.target.value)}
-                  className="input-wrapper text-[16px] w-full"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-[10px]">
               <p className="large text-[var(--text-primary)]">Collection Mode</p>
               <Radio.Group
                 value={collectionMode}
@@ -365,6 +352,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
                     className="input-wrapper text-[16px] w-full"
                   />
                 </div>
+                <p className="text-xs text-[var(--text-secondary)]">Pre-filled with your connected wallet. Change if the collection was created by a different address.</p>
               </div>
             )}
 
@@ -383,6 +371,62 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
                 )}
               </div>
             )}
+
+            <div className="border-t border-[var(--border-color)] pt-3 mt-2">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              >
+                <Icon icon={showAdvanced ? 'mdi:chevron-up' : 'mdi:chevron-down'} className="w-4 h-4" />
+                Advanced Settings
+              </button>
+              {showAdvanced && (
+                <div className="flex flex-col gap-4 mt-3">
+                  <div className="flex flex-col gap-[10px]">
+                    <p className="large text-[var(--text-primary)]">Pool Name</p>
+                    <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
+                      <Input
+                        type="text"
+                        placeholder="Auto-generated pool name"
+                        value={poolName}
+                        onChange={(e) => { setPoolName(e.target.value); setUseCustomName(true) }}
+                        className="input-wrapper text-[16px] w-full"
+                      />
+                    </div>
+                    {!useCustomName && (
+                      <p className="text-xs text-[var(--text-secondary)]">Auto-generated. Edit to customize.</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-[10px]">
+                    <p className="large text-[var(--text-primary)]">Description (optional)</p>
+                    <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
+                      <Input
+                        type="text"
+                        placeholder="Describe your pool"
+                        value={poolDescription}
+                        onChange={(e) => setPoolDescription(e.target.value)}
+                        className="input-wrapper text-[16px] w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-[10px]">
+                    <p className="large text-[var(--text-primary)]">Pool Image URL (optional)</p>
+                    <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
+                      <Input
+                        type="text"
+                        placeholder="https://..."
+                        value={poolImage}
+                        onChange={(e) => setPoolImage(e.target.value)}
+                        className="input-wrapper text-[16px] w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )
 
