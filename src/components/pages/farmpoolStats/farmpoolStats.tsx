@@ -88,7 +88,7 @@ const FarmPoolStats: React.FC = () => {
   }, [farmEndTime])
 
   return (
-    <div className="w-full mt-[67px] mb-[119px] sm-s:mb-[29px]">
+    <div className="w-full mt-[67px] mb-[119px] sm-s:mb-[29px] flex-1">
       <div className="max-xxxl:w-[95%] w-[80%] m-auto flex flex-col gap-[38px] sm-s:gap-[20px]">
         {/* Header */}
         <div className="flex justify-between items-center sm-s:flex-col gap-[20px]">

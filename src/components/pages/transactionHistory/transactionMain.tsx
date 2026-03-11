@@ -8,7 +8,7 @@ const TransactionMain: React.FC = () => {
 
   return (
     <>
-      <div className="w-full my-[68px]">
+      <div className="w-full my-[68px] flex-1">
         <div className="max-xxxl:w-[95%] w-[80%] m-auto flex flex-col items-center gap-[34px]">
           <h1 className="font-apex text-grad uppercase text-center sm-s:text-[60px]">Transaction History</h1>
 

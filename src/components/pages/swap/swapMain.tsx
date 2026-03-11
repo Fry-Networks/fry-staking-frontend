@@ -645,7 +645,7 @@ const SwapMain = () => {
   }
 
   return (
-    <div className="w-full mt-[56px] mb-[50px]">
+    <div className="w-full mt-[56px] mb-[50px] flex-1">
       <div className="max-xxxl:w-[95%] w-[80%] m-auto flex flex-col gap-[10px]">
         <div className="top flex justify-between items-center sm-s:flex-col sm-s:gap-[20px]">
           <h3 className="uppercase font-apex tracking-[1.6px] heading">Swap</h3>

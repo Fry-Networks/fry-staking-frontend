@@ -42,7 +42,7 @@ const NftPoolStats = () => {
       <div className="relative overflow-hidden min-h-screen flex flex-col">
         <PageBg />
         <Navbar />
-        <div className="w-full mt-[40px] mb-[47px]">
+        <div className="w-full mt-[40px] mb-[47px] flex-1">
           <div className="max-xxxl:w-[95%] w-[80%] m-auto">
             {loading ? (
               <div className="flex justify-center items-center py-20">

@@ -308,7 +308,7 @@ const FarmTable: React.FC = () => {
   }, []);
 
   return (
-    <div className="w-full mt-[40px] mb-[47px]">
+    <div className="w-full mt-[40px] mb-[47px] flex-1">
     {walletAddress && <Farmbanner wallet={walletAddress} />}
       <div className="max-xxxl:w-[95%] w-[80%] m-auto flex flex-col gap-[16px]">
         {/* Tabs */}
