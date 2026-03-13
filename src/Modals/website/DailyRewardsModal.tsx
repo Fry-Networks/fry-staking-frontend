@@ -490,7 +490,7 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
                 <button
                   className="px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
                   style={{ backgroundColor: '#EF4444', border: 'none' }}
-                  onClick={() => { onClose(); window.location.href = '/stake'; }}
+                  onClick={() => { onClose(); window.location.href = '/token-stake'; }}
                 >
                   Start Staking
                 </button>

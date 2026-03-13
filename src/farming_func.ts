@@ -467,8 +467,10 @@ export const stakeTokens = async (
     const poolTime = end - start;
     if (poolTime <= 0) throw new Error('Invalid farm duration');
 
+    const netAmount = stakeAmount - feeAmount;
+
     const updatedAprFloat =
-      (rewardAmount / (currentTotalStaked + stakeAmount)) * 100 * ((86400 * 360) / poolTime);
+      (rewardAmount / (currentTotalStaked + netAmount)) * 100 * ((86400 * 360) / poolTime);
     const updatedApr = Math.floor(updatedAprFloat * 100); // scale x100 to keep 2 decimals
 
     const boxTx = await algorandClient.transactions.payment({
@@ -484,7 +486,7 @@ export const stakeTokens = async (
       stakePay = await algorandClient.transactions.payment({
         sender,
         receiver: appAddress,
-        amount: algokit.microAlgos(Number(stakeAmount)),
+        amount: algokit.microAlgos(Number(netAmount)),
         signer,
       });
       // Dummy asset transfer required by contract signature when staking ALGO
@@ -507,14 +509,14 @@ export const stakeTokens = async (
       stakeAxfer = await algorandClient.transactions.assetTransfer({
         sender,
         receiver: appAddress,
-        amount: BigInt(stakeAmount),
+        amount: BigInt(netAmount),
         assetId: BigInt(stakeTokenId),
         signer,
       });
     }
 
     const result = await farmingClient.stakeTokens({
-      stake_amount: BigInt(stakeAmount),
+      stake_amount: BigInt(netAmount),
       updated_apr: BigInt(updatedApr),
       stake_pay: stakePay,
       stake_axfer: stakeAxfer,
@@ -530,31 +532,35 @@ export const stakeTokens = async (
 
     // Send fee in the transacted token AFTER successful contract call
     if (feeAmount > 0) {
-      await algorandClient.send.assetTransfer({
-        sender,
-        signer,
-        receiver: feeRecipient,
-        amount: BigInt(feeAmount),
-        assetId: BigInt(feeTokenId),
-      });
+      try {
+        await algorandClient.send.assetTransfer({
+          sender,
+          signer,
+          receiver: feeRecipient,
+          amount: BigInt(feeAmount),
+          assetId: BigInt(feeTokenId),
+        });
 
-      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appId: stakingId,
-          userId: sender,
-          gasAmount: feeAmount,
-          gasType: 'farmingDeposit',
-          feeType: 'percentage',
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) console.log('Fee logged:', data);
-          else console.warn('Fee log response:', data.message);
+        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appId: stakingId,
+            userId: sender,
+            gasAmount: feeAmount,
+            gasType: 'farmingDeposit',
+            feeType: 'percentage',
+          }),
         })
-        .catch((err) => console.error('Error logging fee:', err));
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) console.log('Fee logged:', data);
+            else console.warn('Fee log response:', data.message);
+          })
+          .catch((err) => console.error('Error logging fee:', err));
+      } catch (feeErr) {
+        console.warn('Fee transfer failed after successful farming stake:', feeErr);
+      }
     }
 
     return result;
@@ -692,33 +698,37 @@ export const unstakeTokens = async (
 
     console.log('Unstake successful:', tx);
 
-    // Send fee in the transacted token AFTER contract call
+    // Send fee in the transacted token AFTER successful contract call
     if (feeAmount > 0) {
-      await algorandClient.send.assetTransfer({
-        sender,
-        signer,
-        receiver: feeRecipient,
-        amount: BigInt(feeAmount),
-        assetId: BigInt(feeTokenId),
-      });
+      try {
+        await algorandClient.send.assetTransfer({
+          sender,
+          signer,
+          receiver: feeRecipient,
+          amount: BigInt(feeAmount),
+          assetId: BigInt(feeTokenId),
+        });
 
-      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appId: farmingId,
-          userId: sender,
-          gasAmount: feeAmount,
-          gasType: 'farmingWithdraw',
-          feeType: 'percentage',
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) console.log('Fee logged:', data);
-          else console.warn('Fee log response:', data.message);
+        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appId: farmingId,
+            userId: sender,
+            gasAmount: feeAmount,
+            gasType: 'farmingWithdraw',
+            feeType: 'percentage',
+          }),
         })
-        .catch((err) => console.error('Error logging fee:', err));
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) console.log('Fee logged:', data);
+            else console.warn('Fee log response:', data.message);
+          })
+          .catch((err) => console.error('Error logging fee:', err));
+      } catch (feeErr) {
+        console.warn('Fee transfer failed after successful farming unstake:', feeErr);
+      }
     }
 
     return tx;
@@ -815,33 +825,37 @@ export const claimRewards = async (
       }
     );
 
-    // Send fee in the reward token AFTER contract call
+    // Send fee in the reward token AFTER successful contract call
     if (feeAmount > 0) {
-      await algorandClient.send.assetTransfer({
-        sender,
-        signer,
-        receiver: feeRecipient,
-        amount: BigInt(feeAmount),
-        assetId: BigInt(feeTokenId),
-      });
+      try {
+        await algorandClient.send.assetTransfer({
+          sender,
+          signer,
+          receiver: feeRecipient,
+          amount: BigInt(feeAmount),
+          assetId: BigInt(feeTokenId),
+        });
 
-      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appId: farmingId,
-          userId: sender,
-          gasAmount: feeAmount,
-          gasType: 'farmingClaim',
-          feeType: 'percentage',
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) console.log('Fee logged:', data);
-          else console.warn('Fee log response:', data.message);
+        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appId: farmingId,
+            userId: sender,
+            gasAmount: feeAmount,
+            gasType: 'farmingClaim',
+            feeType: 'percentage',
+          }),
         })
-        .catch((err) => console.error('Error logging fee:', err));
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) console.log('Fee logged:', data);
+            else console.warn('Fee log response:', data.message);
+          })
+          .catch((err) => console.error('Error logging fee:', err));
+      } catch (feeErr) {
+        console.warn('Fee transfer failed after successful farming claim:', feeErr);
+      }
     }
 
     return tx;

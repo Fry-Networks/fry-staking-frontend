@@ -537,7 +537,7 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
         { tokenId: 0, tokenName: 'Algorand', tokenSymbol: 'ALGO', tokenImage: 'https://asa-list.tinyman.org/assets/0/icon.png' },
         { tokenId: 31566704, tokenName: 'USD Coin', tokenSymbol: 'USDC', tokenImage: 'https://asa-list.tinyman.org/assets/31566704/icon.png' },
         { tokenId: 312769, tokenName: 'Tether USD', tokenSymbol: 'USDT', tokenImage: 'https://asa-list.tinyman.org/assets/312769/icon.png' },
-        { tokenId: 2485314946, tokenName: 'Fry', tokenSymbol: 'FRY', tokenImage: 'https://fry-staking-frontend.vercel.app/assets/images/logo.svg' }
+        { tokenId: 2485314946, tokenName: 'Fry', tokenSymbol: 'FRY', tokenImage: '/assets/images/fry-token.png' }
       ];
       
       setAllTokens(fallbackTokens);

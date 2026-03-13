@@ -261,6 +261,7 @@ const CreateStakeWizard: React.FC<CreateStakeWizardProps> = ({
         lockPeriod: lockPeriodSeconds,
         isGated,
         gateConfig: isGated ? gateConfig : {},
+        contractVersion: 2,
       };
 
       const response = await authAxios.post('/staking/add', payload);

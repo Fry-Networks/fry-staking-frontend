@@ -28,7 +28,7 @@ const Navbar: React.FC = () => {
   const [hasActiveEvents, setHasActiveEvents] = useState(false)
   const { activeAddress } = useWallet();
   const location = useLocation()
-  const isStakeActive = location.pathname === '/stake' || location.pathname === '/nft-stake'
+  const isStakeActive = location.pathname === '/token-stake' || location.pathname === '/nft-stake'
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -107,15 +107,15 @@ const Navbar: React.FC = () => {
               </NavLink>
             </li>
             <li className="relative group uppercase large text-[var(--text-primary)] font-bold font-apex">
-              <span className={`cursor-pointer p-[10px] uppercase inline-flex items-center gap-1 ${
+              <span className={`cursor-pointer p-[10px] uppercase ${
                 isStakeActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''
               }`}>
                 Stake
-                <Icon icon="mdi:chevron-down" className="w-4 h-4" />
+                <Icon icon="mdi:chevron-down" className="w-4 h-4 inline-block ml-1 align-middle" />
               </span>
               <ul className="absolute hidden group-hover:block bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-md shadow-lg min-w-[160px] z-50 top-full left-0">
                 <li>
-                  <NavLink to="/stake" className={({ isActive }) =>
+                  <NavLink to="/token-stake" className={({ isActive }) =>
                     `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
                   }>Token Stake</NavLink>
                 </li>
@@ -263,7 +263,7 @@ const Navbar: React.FC = () => {
             <li className="flex flex-col gap-2">
               <span className="uppercase large text-[var(--text-secondary)] font-bold font-apex px-[10px]">Stake</span>
               <NavLink
-                to="/stake"
+                to="/token-stake"
                 onClick={onClose}
                 className={({ isActive }) =>
                   `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive ? 'text-secondary' : ''}`

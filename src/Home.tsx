@@ -1,4 +1,4 @@
-import { createBrowserRouter, Outlet, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet, RouterProvider } from 'react-router-dom'
 import AdminDashboard from './adminDashboard/admindashboard'
 import AdminDashboardoutlet from './adminDashboard/dashboardoutlet'
 import Farming from './adminDashboard/Farming/farming'
@@ -42,6 +42,10 @@ const appRouter = createBrowserRouter([
   },
   {
     path: '/stake',
+    element: <Navigate to="/token-stake" replace />,
+  },
+  {
+    path: '/token-stake',
     element: <Stake />,
   },
   {

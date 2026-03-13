@@ -7,7 +7,12 @@ import Button from '../../shared/button'
 import NftTable from './nftTable'
 import { getAllNftPools } from '../../../services/nftStakingApi'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
+import { getNftMetadata } from '../../../services/nftCollectionService'
+import { lookupNfd } from '../../../services/nfdService'
+import axios from 'axios'
 import type { NftStakingPool } from '../../../types/nftStaking'
+
+const REWARD_MODEL_MAP: Record<string, number> = { fixed_rate: 0, proportional: 1, apr: 2 }
 
 type TabOption = 'MyLive' | 'MyEnded' | 'Live' | 'Ended' | 'All'
 
@@ -24,30 +29,113 @@ const NftStakeTable: React.FC = () => {
 
   const fetchPools = async () => {
     try {
-      const data = await getAllNftPools()
-      setPools(data)
-    } catch (error) {
-      console.error('Error fetching NFT pools:', error)
-    }
-  }
+      const [data, tokens] = await Promise.all([
+        getAllNftPools(),
+        tokenService.fetchAllTokens(),
+      ])
 
-  const fetchTokenImages = async () => {
-    try {
-      const tokens = await tokenService.fetchAllTokens()
+      // Build token image map for NftTable reward badge
       const imageMap: Record<string, string> = {}
       tokens.forEach((token) => {
         if (token.image) imageMap[token.id.toString()] = token.image
       })
       setTokenImages(imageMap)
-    } catch {
-      // ignore
+
+      // Map backend field names to interface field names
+      const mapped = data.map((raw: any) => ({
+        ...raw,
+        poolName: raw.name ?? raw.poolName ?? '',
+        poolDescription: raw.description ?? raw.poolDescription ?? '',
+        poolImage: raw.imageUrl ?? raw.poolImage ?? '',
+        nftValue: raw.nftValueInRewardToken ?? raw.nftValue ?? 0,
+        rewardModel: typeof raw.rewardModel === 'string'
+          ? REWARD_MODEL_MAP[raw.rewardModel] ?? 0
+          : raw.rewardModel,
+        rewardTokenName: tokens.find(t => t.id === raw.rewardTokenId)?.symbol || '',
+        rewardTokenImage: tokens.find(t => t.id === raw.rewardTokenId)?.image || '',
+      })) as NftStakingPool[]
+
+      setPools(mapped)
+      enrichPools(mapped)
+    } catch (error) {
+      console.error('Error fetching NFT pools:', error)
+    }
+  }
+
+  const isGenericName = (name: string) => {
+    if (!name || name.trim() === '') return true
+    if (name.includes('...')) return true
+    const lower = name.toLowerCase().trim()
+    return ['nft pool', 'nft staking', 'nft farm'].includes(lower)
+  }
+
+  // For pools missing an image or with generic names, enrich from NFT metadata / NFD
+  const enrichPools = async (poolList: NftStakingPool[]) => {
+    const needsImage = poolList.filter(p => !p.poolImage)
+    const needsName = poolList.filter(p => isGenericName(p.poolName))
+    if (needsImage.length === 0 && needsName.length === 0) return
+
+    const imageUpdates: Record<number, string> = {}
+    const nameUpdates: Record<number, string> = {}
+
+    // Enrich images + extract collection names from metadata
+    await Promise.allSettled(
+      needsImage.map(async (pool) => {
+        try {
+          let asaId: number | null = null
+          if (pool.collectionCreator?.trim().length >= 58) {
+            const res = await axios.get(
+              `https://mainnet-idx.4160.nodely.dev/v2/accounts/${pool.collectionCreator.trim()}/created-assets?limit=1`,
+              { timeout: 10000 },
+            )
+            asaId = res.data?.assets?.[0]?.index ?? null
+          } else if (pool.whitelistedAsaIds?.length > 0) {
+            asaId = pool.whitelistedAsaIds[0]
+          }
+          if (asaId) {
+            const meta = await getNftMetadata(asaId)
+            if (meta.imageUrl) imageUpdates[pool.appId] = meta.imageUrl
+            if (meta.name && isGenericName(pool.poolName)) {
+              const collName = meta.name.replace(/\s*#\d+$/, '').trim()
+              if (collName) nameUpdates[pool.appId] = `${collName} NFT Staking`
+            }
+          }
+        } catch { /* skip */ }
+      }),
+    )
+
+    // For pools still needing names (not resolved by metadata), try NFD
+    const stillNeedsName = needsName.filter(p => !nameUpdates[p.appId])
+    if (stillNeedsName.length > 0) {
+      const uniqueCreators = [...new Set(stillNeedsName.map(p => p.collectionCreator?.trim()).filter(a => a && a.length >= 58))]
+      const nfdResults = await Promise.allSettled(uniqueCreators.map(addr => lookupNfd(addr)))
+      const nfdMap = new Map<string, string>()
+      uniqueCreators.forEach((addr, i) => {
+        const result = nfdResults[i]
+        if (result.status === 'fulfilled' && result.value) nfdMap.set(addr, result.value)
+      })
+      stillNeedsName.forEach(pool => {
+        const addr = pool.collectionCreator?.trim()
+        if (addr && nfdMap.has(addr)) {
+          nameUpdates[pool.appId] = `${nfdMap.get(addr)} NFT Staking`
+        }
+      })
+    }
+
+    if (Object.keys(imageUpdates).length > 0 || Object.keys(nameUpdates).length > 0) {
+      setPools(prev => prev.map(p => {
+        const updated = { ...p }
+        if (imageUpdates[p.appId]) updated.poolImage = imageUpdates[p.appId]
+        if (nameUpdates[p.appId]) updated.poolName = nameUpdates[p.appId]
+        return updated
+      }))
     }
   }
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      await Promise.all([fetchPools(), fetchTokenImages()])
+      await fetchPools()
       setLoading(false)
     }
     loadData()

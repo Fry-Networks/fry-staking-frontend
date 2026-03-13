@@ -79,21 +79,19 @@ export interface NftMetadata {
 export interface CreateNftPoolPayload {
   appId: number
   creatorId: string
-  poolName: string
-  poolDescription: string
-  poolImage: string
-  collectionMode: number
+  name: string
+  description: string
+  imageUrl: string
+  collectionMode: string
   collectionCreator: string
   whitelistedAsaIds: number[]
   rewardTokenId: number
-  rewardTokenName: string
-  rewardTokenImage: string
-  rewardModel: number
+  rewardModel: string
   ratePerDay: number
   totalRewardPool: number
   aprRate: number
   valuePerNft: number
-  nftValue: number
+  nftValueInRewardToken: number
   poolEndTime: number
   lockPeriod: number
   feeRecipient: string

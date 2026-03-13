@@ -236,14 +236,16 @@ const StakeModal: React.FC<StakeModalProps> = ({
         await stakePoolTokens(appId, stakeAmountMicro, activeAddress, signer, fee.feeAmount, tokenId, fee.feeRecipient)
       }
 
-      // Log staking to backend
+      // Log staking to backend (record net amount after fee deduction)
+      const netAmount = amount - (fee.feeAmount / 1_000_000)
+      const netAmountMicro = stakeAmountMicro - fee.feeAmount
       try {
         if (isLpFarm) {
           await authAxios.post('/stakingfarmingtoken/add', {
-            tokens: amount,
+            tokens: netAmount,
             wallet: activeAddress,
             poolId: appId,
-            stakedAmount: amount,
+            stakedAmount: netAmount,
             earnedReward: 0,
             lastStakedAt: Date.now(),
             claimedAt: null,
@@ -251,7 +253,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
         } else {
           await authAxios.post('/stakingtoken/add', {
             stakeTokens: stakeTokenId,
-            totalStaked: stakeAmountMicro,
+            totalStaked: netAmountMicro,
             appId: appId,
             wallet: activeAddress,
           })
@@ -337,12 +339,13 @@ const StakeModal: React.FC<StakeModalProps> = ({
         fee.feeRecipient,
       )
 
+      const netLpFloat = (lpDeltaNum - fee.feeAmount) / Math.pow(10, inputDecimals)
       try {
         await authAxios.post('/stakingfarmingtoken/add', {
-          tokens: lpDeltaNum / Math.pow(10, inputDecimals),
+          tokens: netLpFloat,
           wallet: activeAddress,
           poolId: appId,
-          stakedAmount: lpDeltaNum / Math.pow(10, inputDecimals),
+          stakedAmount: netLpFloat,
           earnedReward: 0,
           lastStakedAt: Date.now(),
           claimedAt: null,

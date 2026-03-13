@@ -72,6 +72,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
   const [rewardLoading, setRewardLoading] = useState<Record<string, boolean>>({})
   const [userStakes, setUserStakes] = useState<Record<string, number>>({})
   const [userStakeTimes, setUserStakeTimes] = useState<Record<string, number>>({})
+  const [isMigrating, setIsMigrating] = useState<string | null>(null)
 
   // Fee confirmation state
   const [feeModalVisible, setFeeModalVisible] = useState(false)
@@ -206,7 +207,6 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       dataIndex: 'tvl',
       key: 'tvl',
       sorter: (a, b) => (parseFloat(a.tvl.replace(/[$,\s]/g, '')) || 0) - (parseFloat(b.tvl.replace(/[$,\s]/g, '')) || 0),
-      defaultSortOrder: 'descend' as const,
       render: (value) => <p className="text-text_clr font-medium medium">{value}</p>,
     },
     { title: 'APR', dataIndex: 'apr', key: 'apr', sorter: (a, b) => (parseFloat(a.apr) || 0) - (parseFloat(b.apr) || 0), render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
@@ -304,7 +304,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
           poolTime: getStakingRecord.poolTime || (getStakingRecord.poolEndTime - getStakingRecord.poolStartTime),
           rewardToken: Number(getStakingRecord.rewardToken || FRY_ASSET_ID),
           stakeTokens: Number(getStakingRecord.stakeToken || FRY_ASSET_ID),
-          totalStaked: args.adjustedStackValue,
+          totalStaked: args.adjustedStackValue - (args.feeAmount || 0),
           poolId: args._id,
           appId: Number(args.stakingContractId),
           wallet: activeAddress
@@ -511,6 +511,11 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       const claimToken = await claimTokens(args.stakingContractId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
       console.log('claimToken:', claimToken);
 
+      if (claimToken.error) {
+        toast.error('Claim failed. Please try again.');
+        return;
+      }
+
       const { rewardClaimed, stakedAmount, updatedApr, tx, stakedTime } = claimToken;
 
       const stakerData = {
@@ -637,6 +642,96 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
     }
   };
 
+  const handleMigrate = async (record: DataType) => {
+    if (!activeAddress || !signer) {
+      toast.error('Wallet not connected.')
+      return
+    }
+
+    const k = String(record.key)
+    const userStaked = userStakes[k]
+    if (!userStaked || userStaked <= 0) {
+      toast.error('No staked tokens to migrate.')
+      return
+    }
+
+    // Find matching V2 pool (same stake + reward token pair)
+    const v2Pool = stacks.find(p =>
+      p.contractVersion === 2 &&
+      p.stakeTokenId === record.stakeTokenId &&
+      p.rewardTokenId === record.rewardTokenId
+    )
+    if (!v2Pool) {
+      toast.error('No matching V2 pool found yet.')
+      return
+    }
+
+    try {
+      await ensureAuth()
+      setIsMigrating(record._id)
+
+      const stakedMicro = Math.round(userStaked * 1_000_000)
+
+      // Step 1: Unstake from V1 (with zero fee for migration)
+      toast.info('Step 1/2: Unstaking from legacy pool...')
+      const unstakeResult = await unstakeTokens(
+        record.stakingContractId, stakedMicro, activeAddress, signer,
+        0, record.stakeTokenId, ''
+      )
+
+      if (unstakeResult instanceof Error) {
+        toast.error('Unstake failed: ' + unstakeResult.message)
+        return
+      }
+
+      // Step 2: Stake into V2 (with zero fee for migration)
+      toast.info('Step 2/2: Staking into V2 pool...')
+      const stakeResult = await stakeTokens(
+        v2Pool.stakingContractId, stakedMicro, activeAddress, signer,
+        0, record.stakeTokenId, ''
+      )
+
+      if (stakeResult instanceof Error) {
+        toast.warning('Unstake succeeded but V2 stake failed. Your tokens are in your wallet — please stake manually.')
+        return
+      }
+
+      // Update backend records
+      const getStakingRecord = await getStakingData(v2Pool.stakingContractId, activeAddress, signer) as StakingRecord
+      const stakerData = await getUserData(v2Pool.stakingContractId, activeAddress)
+
+      await authAxios.post('/stakingtoken/add', {
+        apr: getStakingRecord.apr,
+        lockPeriod: getStakingRecord.lockPeriod,
+        poolStartTime: getStakingRecord.poolStartTime,
+        poolEndTime: getStakingRecord.poolEndTime,
+        poolTime: getStakingRecord.poolTime || (getStakingRecord.poolEndTime - getStakingRecord.poolStartTime),
+        rewardToken: Number(getStakingRecord.rewardToken || FRY_ASSET_ID),
+        stakeTokens: Number(getStakingRecord.stakeToken || FRY_ASSET_ID),
+        totalStaked: stakedMicro,
+        poolId: v2Pool._id,
+        appId: Number(v2Pool.stakingContractId),
+        wallet: activeAddress,
+      })
+
+      await authAxios.put(`/staking/update/${v2Pool._id}`, {
+        aprRate: getStakingRecord.apr / 100,
+        totalAmountStaked: Number(stakerData.stakedAmount) / 1_000_000,
+        totalStakers: 1,
+        stakingTime: stakerData.stakeTime,
+      })
+
+      toast.success('Migration complete! Your tokens are now in the V2 pool.')
+      await new Promise(r => setTimeout(r, 500))
+      await fetchData()
+    } catch (error: any) {
+      console.error('Migration error:', error)
+      toast.error(error?.message || 'Migration failed.')
+    } finally {
+      setIsMigrating(null)
+    }
+  }
+
   // Function to handle the "View details" click
   // Function to handle the "View details" click
   const handleViewDetailsClick = (record: DataType) => {
@@ -664,6 +759,15 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
             // {
             expandedRowRender: (record) => (
               <div className="expandable">
+                {(!record.contractVersion || record.contractVersion === 1) && (
+                  <div className="bg-red-900/20 border border-red-700/40 rounded-xl p-3 mb-3 w-full">
+                    <p className="text-red-400 font-medium text-sm">V1 Contract Bug Warning</p>
+                    <p className="text-xs text-red-500/70">
+                      Claiming rewards on this legacy pool will reset your stake timer and yield 0 rewards.
+                      Use Withdraw only, or migrate to V2.
+                    </p>
+                  </div>
+                )}
                 <div className="flex items-center gap-[10px] justify-between pr-[50px] max-xxxl:pr-[0px]">
 
                   {/* Left */}
@@ -706,6 +810,51 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                       }
                       return null
                     })()}
+                    {/* Migrate button for V1 pools */}
+                    {(!record.contractVersion || record.contractVersion === 1) && activeAddress && (() => {
+                      const k = String(record.key)
+                      const userStaked = userStakes[k] || 0
+                      const stakeTime = userStakeTimes[k]
+                      const lockSecs = record.lockPeriod || 0
+                      const now = Math.floor(Date.now() / 1000)
+                      const isLocked = stakeTime && lockSecs > 0 && (stakeTime + lockSecs) > now
+                      const hasV2 = stacks.some(p => p.contractVersion === 2 && p.stakeTokenId === record.stakeTokenId && p.rewardTokenId === record.rewardTokenId)
+
+                      if (userStaked <= 0) return null
+
+                      return (
+                        <div className="mt-2">
+                          {isLocked ? (
+                            <>
+                              <Button
+                                text="Migrate to V2"
+                                className="button btn-primary opacity-50"
+                                height={36}
+                                width={140}
+                                disabled={true}
+                              />
+                              <p className="text-xs text-yellow-500 mt-1">
+                                Unlocks {new Date((stakeTime + lockSecs) * 1000).toLocaleDateString()}
+                              </p>
+                            </>
+                          ) : !hasV2 ? (
+                            <p className="text-xs text-gray-500">V2 pool coming soon</p>
+                          ) : (
+                            <>
+                              <Button
+                                text={isMigrating === record._id ? 'Migrating...' : 'Migrate to V2'}
+                                className="button btn-primary"
+                                height={36}
+                                width={140}
+                                onClick={() => handleMigrate(record)}
+                                disabled={!!isMigrating}
+                              />
+                              <p className="text-[10px] text-green-400 mt-1">Fee waived for migration!</p>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                   {/* Right */}
                   {/* stake */}{/* withdraw */}
@@ -713,21 +862,34 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                     {
                       (showExpandable === 'Live' || showExpandable === 'MyLive' || showExpandable === 'Ended' || showExpandable === 'MyEnded') &&
                       <div className="flex gap-[10px]">
-                        <Button
-                          text="Stake"
-                          className="button btn-primary"
-                          height={45}
-                          width={106}
-                          onClick={() => {
-                            setModalTarget({
-                              appId: record.stakingContractId,
-                              stakeTokenId: record.stakeTokenId || FRY_ASSET_ID,
-                              stakeTokenName: record.stakeTokenName || 'tokens',
-                              userStake: userStakes[String(record.key)] || 0,
-                            })
-                            setStakeModalOpen(true)
-                          }}
-                        />
+                        {(!record.contractVersion || record.contractVersion === 1) ? (
+                          <div className="flex flex-col items-center">
+                            <Button
+                              text="Stake"
+                              className="button btn-primary opacity-50"
+                              height={45}
+                              width={106}
+                              disabled={true}
+                            />
+                            <p className="text-[10px] text-yellow-500 mt-1">Deposits disabled — use V2</p>
+                          </div>
+                        ) : (
+                          <Button
+                            text="Stake"
+                            className="button btn-primary"
+                            height={45}
+                            width={106}
+                            onClick={() => {
+                              setModalTarget({
+                                appId: record.stakingContractId,
+                                stakeTokenId: record.stakeTokenId || FRY_ASSET_ID,
+                                stakeTokenName: record.stakeTokenName || 'tokens',
+                                userStake: userStakes[String(record.key)] || 0,
+                              })
+                              setStakeModalOpen(true)
+                            }}
+                          />
+                        )}
                         <Button
                           text="Withdraw"
                           className="button btn-primary"
@@ -749,14 +911,27 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
 
                     <div className="flex gap-[10px]">
                       {activeAddress && (
-                        <Button
-                          text={isClaimingId === record._id ? 'Claiming...' : 'Claim'}
-                          className="button btn-primary"
-                          height={45}
-                          width={106}
-                          onClick={() => handleClaim(record.stakingContractId, record._id)}
-                          disabled={!!isClaimingId}
-                        />
+                        (!record.contractVersion || record.contractVersion === 1) ? (
+                          <div className="flex flex-col items-center">
+                            <Button
+                              text="Claim"
+                              className="button btn-primary opacity-50"
+                              height={45}
+                              width={106}
+                              disabled={true}
+                            />
+                            <p className="text-[10px] text-red-500 mt-1">Claim disabled — use Withdraw</p>
+                          </div>
+                        ) : (
+                          <Button
+                            text={isClaimingId === record._id ? 'Claiming...' : 'Claim'}
+                            className="button btn-primary"
+                            height={45}
+                            width={106}
+                            onClick={() => handleClaim(record.stakingContractId, record._id)}
+                            disabled={!!isClaimingId}
+                          />
+                        )
                       )}
                       {
                         (showExpandable === 'Ended' || showExpandable === 'MyEnded') &&
@@ -766,22 +941,35 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                           ) : claimedPools.includes(record._id) ? (
                             <p className="text-green font-semibold mt-2">✅ Rewards Claimed</p>
                           ) : (
-                            <Button
-                              text={rewardLoading[String(record.key)] ? "Checking..." : "Claim & Withdraw"}
-                              data-id="claim"
-                              onClick={() => {
-                                setIsClaimingId(record._id)
-                                handleClaimAndWithdraw(record.stakingContractId, record._id).finally(() => setIsClaimingId(null))
-                              }}
-                              className="button btn-primary"
-                              height={45}
-                              width={156}
-                              disabled={
-                                !!isClaimingId ||
-                                rewardLoading[String(record.key)] ||
-                                (estimatedRewards[String(record.key)] !== undefined && estimatedRewards[String(record.key)] <= 0)
-                              }
-                            />
+                            (!record.contractVersion || record.contractVersion === 1) ? (
+                              <div className="flex flex-col items-center">
+                                <Button
+                                  text="Claim & Withdraw"
+                                  className="button btn-primary opacity-50"
+                                  height={45}
+                                  width={156}
+                                  disabled={true}
+                                />
+                                <p className="text-[10px] text-red-500 mt-1">Claim disabled — use Withdraw</p>
+                              </div>
+                            ) : (
+                              <Button
+                                text={rewardLoading[String(record.key)] ? "Checking..." : "Claim & Withdraw"}
+                                data-id="claim"
+                                onClick={() => {
+                                  setIsClaimingId(record._id)
+                                  handleClaimAndWithdraw(record.stakingContractId, record._id).finally(() => setIsClaimingId(null))
+                                }}
+                                className="button btn-primary"
+                                height={45}
+                                width={156}
+                                disabled={
+                                  !!isClaimingId ||
+                                  rewardLoading[String(record.key)] ||
+                                  (estimatedRewards[String(record.key)] !== undefined && estimatedRewards[String(record.key)] <= 0)
+                                }
+                              />
+                            )
                           )
                         )
                       }

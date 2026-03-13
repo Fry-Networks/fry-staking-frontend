@@ -225,6 +225,12 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
                   {item?.gateConfig?.collectionName || 'NFT'}
                 </span>
               )}
+              {(!item.contractVersion || item.contractVersion === 1) && (
+                <span className="px-1.5 py-0.5 bg-yellow-900/30 text-yellow-500 rounded text-[9px] font-medium">Legacy</span>
+              )}
+              {item.contractVersion === 2 && (
+                <span className="px-1.5 py-0.5 bg-green-900/30 text-green-400 rounded text-[9px] font-medium">V2</span>
+              )}
             </div>
             <p className="text-text_clr small">with {item?.lockPeriod / 86400} days lock</p>
           </div>
@@ -259,7 +265,18 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       stakeTokenName: item?.stakeToken?.name || 'Token',
       rewardTokenName: item?.rewardToken?.name || 'Token',
       lockPeriod: item.lockPeriod || 0,
+      contractVersion: item.contractVersion || 1,
     }
+  })
+
+  // Sort: V2 pools first, then by TVL descending within each version group
+  transformedData.sort((a, b) => {
+    const av = a.contractVersion || 1
+    const bv = b.contractVersion || 1
+    if (bv !== av) return bv - av
+    const aTvl = parseFloat(a.tvl.replace(/[$,\s]/g, '')) || 0
+    const bTvl = parseFloat(b.tvl.replace(/[$,\s]/g, '')) || 0
+    return bTvl - aTvl
   })
 
   setOriginalData(transformedData)
@@ -378,6 +395,16 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       <div className="w-full mt-[40px] mb-[47px] flex-1">
         {activeAddress && <Stakebanner wallet={activeAddress} />}
         <div className="max-xxxl:w-[95%] w-[80%] m-auto flex flex-col gap-[16px]">
+          {activeAddress && originalData.some(p => (!p.contractVersion || p.contractVersion === 1) && p.hasUserStake) && (
+            <div className="bg-yellow-900/20 border border-yellow-700/40 rounded-xl p-4 mb-4 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-yellow-400 font-medium text-sm">Migration Available</p>
+                <p className="text-xs text-yellow-500/70">
+                  You have positions in legacy pools. Migrate to V2 for improved reward calculations. Migration fees are waived!
+                </p>
+              </div>
+            </div>
+          )}
           {/* Tabs */}
           <div className="top flex max-md:flex-col justify-between items-center gap-[20px]">
             <div className="flex w-full justify-center md:justify-start">

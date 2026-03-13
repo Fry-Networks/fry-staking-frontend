@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { Icon } from '@iconify/react'
 import { Modal, Steps, DatePicker, Radio } from 'antd'
 import { toast } from 'react-toastify'
@@ -8,6 +8,10 @@ import { useAuth } from '../../hooks/useAuth'
 import { createNftPool, depositRewards, depositRewardsAlgo, optInContractToNft } from '../../nft_staking_func'
 import { addNftPool } from '../../services/nftStakingApi'
 import { fetchFeeConfig, calculateFeeSimple, FEE_RECIPIENT } from '../../services/FeeService'
+import { getAssetBalance } from '../../services/ZapService'
+import { getNftMetadata } from '../../services/nftCollectionService'
+import { lookupNfd } from '../../services/nfdService'
+import axios from 'axios'
 import { authFetch } from '../../services/apiClient'
 import * as algokit from '@algorandfoundation/algokit-utils'
 import { getAlgodConfigFromViteEnvironment } from '../../utils/network/getAlgoClientConfigs'
@@ -37,6 +41,18 @@ const REWARD_MODEL_OPTIONS = [
   { label: 'APR', value: 2, desc: 'Annual percentage rate based on NFT value' },
 ]
 
+const REWARD_MODEL_MAP: Record<number, string> = {
+  0: 'fixed_rate',
+  1: 'proportional',
+  2: 'apr',
+}
+
+const COLLECTION_MODE_MAP: Record<number, string> = {
+  0: 'creator_address',
+  1: 'whitelist',
+  2: 'both',
+}
+
 const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
   isOpen,
   setIsOpen,
@@ -45,6 +61,10 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
   const { signer, activeAddress } = useWallet()
   const { ensureAuth } = useAuth()
   const isWalletConnected = !!activeAddress && !!signer
+
+  const PLATFORM_DEPOSIT_FEE_BPS = 50   // 0.50%
+  const PLATFORM_WITHDRAW_FEE_BPS = 25  // 0.25%
+  const PLATFORM_CLAIM_FEE_BPS = 800    // 8.00%
 
   const [currentStep, setCurrentStep] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -74,12 +94,40 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
   const [customLock, setCustomLock] = useState('')
   const [poolEndDate, setPoolEndDate] = useState<Date | null>(null)
 
-  // Step 3: Fees
-  const [depositFeeBps, setDepositFeeBps] = useState('0')
-  const [withdrawFeeBps, setWithdrawFeeBps] = useState('0')
-  const [claimFeeBps, setClaimFeeBps] = useState('800') // 8% default
+  const [depositAmount, setDepositAmount] = useState('')
+  const [estimatedNfts, setEstimatedNfts] = useState('10')
+  const [rewardTokenBalance, setRewardTokenBalance] = useState<number | null>(null)
+  const [balanceLoading, setBalanceLoading] = useState(false)
+  const [autoFetchingImage, setAutoFetchingImage] = useState(false)
+  const [autoCollectionName, setAutoCollectionName] = useState('')
+  const [creatorNfd, setCreatorNfd] = useState<string | null>(null)
 
   const actualLock = lockOption === -1 ? Number(customLock) : lockOption
+
+  const estimatedApr = useMemo(() => {
+    const nv = Number(nftValue) || Number(valuePerNft)
+    if (!nv || nv <= 0) return null
+    switch (rewardModel) {
+      case 0: {
+        const rpd = Number(ratePerDay)
+        if (rpd <= 0) return null
+        return (rpd * 365) / nv * 100
+      }
+      case 1: {
+        const total = Number(totalRewardPool)
+        const nfts = Number(estimatedNfts)
+        const endDate = poolEndDate
+        if (total <= 0 || nfts <= 0 || !endDate) return null
+        const days = Math.max(1, Math.ceil((endDate.getTime() / 1000 - Date.now() / 1000) / 86400))
+        const perNftPerDay = total / nfts / days
+        return (perNftPerDay * 365) / nv * 100
+      }
+      case 2:
+        return Number(aprRate) || null
+      default:
+        return null
+    }
+  }, [rewardModel, ratePerDay, totalRewardPool, aprRate, valuePerNft, nftValue, estimatedNfts, poolEndDate])
 
   const whitelistedAsaIds = useMemo(() => {
     return whitelistInput
@@ -95,29 +143,98 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
     }
   }, [activeAddress])
 
+  // Look up NFD for creator address
+  useEffect(() => {
+    const addr = collectionCreator.trim()
+    if (addr.length < 58) { setCreatorNfd(null); return }
+    let cancelled = false
+    lookupNfd(addr).then(name => { if (!cancelled) setCreatorNfd(name) })
+    return () => { cancelled = true }
+  }, [collectionCreator])
+
   // Auto-generate pool name from collection + reward model
   useEffect(() => {
     if (!useCustomName) {
       const modelSuffix = rewardModel === 0 ? 'NFT Staking' : rewardModel === 1 ? 'NFT Pool' : 'NFT Farm'
-      const prefix = collectionCreator.trim() ? collectionCreator.slice(0, 8) + '...' : ''
+      const prefix = autoCollectionName || creatorNfd || (collectionCreator.trim() ? collectionCreator.slice(0, 8) + '...' : '')
       setPoolName(prefix ? `${prefix} ${modelSuffix}` : modelSuffix)
     }
-  }, [collectionCreator, rewardModel, useCustomName])
+  }, [collectionCreator, rewardModel, useCustomName, autoCollectionName, creatorNfd])
 
-  const getDepositAmount = (): number => {
-    switch (rewardModel) {
-      case 0: // Fixed: calculate based on rate and duration
-        if (!poolEndDate || !ratePerDay) return 0
-        const days = Math.ceil((poolEndDate.getTime() / 1000 - Date.now() / 1000) / 86400)
-        return Number(ratePerDay) * days * 1_000_000
-      case 1: // Proportional
-        return Number(totalRewardPool) * 1_000_000
-      case 2: // APR: estimate based on value_per_nft and apr
-        return Number(valuePerNft) * 10 * 1_000_000 // Estimate for 10 NFTs
-      default:
-        return 0
+  // Auto-fetch collection NFT image for pool thumbnail
+  useEffect(() => {
+    if (poolImage) return
+    let cancelled = false
+    const fetchImage = async () => {
+      try {
+        setAutoFetchingImage(true)
+        let asaId: number | null = null
+
+        if ((collectionMode === 0 || collectionMode === 2) && collectionCreator.trim().length >= 58) {
+          const res = await axios.get(
+            `https://mainnet-idx.4160.nodely.dev/v2/accounts/${collectionCreator.trim()}/created-assets?limit=1`,
+            { timeout: 10000 },
+          )
+          asaId = res.data?.assets?.[0]?.index ?? null
+        } else if (collectionMode === 1 && whitelistedAsaIds.length > 0) {
+          asaId = whitelistedAsaIds[0]
+        } else if (collectionMode === 2 && whitelistedAsaIds.length > 0) {
+          asaId = whitelistedAsaIds[0]
+        }
+
+        if (asaId && !cancelled) {
+          const meta = await getNftMetadata(asaId)
+          if (meta.imageUrl && !cancelled) {
+            setPoolImage(meta.imageUrl)
+          }
+          // Extract collection name by stripping trailing #number
+          if (meta.name && !cancelled) {
+            const name = meta.name.replace(/\s*#\d+$/, '').trim()
+            if (name) setAutoCollectionName(name)
+          }
+        }
+      } catch {
+        // Graceful fallback — leave image empty
+      } finally {
+        if (!cancelled) setAutoFetchingImage(false)
+      }
     }
-  }
+    fetchImage()
+    return () => { cancelled = true }
+  }, [collectionCreator, whitelistedAsaIds, collectionMode])
+
+  // Fetch reward token balance when token or wallet changes
+  useEffect(() => {
+    if (!rewardToken || !activeAddress) {
+      setRewardTokenBalance(null)
+      return
+    }
+    let cancelled = false
+    const fetchBalance = async () => {
+      setBalanceLoading(true)
+      try {
+        const algodConfig = getAlgodConfigFromViteEnvironment()
+        const algod = algokit.getAlgoClient({
+          server: algodConfig.server,
+          port: algodConfig.port,
+          token: algodConfig.token,
+        })
+        const balanceMicro = await getAssetBalance(algod, activeAddress, rewardToken.id)
+        if (!cancelled) {
+          setRewardTokenBalance(Number(balanceMicro) / Math.pow(10, rewardToken.decimals))
+        }
+      } catch {
+        if (!cancelled) setRewardTokenBalance(null)
+      } finally {
+        if (!cancelled) setBalanceLoading(false)
+      }
+    }
+    fetchBalance()
+    return () => { cancelled = true }
+  }, [rewardToken, activeAddress])
+
+  const effectiveDeposit = rewardModel === 1 ? totalRewardPool : depositAmount
+  const depositExceedsBalance = rewardTokenBalance !== null && Number(effectiveDeposit) > 0 && Number(effectiveDeposit) > rewardTokenBalance
 
   const resetForm = () => {
     setCurrentStep(0)
@@ -137,12 +254,16 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
     setLockOption(0)
     setCustomLock('')
     setPoolEndDate(null)
-    setDepositFeeBps('0')
-    setWithdrawFeeBps('0')
-    setClaimFeeBps('800')
     setDeployStatus('')
     setUseCustomName(false)
     setShowAdvanced(false)
+    setDepositAmount('')
+    setEstimatedNfts('10')
+    setRewardTokenBalance(null)
+    setBalanceLoading(false)
+    setAutoFetchingImage(false)
+    setAutoCollectionName('')
+    setCreatorNfd(null)
   }
 
   const canProceed = (step: number): boolean => {
@@ -158,13 +279,14 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
         return true // Just picking a radio
       case 2: {
         if (!rewardToken) return false
+        if (!poolEndDate) return false
+        if (Number(effectiveDeposit) <= 0) return false
+        if (depositExceedsBalance) return false
         if (rewardModel === 0) return Number(ratePerDay) > 0
         if (rewardModel === 1) return Number(totalRewardPool) > 0
         if (rewardModel === 2) return Number(aprRate) > 0 && Number(valuePerNft) > 0
         return false
       }
-      case 3:
-        return true
       default:
         return true
     }
@@ -177,6 +299,14 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
     }
     if (!rewardToken) {
       toast.error('Please select a reward token.')
+      return
+    }
+    if (!poolEndDate) {
+      toast.error('Pool end date is required.')
+      return
+    }
+    if (depositExceedsBalance) {
+      toast.error(`Insufficient ${rewardToken.symbol} balance. You have ${rewardTokenBalance?.toLocaleString()} but need ${Number(effectiveDeposit).toLocaleString()}.`)
       return
     }
 
@@ -192,8 +322,8 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
       // Pool creation fee
       setDeployStatus('Calculating fees...')
       const feeConfig = await fetchFeeConfig()
-      const depositAmount = getDepositAmount()
-      const feeCalc = calculateFeeSimple('poolCreation', depositAmount, feeConfig)
+      const depositAmountMicro = Number(effectiveDeposit) * 1_000_000
+      const feeCalc = calculateFeeSimple('poolCreation', depositAmountMicro, feeConfig)
 
       if (feeCalc.feeAmount > 0) {
         setDeployStatus('Paying creation fee...')
@@ -245,9 +375,9 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
         poolEndTime,
         lockPeriodSeconds,
         FEE_RECIPIENT,
-        Number(depositFeeBps),
-        Number(withdrawFeeBps),
-        Number(claimFeeBps),
+        PLATFORM_DEPOSIT_FEE_BPS,
+        PLATFORM_WITHDRAW_FEE_BPS,
+        PLATFORM_CLAIM_FEE_BPS,
         activeAddress,
         signer,
       )
@@ -255,13 +385,13 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
       if (!appId) throw new Error('App ID not returned from contract.')
 
       // Opt contract into reward token and deposit rewards
-      if (rewardToken.id > 0 && depositAmount > 0) {
+      if (rewardToken.id > 0 && depositAmountMicro > 0) {
         setDeployStatus('Opting contract into reward token...')
         await optInContractToNft(appId, rewardToken.id, activeAddress, signer)
 
         setDeployStatus('Depositing rewards...')
         await depositRewards(appId, rewardToken.id, feeCalc.netAmount, activeAddress, signer)
-      } else if (rewardToken.id === 0 && depositAmount > 0) {
+      } else if (rewardToken.id === 0 && depositAmountMicro > 0) {
         setDeployStatus('Depositing ALGO rewards...')
         await depositRewardsAlgo(appId, feeCalc.netAmount, activeAddress, signer)
       }
@@ -271,27 +401,25 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
       await addNftPool({
         appId,
         creatorId: activeAddress,
-        poolName,
-        poolDescription,
-        poolImage,
-        collectionMode,
+        name: poolName,
+        description: poolDescription,
+        imageUrl: poolImage,
+        collectionMode: COLLECTION_MODE_MAP[collectionMode],
         collectionCreator: collectionCreator || activeAddress,
         whitelistedAsaIds,
         rewardTokenId: rewardToken.id,
-        rewardTokenName: rewardToken.name,
-        rewardTokenImage: rewardToken.image,
-        rewardModel,
+        rewardModel: REWARD_MODEL_MAP[rewardModel],
         ratePerDay: Number(ratePerDay) * 1_000_000 || 0,
         totalRewardPool: Number(totalRewardPool) * 1_000_000 || 0,
         aprRate: Number(aprRate) * 100 || 0,
         valuePerNft: Number(valuePerNft) * 1_000_000 || 0,
-        nftValue: Number(nftValue) * 1_000_000 || 0,
+        nftValueInRewardToken: Number(nftValue) * 1_000_000 || 0,
         poolEndTime,
         lockPeriod: lockPeriodSeconds,
         feeRecipient: FEE_RECIPIENT,
-        depositFeeBps: Number(depositFeeBps),
-        withdrawFeeBps: Number(withdrawFeeBps),
-        claimFeeBps: Number(claimFeeBps),
+        depositFeeBps: PLATFORM_DEPOSIT_FEE_BPS,
+        withdrawFeeBps: PLATFORM_WITHDRAW_FEE_BPS,
+        claimFeeBps: PLATFORM_CLAIM_FEE_BPS,
       })
 
       toast.success('NFT staking pool created successfully!')
@@ -300,24 +428,51 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
       fetchData()
     } catch (e) {
       console.error('Error creating NFT pool:', e)
-      if (e instanceof Error) {
-        if (e.message.includes('cancelled') || e.message.includes('CANCELLED')) return
-        toast.error(e.message || 'Transaction failed or was rejected.', { autoClose: 8000 })
-      } else {
-        toast.error('Transaction failed or was rejected.')
-      }
+      handleDeployError(e)
     } finally {
       setIsSubmitting(false)
       setDeployStatus('')
     }
   }
 
+  const handleDeployError = (e: unknown) => {
+    let errorMessage = 'Transaction failed or was rejected.'
+    let errorDetails = ''
+
+    if (e instanceof Error) {
+      const msg = e.message
+      if (msg.includes('balance') && (msg.includes('below min') || msg.includes('below minimum'))) {
+        const balanceMatch = msg.match(/balance\s+(\d+)\s+below\s+(?:min|minimum)\s+(\d+)/i)
+        if (balanceMatch) {
+          const current = (parseInt(balanceMatch[1]) / 1_000_000).toFixed(2)
+          const min = (parseInt(balanceMatch[2]) / 1_000_000).toFixed(2)
+          const needed = ((parseInt(balanceMatch[2]) - parseInt(balanceMatch[1])) / 1_000_000).toFixed(2)
+          errorMessage = 'Insufficient ALGO Balance'
+          errorDetails = `Current: ${current} ALGO, Required: ${min} ALGO. Need ${needed} more ALGO.`
+        }
+      } else if (msg.includes('does not exist') || msg.includes('has been deleted')) {
+        errorMessage = 'Invalid Token'
+        errorDetails = 'The selected reward token does not exist on Algorand.'
+      } else if (msg.includes('rejected') || msg.includes('User rejected')) {
+        errorMessage = 'Transaction Rejected'
+        errorDetails = 'The transaction was rejected. Please try again.'
+      } else if (msg.includes('cancelled') || msg.includes('CANCELLED')) {
+        return
+      } else {
+        errorMessage = 'Transaction Error'
+        errorDetails = msg
+      }
+    }
+
+    const fullMsg = errorDetails ? `${errorMessage}\n\n${errorDetails}` : errorMessage
+    toast.error(fullMsg, { autoClose: 8000, style: { whiteSpace: 'pre-line', maxWidth: '400px' } })
+  }
+
   const steps = [
     { title: 'Collection' },
     { title: 'Reward Model' },
     { title: 'Parameters' },
-    { title: 'Fees' },
-    { title: 'Deploy' },
+    { title: 'Review' },
   ]
 
   const renderStep = () => {
@@ -370,6 +525,21 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
                   <p className="text-xs text-[var(--text-secondary)]">{whitelistedAsaIds.length} ASA IDs parsed</p>
                 )}
               </div>
+            )}
+
+            {poolImage && (
+              <div className="flex items-center gap-3">
+                <img
+                  src={poolImage}
+                  alt="Collection preview"
+                  className="w-12 h-12 rounded-lg object-cover"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                />
+                <span className="text-xs text-[var(--text-secondary)]">Collection preview (auto-detected)</span>
+              </div>
+            )}
+            {autoFetchingImage && !poolImage && (
+              <p className="text-xs text-[var(--text-secondary)]">Fetching collection image...</p>
             )}
 
             <div className="border-t border-[var(--border-color)] pt-3 mt-2">
@@ -542,6 +712,46 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
               </div>
             </div>
 
+            {rewardModel === 1 && (
+              <div className="flex flex-col gap-[10px]">
+                <p className="large text-[var(--text-primary)]">Estimated NFTs Staked</p>
+                <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
+                  <Input
+                    type="number"
+                    placeholder="10"
+                    value={estimatedNfts}
+                    onChange={(e) => setEstimatedNfts(e.target.value)}
+                    className="input-wrapper text-[16px] w-full"
+                    min={1}
+                  />
+                </div>
+                <p className="text-xs text-[var(--text-secondary)]">Used to estimate per-NFT rewards</p>
+              </div>
+            )}
+
+            {estimatedApr !== null && (
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
+                <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                  Estimated APR: {estimatedApr.toFixed(1)}%
+                </p>
+                {rewardModel === 0 && Number(ratePerDay) > 0 && rewardToken && (
+                  <p className="text-xs text-green-600 dark:text-green-500 mt-1">
+                    {ratePerDay} {rewardToken.symbol} per NFT per day
+                  </p>
+                )}
+                {rewardModel === 1 && (
+                  <p className="text-xs text-green-600 dark:text-green-500 mt-1">
+                    Assuming {estimatedNfts} NFTs staked
+                  </p>
+                )}
+                {rewardModel === 2 && Number(valuePerNft) > 0 && rewardToken && (
+                  <p className="text-xs text-green-600 dark:text-green-500 mt-1">
+                    ~{((Number(aprRate) / 100) * Number(valuePerNft) / 365).toFixed(4)} {rewardToken.symbol} per NFT per day
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-col gap-[10px]">
               <p className="large text-[var(--text-primary)]">Lock Period</p>
               <div className="grid grid-cols-3 gap-2">
@@ -575,90 +785,85 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
             </div>
 
             <div className="flex flex-col gap-[10px]">
-              <p className="large text-[var(--text-primary)]">Pool End Date (optional)</p>
+              <p className="large text-[var(--text-primary)]">Pool End Date</p>
               <DatePicker
                 className="w-full"
                 value={poolEndDate ? dayjs(poolEndDate) : null}
                 onChange={(date) => setPoolEndDate(date?.toDate() || null)}
                 disabledDate={(current) => current && current < dayjs().startOf('day')}
-                placeholder="Select end date (leave empty for no end)"
+                placeholder="Select end date"
               />
+            </div>
+
+            <div className="flex flex-col gap-[10px]">
+              <div className="flex items-center justify-between">
+                <p className="large text-[var(--text-primary)]">
+                  {rewardModel === 1 ? 'Reward Deposit' : 'Reward Deposit Amount'}
+                </p>
+                {rewardModel !== 1 && rewardTokenBalance !== null && (
+                  <button
+                    type="button"
+                    onClick={() => setDepositAmount(String(rewardTokenBalance))}
+                    className="text-xs text-blue-500 hover:text-blue-600 transition-colors"
+                  >
+                    Max
+                  </button>
+                )}
+              </div>
+              {rewardModel === 1 ? (
+                <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
+                  <Input
+                    type="number"
+                    value={totalRewardPool}
+                    className="input-wrapper text-[16px] w-full opacity-60"
+                    disabled
+                  />
+                </div>
+              ) : (
+                <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
+                  <Input
+                    type="number"
+                    placeholder={`Amount of ${rewardToken?.symbol || 'tokens'} to deposit`}
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    className="input-wrapper text-[16px] w-full"
+                    min={0}
+                  />
+                </div>
+              )}
+              {balanceLoading && (
+                <p className="text-xs text-[var(--text-secondary)]">Loading balance...</p>
+              )}
+              {!balanceLoading && rewardTokenBalance !== null && (
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Available: {rewardTokenBalance.toLocaleString()} {rewardToken?.symbol}
+                </p>
+              )}
+              {depositExceedsBalance && (
+                <p className="text-xs text-red-500">
+                  Insufficient balance. You have {rewardTokenBalance?.toLocaleString()} {rewardToken?.symbol} but are trying to deposit {Number(effectiveDeposit).toLocaleString()}.
+                </p>
+              )}
+              {rewardModel === 0 && Number(ratePerDay) > 0 && Number(depositAmount) > 0 && !depositExceedsBalance && (
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Runway: ~{Math.floor(Number(depositAmount) / Number(ratePerDay))} days ({ratePerDay} {rewardToken?.symbol || 'tokens'}/NFT/day)
+                </p>
+              )}
+              {rewardModel === 1 && !depositExceedsBalance && (
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Equals your Total Reward Pool above
+                </p>
+              )}
+              {rewardModel === 2 && Number(depositAmount) > 0 && !depositExceedsBalance && (
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Initial pool funding for APR-based rewards
+                </p>
+              )}
             </div>
           </div>
         )
 
       case 3:
-        return (
-          <div className="flex flex-col gap-4">
-            <p className="text-[var(--text-secondary)] text-sm">Configure fee structure for the pool.</p>
-
-            <div className="flex flex-col gap-[10px]">
-              <p className="large text-[var(--text-primary)]">Deposit Fee (basis points)</p>
-              <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                <Input
-                  type="number"
-                  placeholder="0"
-                  value={depositFeeBps}
-                  onChange={(e) => setDepositFeeBps(e.target.value)}
-                  className="input-wrapper text-[16px] w-full"
-                  min={0}
-                />
-              </div>
-              <p className="text-xs text-[var(--text-secondary)]">{(Number(depositFeeBps) / 100).toFixed(2)}%</p>
-            </div>
-
-            <div className="flex flex-col gap-[10px]">
-              <p className="large text-[var(--text-primary)]">Withdraw Fee (basis points)</p>
-              <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                <Input
-                  type="number"
-                  placeholder="0"
-                  value={withdrawFeeBps}
-                  onChange={(e) => setWithdrawFeeBps(e.target.value)}
-                  className="input-wrapper text-[16px] w-full"
-                  min={0}
-                />
-              </div>
-              <p className="text-xs text-[var(--text-secondary)]">{(Number(withdrawFeeBps) / 100).toFixed(2)}%</p>
-            </div>
-
-            <div className="flex flex-col gap-[10px]">
-              <p className="large text-[var(--text-primary)]">Claim Fee (basis points)</p>
-              <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                <Input
-                  type="number"
-                  placeholder="800"
-                  value={claimFeeBps}
-                  onChange={(e) => setClaimFeeBps(e.target.value)}
-                  className="input-wrapper text-[16px] w-full"
-                  min={0}
-                />
-              </div>
-              <p className="text-xs text-[var(--text-secondary)]">{(Number(claimFeeBps) / 100).toFixed(2)}% (default: 8%)</p>
-            </div>
-
-            {/* Summary */}
-            <div className="bg-[var(--bg-secondary)] rounded-xl p-4 mt-2">
-              <h6 className="font-medium text-[var(--text-primary)] mb-2">Fee Summary</h6>
-              <div className="flex flex-col gap-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-secondary)]">Deposit Fee</span>
-                  <span>{(Number(depositFeeBps) / 100).toFixed(2)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-secondary)]">Withdraw Fee</span>
-                  <span>{(Number(withdrawFeeBps) / 100).toFixed(2)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-secondary)]">Claim Fee</span>
-                  <span>{(Number(claimFeeBps) / 100).toFixed(2)}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-
-      case 4:
         return (
           <div className="flex flex-col gap-4">
             <p className="text-[var(--text-secondary)] text-sm mb-2">Review your NFT staking pool configuration before deploying.</p>
@@ -730,6 +935,28 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
                 </>
               )}
 
+              {estimatedApr !== null && (
+                <div className="flex justify-between">
+                  <span className="text-[var(--text-secondary)] text-sm">Estimated APR</span>
+                  <span className="font-medium text-sm text-green">{estimatedApr.toFixed(1)}%</span>
+                </div>
+              )}
+
+              <div className="border-t border-[var(--border-color)] my-1" />
+
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)] text-sm">Reward Deposit</span>
+                <span className="font-medium text-sm">{Number(effectiveDeposit).toLocaleString()} {rewardToken?.symbol}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)] text-sm">Creation Fee (0.50%)</span>
+                <span className="font-medium text-sm">{(Number(effectiveDeposit) * 0.005).toLocaleString(undefined, { maximumFractionDigits: 4 })} {rewardToken?.symbol}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)] text-sm">Net Deposit</span>
+                <span className="font-medium text-sm">{(Number(effectiveDeposit) * 0.995).toLocaleString(undefined, { maximumFractionDigits: 4 })} {rewardToken?.symbol}</span>
+              </div>
+
               <div className="border-t border-[var(--border-color)] my-1" />
 
               <div className="flex justify-between">
@@ -739,8 +966,23 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
               <div className="flex justify-between">
                 <span className="text-[var(--text-secondary)] text-sm">Pool End</span>
                 <span className="font-medium text-sm">
-                  {poolEndDate ? dayjs(poolEndDate).format('MMM D, YYYY') : 'No end date'}
+                  {dayjs(poolEndDate).format('MMM D, YYYY')}
                 </span>
+              </div>
+
+              <div className="border-t border-[var(--border-color)] my-1" />
+              <p className="text-xs text-[var(--text-secondary)]">Platform Fees (non-configurable)</p>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)] text-sm">Deposit Fee</span>
+                <span className="font-medium text-sm">0.50%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)] text-sm">Withdraw Fee</span>
+                <span className="font-medium text-sm">0.25%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)] text-sm">Claim Fee</span>
+                <span className="font-medium text-sm">8.00%</span>
               </div>
             </div>
 
@@ -808,7 +1050,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
             />
           )}
 
-          {currentStep < 4 ? (
+          {currentStep < 3 ? (
             <Button
               text="Next"
               className="button btn-primary flex-1"

@@ -1,6 +1,7 @@
 import * as algokit from '@algorandfoundation/algokit-utils'
 import algosdk, { TransactionSigner } from 'algosdk'
-import { FryNftStakingClient } from './contracts/FryNftStakingClient'
+import { FryNftStakingClient, APP_SPEC } from './contracts/FryNftStakingClient'
+import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryNftStakingCompiled'
 import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 import { authFetch } from './services/apiClient'
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
@@ -74,53 +75,66 @@ export const createNftPool = async (
   signer: TransactionSigner,
 ) => {
   try {
-    const indexer = getIndexerClient()
     const algodClient = getAlgodClient()
 
-    const appDetails = {
-      resolveBy: 'creatorAndName',
-      sender: { signer, addr: sender } as TransactionSignerAccount,
-      creatorAddress: sender,
-      findExistingUsing: indexer,
-    } as AppDetails
+    // Build ABI method from APP_SPEC contract definition (no runtime TEAL compilation)
+    const abiContract = new algosdk.ABIContract(APP_SPEC.contract as any)
+    const initPoolMethod = abiContract.getMethodByName('init_pool')
 
-    const nftStaking = new FryNftStakingClient(appDetails, algodClient)
+    const suggestedParams = await algodClient.getTransactionParams().do()
 
-    const createResult = await nftStaking.create.initPool({
-      rewardTokenId,
-      rewardModel,
-      collectionMode,
-      collectionCreator: collectionCreator || sender,
-      nftValue,
-      ratePerDay,
-      totalRewardPool,
-      aprRate,
-      valuePerNft,
-      poolEndTime: BigInt(poolEndTime),
-      lockPeriod: BigInt(lockPeriod),
-      feeRecipient: feeRecipient || sender,
-      depositFeeBps,
-      withdrawFeeBps,
-      claimFeeBps,
+    const atc = new algosdk.AtomicTransactionComposer()
+    atc.addMethodCall({
+      appID: 0,
+      method: initPoolMethod,
+      methodArgs: [
+        rewardTokenId,
+        rewardModel,
+        collectionMode,
+        collectionCreator || sender,
+        nftValue,
+        ratePerDay,
+        totalRewardPool,
+        aprRate,
+        valuePerNft,
+        poolEndTime,
+        lockPeriod,
+        feeRecipient || sender,
+        depositFeeBps,
+        withdrawFeeBps,
+        claimFeeBps,
+      ],
+      approvalProgram: COMPILED_APPROVAL,
+      clearProgram: COMPILED_CLEAR,
+      numGlobalInts: 17,
+      numGlobalByteSlices: 3,
+      numLocalInts: 0,
+      numLocalByteSlices: 0,
+      sender,
+      signer,
+      suggestedParams,
+      onComplete: algosdk.OnApplicationComplete.NoOpOC,
     })
 
-    if (!createResult?.appId) {
+    const result = await atc.execute(algodClient, 4)
+    const appId = result.methodResults[0].txInfo?.['application-index']
+    if (!appId) {
       throw new Error('Failed to create NFT staking pool.')
     }
 
-    const { algorandClient } = await createNftStakingClient(signer, sender, Number(createResult.appId))
+    const { algorandClient } = await createNftStakingClient(signer, sender, Number(appId))
 
     // MBR payment for contract
     await algorandClient.send.payment({
       sender,
-      receiver: algosdk.getApplicationAddress(createResult.appId),
+      receiver: algosdk.getApplicationAddress(BigInt(appId)),
       amount: algokit.algos(0.3),
       extraFee: algokit.algos(0.001),
     })
 
     await new Promise((resolve) => setTimeout(resolve, 500))
 
-    return Number(createResult.appId)
+    return Number(appId)
   } catch (e) {
     console.error('Error in createNftPool:', e)
     throw e
@@ -200,34 +214,38 @@ export const stakeNft = async (
 
     // Send fee after successful contract call
     if (feeAmount > 0) {
-      if (feeTokenId === 0) {
-        await algorandClient.send.payment({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: algokit.microAlgos(feeAmount),
-        })
-      } else {
-        await algorandClient.send.assetTransfer({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: BigInt(feeAmount),
-          assetId: BigInt(feeTokenId),
-        })
-      }
+      try {
+        if (feeTokenId === 0) {
+          await algorandClient.send.payment({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: algokit.microAlgos(feeAmount),
+          })
+        } else {
+          await algorandClient.send.assetTransfer({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: BigInt(feeAmount),
+            assetId: BigInt(feeTokenId),
+          })
+        }
 
-      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appId,
-          userId: sender,
-          gasAmount: feeAmount,
-          gasType: 'nftStakingStake',
-          feeType: 'percentage',
-        }),
-      }).catch((err) => console.error('Error logging fee:', err))
+        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appId,
+            userId: sender,
+            gasAmount: feeAmount,
+            gasType: 'nftStakingStake',
+            feeType: 'percentage',
+          }),
+        }).catch((err) => console.error('Error logging fee:', err))
+      } catch (feeErr) {
+        console.warn('Fee transfer failed after successful NFT stake:', feeErr)
+      }
     }
 
     return tx
@@ -265,34 +283,38 @@ export const unstakeNft = async (
     if (tx instanceof Error) return tx
 
     if (feeAmount > 0) {
-      if (feeTokenId === 0) {
-        await algorandClient.send.payment({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: algokit.microAlgos(feeAmount),
-        })
-      } else {
-        await algorandClient.send.assetTransfer({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: BigInt(feeAmount),
-          assetId: BigInt(feeTokenId),
-        })
-      }
+      try {
+        if (feeTokenId === 0) {
+          await algorandClient.send.payment({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: algokit.microAlgos(feeAmount),
+          })
+        } else {
+          await algorandClient.send.assetTransfer({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: BigInt(feeAmount),
+            assetId: BigInt(feeTokenId),
+          })
+        }
 
-      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appId,
-          userId: sender,
-          gasAmount: feeAmount,
-          gasType: 'nftStakingWithdraw',
-          feeType: 'percentage',
-        }),
-      }).catch((err) => console.error('Error logging fee:', err))
+        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appId,
+            userId: sender,
+            gasAmount: feeAmount,
+            gasType: 'nftStakingWithdraw',
+            feeType: 'percentage',
+          }),
+        }).catch((err) => console.error('Error logging fee:', err))
+      } catch (feeErr) {
+        console.warn('Fee transfer failed after successful NFT unstake:', feeErr)
+      }
     }
 
     return tx
@@ -329,34 +351,38 @@ export const claimRewards = async (
     if (tx instanceof Error) return tx
 
     if (feeAmount > 0) {
-      if (feeTokenId === 0) {
-        await algorandClient.send.payment({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: algokit.microAlgos(feeAmount),
-        })
-      } else {
-        await algorandClient.send.assetTransfer({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: BigInt(feeAmount),
-          assetId: BigInt(feeTokenId),
-        })
-      }
+      try {
+        if (feeTokenId === 0) {
+          await algorandClient.send.payment({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: algokit.microAlgos(feeAmount),
+          })
+        } else {
+          await algorandClient.send.assetTransfer({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: BigInt(feeAmount),
+            assetId: BigInt(feeTokenId),
+          })
+        }
 
-      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appId,
-          userId: sender,
-          gasAmount: feeAmount,
-          gasType: 'nftStakingClaim',
-          feeType: 'percentage',
-        }),
-      }).catch((err) => console.error('Error logging fee:', err))
+        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appId,
+            userId: sender,
+            gasAmount: feeAmount,
+            gasType: 'nftStakingClaim',
+            feeType: 'percentage',
+          }),
+        }).catch((err) => console.error('Error logging fee:', err))
+      } catch (feeErr) {
+        console.warn('Fee transfer failed after successful NFT claim:', feeErr)
+      }
     }
 
     return tx

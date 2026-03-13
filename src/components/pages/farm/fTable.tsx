@@ -264,11 +264,12 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
 
       const tx = await stakeTokens(record.appId, stakeAmount, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
 
+      const netFloat = floatAmount - ((args.feeAmount || 0) / 1_000_000)
       const stakingData = {
-        tokens: floatAmount,
+        tokens: netFloat,
         wallet: activeAddress!,
         poolId: record.appId,
-        stakedAmount: floatAmount,
+        stakedAmount: netFloat,
         earnedReward: 0,
         lastStakedAt: Date.now(),
         claimedAt: null,

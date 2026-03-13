@@ -85,7 +85,7 @@ const PoolStats: React.FC = () => {
             src="../../assets/icons/back-redArrow.svg"
             alt="arrow"
             className="cursor-pointer sm-s:w-[40px] sm-s:h-[40px]"
-            onClick={() => navigate('/stake')}
+            onClick={() => navigate('/token-stake')}
           />
           <h1 className="font-apex text-grad uppercase text-center sm-s:text-[60px]">Pool Statistics</h1>
           <div></div>

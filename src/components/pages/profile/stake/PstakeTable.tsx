@@ -28,6 +28,7 @@ export interface ProfileStakePool {
   isCreator: boolean
   endTime: number
   status: PoolStatus
+  contractVersion: number
 }
 
 const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
@@ -170,6 +171,7 @@ const PstakeTable: React.FC = () => {
           isCreator,
           endTime,
           status: computeStatus(endTime),
+          contractVersion: pool.contractVersion || 1,
         }
       })
 

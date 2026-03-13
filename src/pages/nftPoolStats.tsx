@@ -5,8 +5,14 @@ import Navbar from '../components/layout/navbar'
 import PageBg from '../components/shared/pageBg'
 import { getNftPoolByAppId } from '../services/nftStakingApi'
 import { getStakedNftsByPool } from '../services/nftStakingApi'
+import { tokenServiceInstance as tokenService } from '../services/TokenService'
+import { getNftMetadata } from '../services/nftCollectionService'
+import { lookupNfd } from '../services/nfdService'
+import axios from 'axios'
 import type { NftStakingPool, StakedNft } from '../types/nftStaking'
 import { Spin } from 'antd'
+
+const REWARD_MODEL_MAP: Record<string, number> = { fixed_rate: 0, proportional: 1, apr: 2 }
 
 const NftPoolStats = () => {
   const [searchParams] = useSearchParams()
@@ -19,12 +25,70 @@ const NftPoolStats = () => {
     if (!appId) return
     const load = async () => {
       try {
-        const [poolData, stakes] = await Promise.all([
+        const [poolData, stakes, tokens] = await Promise.all([
           getNftPoolByAppId(appId),
           getStakedNftsByPool(appId),
+          tokenService.fetchAllTokens(),
         ])
-        setPool(poolData)
+
+        // Map backend field names to interface field names
+        const raw = poolData as any
+        const mapped = {
+          ...raw,
+          poolName: raw.name ?? raw.poolName ?? '',
+          poolDescription: raw.description ?? raw.poolDescription ?? '',
+          poolImage: raw.imageUrl ?? raw.poolImage ?? '',
+          nftValue: raw.nftValueInRewardToken ?? raw.nftValue ?? 0,
+          rewardModel: typeof raw.rewardModel === 'string'
+            ? REWARD_MODEL_MAP[raw.rewardModel] ?? 0
+            : raw.rewardModel,
+          rewardTokenName: tokens.find(t => t.id === raw.rewardTokenId)?.symbol || '',
+          rewardTokenImage: tokens.find(t => t.id === raw.rewardTokenId)?.image || '',
+        } as NftStakingPool
+
+        setPool(mapped)
         setStakedNfts(stakes)
+
+        // Enrich pool name if generic
+        const isGeneric = !mapped.poolName || mapped.poolName.trim() === ''
+          || mapped.poolName.includes('...')
+          || ['nft pool', 'nft staking', 'nft farm'].includes(mapped.poolName.toLowerCase().trim())
+
+        // Enrich pool image (and possibly name) if missing
+        let nameResolved = false
+        if (!mapped.poolImage) {
+          try {
+            let asaId: number | null = null
+            if (mapped.collectionCreator?.trim().length >= 58) {
+              const res = await axios.get(
+                `https://mainnet-idx.4160.nodely.dev/v2/accounts/${mapped.collectionCreator.trim()}/created-assets?limit=1`,
+                { timeout: 10000 },
+              )
+              asaId = res.data?.assets?.[0]?.index ?? null
+            } else if (mapped.whitelistedAsaIds?.length > 0) {
+              asaId = mapped.whitelistedAsaIds[0]
+            }
+            if (asaId) {
+              const meta = await getNftMetadata(asaId)
+              if (meta.imageUrl) setPool(prev => prev ? { ...prev, poolImage: meta.imageUrl } : prev)
+              if (isGeneric && meta.name) {
+                const collName = meta.name.replace(/\s*#\d+$/, '').trim()
+                if (collName) {
+                  nameResolved = true
+                  setPool(prev => prev ? { ...prev, poolName: `${collName} NFT Staking` } : prev)
+                }
+              }
+            }
+          } catch { /* skip */ }
+        }
+
+        // NFD fallback for generic names
+        if (isGeneric && !nameResolved && mapped.collectionCreator?.trim().length >= 58) {
+          try {
+            const nfd = await lookupNfd(mapped.collectionCreator.trim())
+            if (nfd) setPool(prev => prev ? { ...prev, poolName: `${nfd} NFT Staking` } : prev)
+          } catch { /* skip */ }
+        }
       } catch (err) {
         console.error('Error loading pool stats:', err)
       } finally {
