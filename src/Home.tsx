@@ -24,6 +24,7 @@ import StakePoolStats from './pages/stakePoolStats'
 import Events from './pages/events'
 import NftStake from './pages/nftStake'
 import NftPoolStats from './pages/nftPoolStats'
+import AlphaArcade from './pages/alphaArcade'
 import Swap from './pages/swap'
 import TransactionHistory from './pages/transactionHistory'
 
@@ -59,6 +60,10 @@ const appRouter = createBrowserRouter([
   {
     path: '/nft-pool-stats',
     element: <NftPoolStats />,
+  },
+  {
+    path: '/alpha-arcade',
+    element: <AlphaArcade />,
   },
   {
     path: '/events',
