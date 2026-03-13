@@ -1,16 +1,20 @@
 export interface AlphaArcadeMarket {
-  app_id: number
-  question: string
-  category: string
-  image_url: string
-  resolution_time: number
-  yes_token_id: number
-  no_token_id: number
-  yes_price: number
-  no_price: number
-  volume_24h: number
-  total_volume: number
-  status: string
+  marketAppId: number
+  title: string
+  categories: string[]
+  image: string
+  endTs: number
+  yesAssetId: number
+  noAssetId: number
+  yesProb: number
+  noProb: number
+  twentyFourHrVolume: number
+  volume: number
+  id: string
+  slug: string
+  featured: boolean
+  source: string
+  createdAt: number
 }
 
 export interface AlphaArcadePool {
@@ -46,7 +50,8 @@ export interface AlphaArcadePosition {
   noEscrowAppIds: number[]
   spreadUsed: number
   entryMidPrice: number
-  status: 'active' | 'withdrawing' | 'withdrawn' | 'auto_withdrawn' | 'resolved'
+  status: 'active' | 'pending_withdrawal' | 'withdrawing' | 'withdrawn' | 'auto_withdrawn' | 'resolved'
+  warningsSent?: { type: '48hr' | '24hr' | '6hr'; sentAt: string }[]
   usdcRecovered: number
   remainingYesTokens: number
   remainingNoTokens: number

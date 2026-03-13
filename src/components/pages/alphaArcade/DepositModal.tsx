@@ -36,10 +36,10 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
 
   const canDeposit = usdcAmountMicro >= 1_000_000 && !!activeAddress
 
-  const yesPercent = market ? Math.round((market.yes_price ?? 0.5) * 100) : 50
+  const yesPercent = market ? Math.round(market.yesProb ?? 50) : 50
 
-  const resolutionDate = market?.resolution_time
-    ? new Date(market.resolution_time * 1000)
+  const resolutionDate = market?.endTs
+    ? new Date(market.endTs * 1000)
     : null
   const resolvingSoon = resolutionDate
     ? resolutionDate.getTime() - Date.now() < 24 * 60 * 60 * 1000 && resolutionDate.getTime() > Date.now()
@@ -58,7 +58,7 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
       // Step 2: Build unsigned transactions from backend
       const result = await buildDeposit({
         wallet: activeAddress,
-        marketAppId: market.app_id,
+        marketAppId: market.marketAppId,
         usdcAmount: usdcAmountMicro,
       })
 
@@ -81,13 +81,13 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
       setStep('recording')
       await recordDeposit({
         wallet: activeAddress,
-        marketAppId: market.app_id,
+        marketAppId: market.marketAppId,
         poolId: result.poolId,
         usdcDeposited: usdcAmountMicro,
         yesEscrowAppIds: [],
         noEscrowAppIds: [],
         spreadUsed: result.pool?.spreadBps ?? 50,
-        entryMidPrice: market.yes_price ?? 0.5,
+        entryMidPrice: (market.yesProb ?? 50) / 100,
         txId: confirmedTxId,
       })
 
@@ -147,7 +147,7 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
               {/* Market info */}
               <div className="bg-[var(--bg-secondary)] rounded-lg p-3">
                 <p className="text-[var(--text-primary)] font-bold text-sm leading-tight">
-                  {market.question || `Market #${market.app_id}`}
+                  {market.title || `Market #${market.marketAppId}`}
                 </p>
                 <div className="flex justify-between text-xs mt-2">
                   <span className="text-green-500">Yes {yesPercent}%</span>
@@ -224,7 +224,7 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--text-secondary)]">Market</span>
                   <span className="text-[var(--text-primary)] text-right max-w-[200px] truncate">
-                    {market.question}
+                    {market.title}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">

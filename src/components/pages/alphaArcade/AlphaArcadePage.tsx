@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
-import { Tabs, Spin, Input, Select } from 'antd'
+import { Tabs, Spin, Input, Select, Alert } from 'antd'
 import MarketCard from './MarketCard'
 import PositionCard from './PositionCard'
 import DepositModal from './DepositModal'
@@ -78,11 +78,22 @@ const AlphaArcadePage: React.FC = () => {
     return map
   }, [pools])
 
+  // Build market lookup map for endTs
+  const marketMap = useMemo(() => {
+    const map = new Map<number, AlphaArcadeMarket>()
+    for (const m of markets) {
+      map.set(m.marketAppId, m)
+    }
+    return map
+  }, [markets])
+
   // Extract unique categories
   const categories = useMemo(() => {
     const cats = new Set<string>()
     for (const m of markets) {
-      if (m.category) cats.add(m.category)
+      for (const c of m.categories || []) {
+        if (c) cats.add(c)
+      }
     }
     return ['all', ...Array.from(cats).sort()]
   }, [markets])
@@ -91,8 +102,8 @@ const AlphaArcadePage: React.FC = () => {
   const filteredMarkets = useMemo(() => {
     return markets.filter((m) => {
       const matchesSearch = !searchQuery ||
-        (m.question || '').toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesCategory = categoryFilter === 'all' || m.category === categoryFilter
+        (m.title || '').toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesCategory = categoryFilter === 'all' || (m.categories || []).includes(categoryFilter)
       return matchesSearch && matchesCategory
     })
   }, [markets, searchQuery, categoryFilter])
@@ -103,8 +114,30 @@ const AlphaArcadePage: React.FC = () => {
   }, [pools])
 
   const activePositionsCount = useMemo(() => {
-    return positions.filter((p) => p.status === 'active').length
+    return positions.filter((p) => p.status === 'active' || p.status === 'pending_withdrawal').length
   }, [positions])
+
+  // Check if any active position has a market resolving within 48h
+  const urgentPositions = useMemo(() => {
+    const now = Date.now()
+    return positions.filter((p) => {
+      if (p.status !== 'active' && p.status !== 'pending_withdrawal') return false
+      const pool = poolMap.get(p.marketAppId)
+      const market = marketMap.get(p.marketAppId)
+      const resTime = pool?.marketResolutionTime || market?.endTs || 0
+      if (resTime <= 0) return false
+      const msRemaining = resTime * 1000 - now
+      return msRemaining > 0 && msRemaining < 48 * 3600000
+    })
+  }, [positions, poolMap, marketMap])
+
+  // Get resolution time for a position (from pool or market)
+  const getResolutionTime = (pos: AlphaArcadePosition): number => {
+    const pool = poolMap.get(pos.marketAppId)
+    if (pool?.marketResolutionTime && pool.marketResolutionTime > 0) return pool.marketResolutionTime
+    const market = marketMap.get(pos.marketAppId)
+    return market?.endTs || 0
+  }
 
   const refreshAll = async () => {
     try {
@@ -126,8 +159,8 @@ const AlphaArcadePage: React.FC = () => {
   const getMarketQuestion = (position: AlphaArcadePosition): string => {
     const pool = poolMap.get(position.marketAppId)
     if (pool?.marketQuestion) return pool.marketQuestion
-    const market = markets.find((m) => m.app_id === position.marketAppId)
-    return market?.question || ''
+    const market = markets.find((m) => m.marketAppId === position.marketAppId)
+    return market?.title || ''
   }
 
   const fmtUsd = (v: number) =>
@@ -135,6 +168,20 @@ const AlphaArcadePage: React.FC = () => {
 
   return (
     <div className="max-xxxl:w-[95%] w-[80%] m-auto pt-[30px] pb-[60px] flex-1 relative z-[2]">
+      {/* Resolution warning banner */}
+      {urgentPositions.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          className="mb-4"
+          message={
+            urgentPositions.length === 1
+              ? 'You have 1 position in a market resolving within 48 hours. Withdraw to protect your funds.'
+              : `You have ${urgentPositions.length} positions in markets resolving within 48 hours. Withdraw to protect your funds.`
+          }
+        />
+      )}
+
       {/* Stats banner */}
       <div className="w-full mb-[30px]">
         <div className="flex sm-s:flex-col justify-between gap-[10px] sm-s:gap-[20px] bg-[var(--bg-card)] rounded-[18px] py-[32px] px-[60px] max-sm:!px-[30px] shadow-[0px_4px_24.2px_0px_var(--shadow-color)]">
@@ -208,7 +255,7 @@ const AlphaArcadePage: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {filteredMarkets.map((market) => (
                       <MarketCard
-                        key={market.app_id}
+                        key={market.marketAppId}
                         market={market}
                         onDeposit={(m) => setDepositModal({ visible: true, market: m })}
                       />
@@ -245,6 +292,7 @@ const AlphaArcadePage: React.FC = () => {
                         key={pos._id}
                         position={pos}
                         marketQuestion={getMarketQuestion(pos)}
+                        resolutionTime={getResolutionTime(pos)}
                         onWithdraw={(p) => setWithdrawModal({ visible: true, position: p })}
                       />
                     ))}
