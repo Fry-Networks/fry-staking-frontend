@@ -69,4 +69,7 @@ export interface BuildTxnResponse {
   transactions: string[]
   poolId: string
   pool: AlphaArcadePool
+  fee?: number
+  netAmount?: number
+  feePercent?: number
 }

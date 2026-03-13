@@ -84,6 +84,7 @@ export async function recordDeposit(payload: {
   spreadUsed: number
   entryMidPrice: number
   txId: string
+  depositFee?: number
 }): Promise<AlphaArcadePosition> {
   const { data } = await authAxios.post('/alpha-arcade/record-deposit', payload)
   return data.data
@@ -97,6 +98,7 @@ export async function recordWithdraw(payload: {
   remainingYesTokens: number
   remainingNoTokens: number
   txId: string
+  withdrawFee?: number
 }): Promise<AlphaArcadePosition> {
   const { data } = await authAxios.post('/alpha-arcade/record-withdraw', payload)
   return data.data

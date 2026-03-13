@@ -25,6 +25,7 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
   const [inputAmount, setInputAmount] = useState('')
   const [error, setError] = useState('')
   const [txId, setTxId] = useState('')
+  const [feeInfo, setFeeInfo] = useState<{ fee: number; netAmount: number; feePercent: number } | null>(null)
 
   const algod = getAlgodClient()
 
@@ -62,6 +63,11 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
         usdcAmount: usdcAmountMicro,
       })
 
+      // Capture fee info for display
+      if (result.fee !== undefined) {
+        setFeeInfo({ fee: result.fee, netAmount: result.netAmount || 0, feePercent: result.feePercent || 0 })
+      }
+
       // Step 3: Decode and sign
       const txnBytes = result.transactions.map((b64: string) => {
         const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
@@ -89,6 +95,7 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
         spreadUsed: result.pool?.spreadBps ?? 50,
         entryMidPrice: (market.yesProb ?? 50) / 100,
         txId: confirmedTxId,
+        depositFee: result.fee || 0,
       })
 
       setStep('success')
@@ -109,6 +116,7 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
     setInputAmount('')
     setError('')
     setTxId('')
+    setFeeInfo(null)
     onClose()
   }
 
@@ -199,6 +207,10 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
                   <span className="text-[var(--text-secondary)]">Strategy</span>
                   <span className="text-[var(--text-primary)]">Split + Limit Orders</span>
                 </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-[var(--text-secondary)]">Platform Fee</span>
+                  <span className="text-[var(--text-primary)]">0.5%</span>
+                </div>
               </div>
 
               {/* Confirm button */}
@@ -230,6 +242,14 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--text-secondary)]">Amount</span>
                   <span className="text-[var(--text-primary)]">{inputAmount} USDC</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-[var(--text-secondary)]">Platform Fee ({feeInfo?.feePercent ?? 0.5}%)</span>
+                  <span className="text-red-400">-${feeInfo ? (feeInfo.fee / 1_000_000).toFixed(2) : (usdcAmountMicro * 0.005 / 1_000_000).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-[var(--text-secondary)]">Net Deposit</span>
+                  <span className="text-green-500">${feeInfo ? (feeInfo.netAmount / 1_000_000).toFixed(2) : (usdcAmountMicro * 0.995 / 1_000_000).toFixed(2)} USDC</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--text-secondary)]">Spread</span>

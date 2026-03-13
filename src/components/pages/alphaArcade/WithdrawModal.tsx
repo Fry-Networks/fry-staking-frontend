@@ -24,6 +24,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({ visible, position, market
   const [step, setStep] = useState<WithdrawStep>('confirm')
   const [error, setError] = useState('')
   const [txId, setTxId] = useState('')
+  const [feeInfo, setFeeInfo] = useState<{ fee: number; feePercent: number } | null>(null)
 
   const algod = getAlgodClient()
 
@@ -47,6 +48,11 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({ visible, position, market
         wallet: activeAddress,
         poolId: position.poolId,
       })
+
+      // Capture fee info
+      if (result.fee !== undefined) {
+        setFeeInfo({ fee: result.fee, feePercent: result.feePercent || 0 })
+      }
 
       // Step 3: Decode and sign
       const txnBytes = result.transactions.map((b64: string) => {
@@ -73,6 +79,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({ visible, position, market
         remainingYesTokens: 0,
         remainingNoTokens: 0,
         txId: confirmedTxId,
+        withdrawFee: result.fee || 0,
       })
 
       setStep('success')
@@ -92,6 +99,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({ visible, position, market
     setStep('confirm')
     setError('')
     setTxId('')
+    setFeeInfo(null)
     onClose()
   }
 
@@ -145,6 +153,15 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({ visible, position, market
                     {position.entryMidPrice ? `${(position.entryMidPrice * 100).toFixed(1)}%` : '—'}
                   </span>
                 </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-[var(--text-secondary)]">Platform Fee (0.25%)</span>
+                  <span className="text-red-400">
+                    ${(position.usdcDeposited * 0.0025 / 1_000_000).toFixed(2)}
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Based on your deposited amount
+                </p>
               </div>
 
               <div className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2">
