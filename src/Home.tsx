@@ -1,4 +1,4 @@
-import { createBrowserRouter, Outlet, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet, RouterProvider } from 'react-router-dom'
 import AdminDashboard from './adminDashboard/admindashboard'
 import AdminDashboardoutlet from './adminDashboard/dashboardoutlet'
 import Farming from './adminDashboard/Farming/farming'
@@ -22,6 +22,8 @@ import Profile from './pages/profile'
 import Stake from './pages/stake'
 import StakePoolStats from './pages/stakePoolStats'
 import Events from './pages/events'
+import NftStake from './pages/nftStake'
+import NftPoolStats from './pages/nftPoolStats'
 import Swap from './pages/swap'
 import TransactionHistory from './pages/transactionHistory'
 
@@ -40,11 +42,23 @@ const appRouter = createBrowserRouter([
   },
   {
     path: '/stake',
+    element: <Navigate to="/token-stake" replace />,
+  },
+  {
+    path: '/token-stake',
     element: <Stake />,
   },
   {
     path: '/farm',
     element: <Farm />,
+  },
+  {
+    path: '/nft-stake',
+    element: <NftStake />,
+  },
+  {
+    path: '/nft-pool-stats',
+    element: <NftPoolStats />,
   },
   {
     path: '/events',

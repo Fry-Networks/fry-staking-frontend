@@ -43,6 +43,7 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
   const [filteredData, setFilteredData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchToken, setSearchToken] = useState<string>('')
+  const [userStakedPoolIds, setUserStakedPoolIds] = useState<Set<string>>(new Set())
 
   const { activeAddress } = useWallet()
 
@@ -224,6 +225,12 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
                   {item?.gateConfig?.collectionName || 'NFT'}
                 </span>
               )}
+              {(!item.contractVersion || item.contractVersion === 1) && (
+                <span className="px-1.5 py-0.5 bg-yellow-900/30 text-yellow-500 rounded text-[9px] font-medium">Legacy</span>
+              )}
+              {item.contractVersion === 2 && (
+                <span className="px-1.5 py-0.5 bg-green-900/30 text-green-400 rounded text-[9px] font-medium">V2</span>
+              )}
             </div>
             <p className="text-text_clr small">with {item?.lockPeriod / 86400} days lock</p>
           </div>
@@ -249,13 +256,27 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       stakingEndTime: item.stakingEndTime,
       totalAmountStaked: item.totalAmountStaked,
       userAddress: item.creatorId,
+      isCreator: item.creatorId?.toLowerCase() === activeAddress?.toLowerCase(),
+      hasUserStake: userStakedPoolIds.has(item._id),
       isGated: item.isGated || false,
       gateConfig: item.gateConfig || {},
       stakeTokenId: Number(stakeTokenId) || FRY_ASSET_ID,
       rewardTokenId: Number(rewardTokenId) || FRY_ASSET_ID,
       stakeTokenName: item?.stakeToken?.name || 'Token',
       rewardTokenName: item?.rewardToken?.name || 'Token',
+      lockPeriod: item.lockPeriod || 0,
+      contractVersion: item.contractVersion || 1,
     }
+  })
+
+  // Sort: V2 pools first, then by TVL descending within each version group
+  transformedData.sort((a, b) => {
+    const av = a.contractVersion || 1
+    const bv = b.contractVersion || 1
+    if (bv !== av) return bv - av
+    const aTvl = parseFloat(a.tvl.replace(/[$,\s]/g, '')) || 0
+    const bTvl = parseFloat(b.tvl.replace(/[$,\s]/g, '')) || 0
+    return bTvl - aTvl
   })
 
   setOriginalData(transformedData)
@@ -271,7 +292,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
     return data.filter((item) => {
       const isEnded = item.stakingEndTime <= now
       const isLive = item.stakingEndTime > now
-      const belongsToWallet = item?.userAddress?.toLowerCase() === activeAddress?.toLowerCase()
+      const belongsToWallet = item.isCreator || item.hasUserStake
 
       switch (activeTab) {
         case 'MyLive':
@@ -291,6 +312,19 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
   }
 
 
+  // Re-filter when user stake data changes
+  useEffect(() => {
+    if (userStakedPoolIds.size > 0 && originalData.length > 0) {
+      // Update hasUserStake flags in existing data
+      const updated = originalData.map(item => ({
+        ...item,
+        isCreator: item.userAddress?.toLowerCase() === activeAddress?.toLowerCase(),
+        hasUserStake: userStakedPoolIds.has(item._id),
+      }))
+      setOriginalData(updated)
+    }
+  }, [userStakedPoolIds])
+
   useEffect(() => {
     const filtered = filterPools(originalData)
     setFilteredData(filtered)
@@ -301,6 +335,24 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
     setTotals(totals)
     setStacks(filteredData)
   }, [filteredData])
+
+  // Fetch user's staked pool IDs when wallet connects
+  useEffect(() => {
+    if (!activeAddress) {
+      setUserStakedPoolIds(new Set())
+      return
+    }
+    const fetchUserStakes = async () => {
+      try {
+        const res = await axios.get(`${api_base_url}/stakingtoken/wallet/${activeAddress}`)
+        const records = res.data?.data || []
+        setUserStakedPoolIds(new Set(records.map((r: any) => r.poolId)))
+      } catch {
+        setUserStakedPoolIds(new Set())
+      }
+    }
+    fetchUserStakes()
+  }, [activeAddress])
 
   useEffect(() => {
     const loadData = async () => {
@@ -340,9 +392,19 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
 
   return (
     <>
-      <div className="w-full mt-[40px] mb-[47px]">
+      <div className="w-full mt-[40px] mb-[47px] flex-1">
         {activeAddress && <Stakebanner wallet={activeAddress} />}
         <div className="max-xxxl:w-[95%] w-[80%] m-auto flex flex-col gap-[16px]">
+          {activeAddress && originalData.some(p => (!p.contractVersion || p.contractVersion === 1) && p.hasUserStake) && (
+            <div className="bg-yellow-900/20 border border-yellow-700/40 rounded-xl p-4 mb-4 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-yellow-400 font-medium text-sm">Migration Available</p>
+                <p className="text-xs text-yellow-500/70">
+                  You have positions in legacy pools. Migrate to V2 for improved reward calculations. Migration fees are waived!
+                </p>
+              </div>
+            </div>
+          )}
           {/* Tabs */}
           <div className="top flex max-md:flex-col justify-between items-center gap-[20px]">
             <div className="flex w-full justify-center md:justify-start">

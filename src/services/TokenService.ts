@@ -128,9 +128,9 @@ class TokenService {
    */
   getDefaultTokens(): Token[] {
     return [
-      { id: 2485314946, name: 'Fry', symbol: 'FRY', decimals: 6, verified: true, image: 'https://fry-staking-frontend.vercel.app/assets/images/logo.svg' },
       { id: 0, name: 'Algorand', symbol: 'ALGO', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/0/icon.png' },
       { id: 31566704, name: 'USD Coin', symbol: 'USDC', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/31566704/icon.png' },
+      { id: 2485314946, name: 'Fry', symbol: 'FRY', decimals: 6, verified: true, image: '/assets/images/fry-token.png' },
       { id: 312769, name: 'Tether', symbol: 'USDT', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/312769/icon.png' },
       { id: 27165954, name: 'PlanetWatch', symbol: 'PLANETS', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/27165954/icon.png' },
       { id: 287867876, name: 'Opulous', symbol: 'OPUL', decimals: 10, verified: true, image: 'https://asa-list.tinyman.org/assets/287867876/icon.png' },
@@ -153,7 +153,7 @@ class TokenService {
       { id: 0, name: 'Algorand', symbol: 'ALGO', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/0/icon.png' },
       { id: 31566704, name: 'USD Coin', symbol: 'USDC', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/31566704/icon.png' },
       { id: 312769, name: 'Tether USD', symbol: 'USDT', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/312769/icon.png' },
-      { id: 2485314946, name: 'Fry', symbol: 'FRY', decimals: 6, verified: true, image: 'https://fry-staking-frontend.vercel.app/assets/images/logo.svg' }
+      { id: 2485314946, name: 'Fry', symbol: 'FRY', decimals: 6, verified: true, image: '/assets/images/fry-token.png' }
     ];
   }
 
@@ -166,7 +166,7 @@ class TokenService {
       { id: 0, name: 'Algorand', symbol: 'ALGO', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/0/icon.png' },
       { id: 31566704, name: 'USD Coin', symbol: 'USDC', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/31566704/icon.png' },
       { id: 312769, name: 'Tether USD', symbol: 'USDT', decimals: 6, verified: true, image: 'https://asa-list.tinyman.org/assets/312769/icon.png' },
-      { id: 2485314946, name: 'Fry', symbol: 'FRY', decimals: 6, verified: true, image: 'https://fry-staking-frontend.vercel.app/assets/images/logo.svg' },
+      { id: 2485314946, name: 'Fry', symbol: 'FRY', decimals: 6, verified: true, image: '/assets/images/fry-token.png' },
       
       // Wrapped tokens
       { id: 386192725, name: 'Wrapped BTC', symbol: 'goBTC', decimals: 8, verified: true, image: 'https://asa-list.tinyman.org/assets/386192725/icon.png' },

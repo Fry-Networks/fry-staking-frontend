@@ -30,8 +30,8 @@ const P_Farmbanner = () => {
       setStats({
         poolsCreated: userFarms.length,
         totalTvl,
-        myStakes: farmStats.myStake,
-        myRewards: farmStats.myReward,
+        myStakes: farmStats.myStake / 1_000_000,
+        myRewards: farmStats.myReward / 1_000_000,
       })
     } catch (error) {
       console.error('Error fetching farm stats:', error)

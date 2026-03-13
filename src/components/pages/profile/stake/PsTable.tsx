@@ -349,6 +349,7 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
 
   return (
     <>
+    <div className="w-full overflow-x-auto">
     <Table<DataType>
       className="web-table"
       columns={columns}
@@ -378,11 +379,26 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
                       Pending Rewards: ~{(estimatedRewards[k] / 1_000_000).toFixed(2)} {pool?.rewardTokenName || 'tokens'}
                     </p>
                   )}
+                  {pool && (!pool.contractVersion || pool.contractVersion === 1) && (
+                    <p className="text-red-400 text-xs font-medium mt-1">
+                      V1 legacy pool — claiming is disabled to protect your rewards. Use Withdraw on the Stake page.
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-[10px]">
                   {pool && activeAddress && (
                     isClaimingId === pool._id ? (
                       <p className="text-blue-500 font-medium">Processing...</p>
+                    ) : (!pool.contractVersion || pool.contractVersion === 1) ? (
+                      <div className="flex flex-col items-center">
+                        <button
+                          className="button btn-primary rounded-[10px] px-[16px] py-[10px] text-white opacity-40 cursor-not-allowed linearGradient"
+                          disabled={true}
+                        >
+                          {isEnded ? 'Claim & Withdraw' : 'Claim'}
+                        </button>
+                        <p className="text-[10px] text-red-500 mt-1">Claim disabled — use Withdraw on Stake page</p>
+                      </div>
                     ) : (
                       <button
                         className="button btn-primary rounded-[10px] px-[16px] py-[10px] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed linearGradient"
@@ -395,7 +411,7 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
                   )}
                   <button
                     className="button btn-red-border rounded-[10px] px-[16px] py-[10px] text-[var(--text-primary)] cursor-pointer"
-                    onClick={() => navigate('/stake')}
+                    onClick={() => navigate('/token-stake')}
                   >
                     View on Stake Page
                   </button>
@@ -411,6 +427,7 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
       dataSource={tableData}
       scroll={{ x: '1000px' }}
     />
+    </div>
     <FeeConfirmation
       visible={feeModalVisible}
       onConfirm={executePendingAction}

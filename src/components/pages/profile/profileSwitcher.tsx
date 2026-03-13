@@ -9,7 +9,7 @@ const ProfileSwitcher = () => {
 
   return (
     <>
-      <div className="w-full mb-[100px]">
+      <div className="w-full mb-[100px] flex-1">
         <div className="max-xxxl:max-w-[95%] w-full max-w-[80%] m-auto flex flex-col items-center gap-[41px] max-md:gap-[20px]">
           {/* Switcher tab */}
           <div className="switcher flex justify-center items-center gap-[3px] w-fit p-[3px] bg-white rounded-[12px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]">

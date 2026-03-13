@@ -264,11 +264,12 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
 
       const tx = await stakeTokens(record.appId, stakeAmount, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
 
+      const netFloat = floatAmount - ((args.feeAmount || 0) / 1_000_000)
       const stakingData = {
-        tokens: floatAmount,
+        tokens: netFloat,
         wallet: activeAddress!,
         poolId: record.appId,
-        stakedAmount: floatAmount,
+        stakedAmount: netFloat,
         earnedReward: 0,
         lastStakedAt: Date.now(),
         claimedAt: null,
@@ -582,6 +583,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
 
   />
 )}
+      <div className="w-full overflow-x-auto">
       <Table<DataType>
         className="web-table"
         columns={columns}
@@ -608,7 +610,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                               width={156}
                               onClick={() => {
                                 window.open(
-                                  `https://app.tinyman.org/#/pool/${record.stakeTokenId}/${record.stakeTokenBId}/add-liquidity`,
+                                  `https://app.tinyman.org/pool/${record.stakeTokenId}/${record.stakeTokenBId}/add-liquidity`,
                                   '_blank'
                                 )
                               }}
@@ -747,6 +749,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
         dataSource={farms}
         scroll={{ x: '1000px' }}
       />
+      </div>
       <FeeConfirmation
         visible={feeModalVisible}
         onConfirm={executePendingAction}

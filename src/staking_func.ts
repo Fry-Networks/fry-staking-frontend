@@ -3,6 +3,8 @@ import { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/type
 import { AppDetails } from '@algorandfoundation/algokit-utils/types/app-client'
 import algosdk, { TransactionSigner } from 'algosdk'
 import { FryStakingClient } from './contracts/FryStaking'
+import { APP_SPEC as V2_APP_SPEC } from './contracts/FryStakingV2'
+import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryStakingV2Compiled'
 import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 import { authFetch } from './services/apiClient'
 
@@ -78,35 +80,47 @@ export const initStaking = async (
       throw new Error('Reward token amount must be greater than 0')
     }
     
-    const indexer = await getIndexerClient()
-
     const algodClient = await getAlgodClient()
-    const appDetails = {
-      resolveBy: 'creatorAndName',
-      sender: { signer, addr: sender } as TransactionSignerAccount,
-      creatorAddress: sender,
-      findExistingUsing: indexer,
-    } as AppDetails
 
-    const staking = new FryStakingClient(appDetails, algodClient)
+    // Deploy V2 contract using pre-compiled bytecode (no runtime TEAL compilation)
+    const abiContract = new algosdk.ABIContract(V2_APP_SPEC.contract as any)
+    const initMethod = abiContract.getMethodByName('init_staking')
 
-    const initStake = await staking.create
-      .initStaking({
-        authority: sender,
-        stakeToken: stakeTokenId,
-        rewardToken: rewardTokenId,
-        rewardTokenAmount: rewardTokenAmount,
-        stakeStartTime: BigInt(startDate),
-        stakeEndTime: BigInt(startDate + poolTime),
-        lockPeriod: lockPeriod,
-        poolTime: poolTime,
-      })
-      .then((res) => res)
-      .catch((e) => {
-        console.error('Error in initStaking creation:', e)
-        // Throw the error so it can be caught by the outer try-catch
-        throw e
-      })
+    const suggestedParams = await algodClient.getTransactionParams().do()
+
+    const atc = new algosdk.AtomicTransactionComposer()
+    atc.addMethodCall({
+      appID: 0,
+      method: initMethod,
+      methodArgs: [
+        sender,                           // _authority: address
+        stakeTokenId,                     // _stake_token: uint64
+        rewardTokenId,                    // _reward_token: uint64
+        rewardTokenAmount,                // _reward_token_amount: uint64
+        BigInt(startDate),                // _stake_start_time: uint64
+        BigInt(startDate + poolTime),     // _stake_end_time: uint64
+        lockPeriod,                       // _lock_period: uint64
+        poolTime,                         // _pool_time: uint64
+      ],
+      approvalProgram: COMPILED_APPROVAL,
+      clearProgram: COMPILED_CLEAR,
+      numGlobalInts: 12,
+      numGlobalByteSlices: 1,
+      numLocalInts: 0,
+      numLocalByteSlices: 0,
+      sender,
+      signer,
+      suggestedParams,
+      onComplete: algosdk.OnApplicationComplete.NoOpOC,
+    })
+
+    const result = await atc.execute(algodClient, 4)
+    const createdAppId = result.methodResults[0].txInfo?.['application-index']
+    if (!createdAppId) {
+      throw new Error('Failed to create staking pool.')
+    }
+
+    const initStake = { appId: BigInt(createdAppId) }
 
     const { stakingClient, algorandClient } = await createFryStakingClient(signer, sender, Number(initStake.appId))
 
@@ -241,19 +255,20 @@ export const stakeTokens = async (stakingId: number, stakeAmount: number, sender
       amount: algokit.microAlgos(BOX_PRICE),
     })
 
+    const netAmount = stakeAmount - feeAmount
     const assetTransfer = await algorandClient.transactions.assetTransfer({
       receiver: algosdk.getApplicationAddress(stakingId),
       sender,
-      amount: BigInt(stakeAmount),
+      amount: BigInt(netAmount),
       assetId: globalState?.stakeToken?.asNumber(),
     })
 
     let updatedApr =
-      (globalState.rewardTokenAmount?.asNumber() / (globalState.totalStaked?.asNumber() + stakeAmount)) *
+      (globalState.rewardTokenAmount?.asNumber() / (globalState.totalStaked?.asNumber() + netAmount)) *
       100 *
       ((86400 * 360) / globalState.poolTime.asNumber())
     const tx = await stakingClient
-      .stakeTokens({ stakeAmount, boxTx, updatedApr: Math.floor(updatedApr * 100), stakeAxfer: assetTransfer })
+      .stakeTokens({ stakeAmount: netAmount, boxTx, updatedApr: Math.floor(updatedApr * 100), stakeAxfer: assetTransfer })
       .then((res) => res)
       .catch((e) => e)
 
@@ -264,31 +279,35 @@ export const stakeTokens = async (stakingId: number, stakeAmount: number, sender
 
     // Send fee in the transacted token AFTER successful contract call
     if (feeAmount > 0) {
-      await algorandClient.send.assetTransfer({
-        sender,
-        signer,
-        receiver: feeRecipient,
-        amount: BigInt(feeAmount),
-        assetId: BigInt(feeTokenId),
-      });
+      try {
+        await algorandClient.send.assetTransfer({
+          sender,
+          signer,
+          receiver: feeRecipient,
+          amount: BigInt(feeAmount),
+          assetId: BigInt(feeTokenId),
+        });
 
-      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appId: stakingId,
-          userId: sender,
-          gasAmount: feeAmount,
-          gasType: 'stakingStake',
-          feeType: 'percentage',
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) console.log('Fee logged:', data);
-          else console.warn('Fee log response:', data.message);
+        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appId: stakingId,
+            userId: sender,
+            gasAmount: feeAmount,
+            gasType: 'stakingStake',
+            feeType: 'percentage',
+          }),
         })
-        .catch((err) => console.error('Error logging fee:', err));
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) console.log('Fee logged:', data);
+            else console.warn('Fee log response:', data.message);
+          })
+          .catch((err) => console.error('Error logging fee:', err));
+      } catch (feeErr) {
+        console.warn('Fee transfer failed after successful stake:', feeErr);
+      }
     }
 
     return tx
@@ -337,33 +356,39 @@ export const unstakeTokens = async (
       .then((res) => res)
       .catch((e) => e)
 
-    // Send fee in the transacted token AFTER contract call
-    if (feeAmount > 0) {
-      await algorandClient.send.assetTransfer({
-        sender,
-        signer,
-        receiver: feeRecipient,
-        amount: BigInt(feeAmount),
-        assetId: BigInt(feeTokenId),
-      });
+    if (tx instanceof Error) return tx
 
-      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appId: stakingId,
-          userId: sender,
-          gasAmount: feeAmount,
-          gasType: 'stakingWithdraw',
-          feeType: 'percentage',
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) console.log('Fee logged:', data);
-          else console.warn('Fee log response:', data.message);
+    // Send fee in the transacted token AFTER successful contract call
+    if (feeAmount > 0) {
+      try {
+        await algorandClient.send.assetTransfer({
+          sender,
+          signer,
+          receiver: feeRecipient,
+          amount: BigInt(feeAmount),
+          assetId: BigInt(feeTokenId),
+        });
+
+        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appId: stakingId,
+            userId: sender,
+            gasAmount: feeAmount,
+            gasType: 'stakingWithdraw',
+            feeType: 'percentage',
+          }),
         })
-        .catch((err) => console.error('Error logging fee:', err));
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) console.log('Fee logged:', data);
+            else console.warn('Fee log response:', data.message);
+          })
+          .catch((err) => console.error('Error logging fee:', err));
+      } catch (feeErr) {
+        console.warn('Fee transfer failed after successful unstake:', feeErr);
+      }
     }
 
     return tx
@@ -410,33 +435,41 @@ export const claimTokens = async (
       .then((res) => res)
       .catch((e) => e)
 
-    // Send fee in the reward token AFTER contract call
-    if (feeAmount > 0) {
-      await algorandClient.send.assetTransfer({
-        sender,
-        signer,
-        receiver: feeRecipient,
-        amount: BigInt(feeAmount),
-        assetId: BigInt(feeTokenId),
-      });
+    if (tx instanceof Error) {
+      return { error: tx }
+    }
 
-      authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appId: stakingId,
-          userId: sender,
-          gasAmount: feeAmount,
-          gasType: 'stakingClaim',
-          feeType: 'percentage',
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) console.log('Fee logged:', data);
-          else console.warn('Fee log response:', data.message);
+    // Send fee in the reward token AFTER successful contract call
+    if (feeAmount > 0) {
+      try {
+        await algorandClient.send.assetTransfer({
+          sender,
+          signer,
+          receiver: feeRecipient,
+          amount: BigInt(feeAmount),
+          assetId: BigInt(feeTokenId),
+        });
+
+        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appId: stakingId,
+            userId: sender,
+            gasAmount: feeAmount,
+            gasType: 'stakingClaim',
+            feeType: 'percentage',
+          }),
         })
-        .catch((err) => console.error('Error logging fee:', err));
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) console.log('Fee logged:', data);
+            else console.warn('Fee log response:', data.message);
+          })
+          .catch((err) => console.error('Error logging fee:', err));
+      } catch (feeErr) {
+        console.warn('Fee transfer failed after successful claim:', feeErr);
+      }
     }
 
     // Return useful data

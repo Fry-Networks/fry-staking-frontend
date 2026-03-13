@@ -24,8 +24,8 @@ const PStakebanner = () => {
 
       const poolsCreated = allPools.filter((p: any) => p.creatorId?.toLowerCase() === activeAddress?.toLowerCase()).length
       const totalTvl = stakeStats.totalTVL
-      const myStakes = stakeStats.myStake
-      const myRewards = stakeStats.myReward
+      const myStakes = stakeStats.myStake / 1_000_000
+      const myRewards = stakeStats.myReward / 1_000_000
 
       setStats({ poolsCreated, totalTvl, myStakes, myRewards })
     } catch (error) {

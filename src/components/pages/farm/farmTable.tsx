@@ -32,6 +32,7 @@ const FarmTable: React.FC = () => {
   const [tokenImages, setTokenImages] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabOption>('Live');
+  const [userFarmedPoolIds, setUserFarmedPoolIds] = useState<Set<string>>(new Set());
 
   // Fetch token images from database
   const fetchTokenImages = async (): Promise<{ [key: string]: string }> => {
@@ -249,11 +250,31 @@ const FarmTable: React.FC = () => {
     }
   };
 
+  // Fetch user's farmed pool IDs when wallet connects
+  useEffect(() => {
+    if (!walletAddress) {
+      setUserFarmedPoolIds(new Set());
+      return;
+    }
+    const fetchUserFarms = async () => {
+      try {
+        const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/stakingfarmingtoken/wallet/${walletAddress}`);
+        const records = res.data?.data || [];
+        setUserFarmedPoolIds(new Set(records.map((r: any) => String(r.poolId))));
+      } catch {
+        setUserFarmedPoolIds(new Set());
+      }
+    };
+    fetchUserFarms();
+  }, [walletAddress]);
+
   // Client-side filtering: filter originalData by activeTab and walletAddress
   useEffect(() => {
     const now = Math.floor(Date.now() / 1000);
     const filtered = originalData.filter((farm) => {
-      const isCreator = farm.creatorId === walletAddress;
+      const isCreator = farm.creatorId?.toLowerCase() === walletAddress?.toLowerCase();
+      const hasUserStake = userFarmedPoolIds.has(String(farm.appId));
+      const belongsToWallet = isCreator || hasUserStake;
       const isLive = farm.farmEndTime > now;
 
       switch (activeTab) {
@@ -262,15 +283,15 @@ const FarmTable: React.FC = () => {
         case 'Ended':
           return !isLive;
         case 'MyLive':
-          return isCreator && isLive;
+          return belongsToWallet && isLive;
         case 'MyEnded':
-          return isCreator && !isLive;
+          return belongsToWallet && !isLive;
         default:
           return true;
       }
     });
     setFarms(filtered);
-  }, [originalData, activeTab, walletAddress]);
+  }, [originalData, activeTab, walletAddress, userFarmedPoolIds]);
 
   // Initial load: fetch token images then farms (once)
   useEffect(() => {
@@ -287,7 +308,7 @@ const FarmTable: React.FC = () => {
   }, []);
 
   return (
-    <div className="w-full mt-[40px] mb-[47px]">
+    <div className="w-full mt-[40px] mb-[47px] flex-1">
     {walletAddress && <Farmbanner wallet={walletAddress} />}
       <div className="max-xxxl:w-[95%] w-[80%] m-auto flex flex-col gap-[16px]">
         {/* Tabs */}

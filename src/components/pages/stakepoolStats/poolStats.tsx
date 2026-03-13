@@ -76,7 +76,7 @@ const PoolStats: React.FC = () => {
   }, [stakingEndTime])
 
   return (
-    <div className="w-full mt-[67px] mb-[119px] sm-s:mb-[29px]">
+    <div className="w-full mt-[67px] mb-[119px] sm-s:mb-[29px] flex-1">
       <div className="max-xxxl:w-[95%] w-[80%] m-auto flex flex-col gap-[38px] sm-s:gap-[20px]">
 
         {/* Header */}
@@ -85,7 +85,7 @@ const PoolStats: React.FC = () => {
             src="../../assets/icons/back-redArrow.svg"
             alt="arrow"
             className="cursor-pointer sm-s:w-[40px] sm-s:h-[40px]"
-            onClick={() => navigate('/stake')}
+            onClick={() => navigate('/token-stake')}
           />
           <h1 className="font-apex text-grad uppercase text-center sm-s:text-[60px]">Pool Statistics</h1>
           <div></div>
