@@ -170,6 +170,13 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
     const usdPrice = prices[stakeTokenId] ?? tvlData[stakeTokenId] ?? 0
     const tvlUsd = item.totalAmountStaked * usdPrice
 
+    // Correct APR for cross-token pools (on-chain APR assumes 1:1 token value)
+    const rewardPrice = prices[rewardTokenId] ?? tvlData[rewardTokenId] ?? 0
+    let displayApr = item.aprRate
+    if (stakeTokenId !== rewardTokenId && usdPrice > 0 && rewardPrice > 0) {
+      displayApr = item.aprRate * (rewardPrice / usdPrice)
+    }
+
     return {
       _id: item._id,
       key: index + 1,
@@ -237,7 +244,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
         </div>
       ),
       tvl: `$ ${Number(tvlUsd.toFixed(3)).toString().replace(/(\.\d*?)0+$/, '$1')}`,
-      apr: `${item.aprRate}%`,
+      apr: `${Number(displayApr.toFixed(2))}%`,
       staked: `${Number(item.totalAmountStaked.toFixed(2)).toLocaleString()} ${item?.stakeToken?.name || 'tokens'}`,
       poolTime: item.duration / 86400,
       reward: (
@@ -494,6 +501,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
                 stacks={stacks}
                 fetchData={fetchAllPools}
                 showExpandable={activeTab}
+                allPools={originalData}
               />
             )}
           </div>

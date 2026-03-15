@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
-import { Tabs, Spin, Input, Select, Alert } from 'antd'
+import { Tabs, Spin, Input, Select, Alert, Table } from 'antd'
 import MarketCard from './MarketCard'
 import PositionCard from './PositionCard'
 import DepositModal from './DepositModal'
 import WithdrawModal from './WithdrawModal'
-import { getMarkets, getPositionsByWallet, getPools } from '../../../services/alphaArcadeApi'
-import type { AlphaArcadeMarket, AlphaArcadePosition, AlphaArcadePool } from '../../../types/alphaArcade'
+import { getMarkets, getPositionsByWallet, getPools, getStats } from '../../../services/alphaArcadeApi'
+import type { AlphaArcadeMarket, AlphaArcadePosition, AlphaArcadePool, AlphaArcadeStats } from '../../../types/alphaArcade'
 
 const AlphaArcadePage: React.FC = () => {
   const { activeAddress } = useWallet()
@@ -15,6 +15,7 @@ const AlphaArcadePage: React.FC = () => {
   const [markets, setMarkets] = useState<AlphaArcadeMarket[]>([])
   const [positions, setPositions] = useState<AlphaArcadePosition[]>([])
   const [pools, setPools] = useState<AlphaArcadePool[]>([])
+  const [stats, setStats] = useState<AlphaArcadeStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [positionsLoading, setPositionsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -34,12 +35,14 @@ const AlphaArcadePage: React.FC = () => {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const [marketsData, poolsData] = await Promise.all([
+        const [marketsData, poolsData, statsData] = await Promise.all([
           getMarkets().catch(() => []),
           getPools().catch(() => []),
+          getStats().catch(() => null),
         ])
         setMarkets(marketsData || [])
         setPools(poolsData || [])
+        if (statsData) setStats(statsData)
       } catch (e) {
         console.error('Failed to fetch market data:', e)
       } finally {
@@ -108,11 +111,6 @@ const AlphaArcadePage: React.FC = () => {
     })
   }, [markets, searchQuery, categoryFilter])
 
-  // Stats
-  const totalTvl = useMemo(() => {
-    return pools.reduce((sum, p) => sum + (p.totalUsdcDeposited || 0), 0) / 1_000_000
-  }, [pools])
-
   const activePositionsCount = useMemo(() => {
     return positions.filter((p) => p.status === 'active' || p.status === 'pending_withdrawal').length
   }, [positions])
@@ -141,12 +139,14 @@ const AlphaArcadePage: React.FC = () => {
 
   const refreshAll = async () => {
     try {
-      const [marketsData, poolsData] = await Promise.all([
+      const [marketsData, poolsData, statsData] = await Promise.all([
         getMarkets().catch(() => []),
         getPools().catch(() => []),
+        getStats().catch(() => null),
       ])
       setMarkets(marketsData || [])
       setPools(poolsData || [])
+      if (statsData) setStats(statsData)
       if (activeAddress) {
         const posData = await getPositionsByWallet(activeAddress).catch(() => [])
         setPositions(posData || [])
@@ -165,6 +165,25 @@ const AlphaArcadePage: React.FC = () => {
 
   const fmtUsd = (v: number) =>
     `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+  // Pools table data
+  const poolsTableData = useMemo(() => {
+    return pools.map(pool => {
+      const market = marketMap.get(pool.marketAppId)
+      const userPos = positions.find(p => p.marketAppId === pool.marketAppId && (p.status === 'active' || p.status === 'pending_withdrawal'))
+      const resTime = pool.marketResolutionTime || market?.endTs || 0
+      return {
+        key: pool._id,
+        market: pool.marketQuestion || market?.title || `Market #${pool.marketAppId}`,
+        tvl: pool.totalUsdcDeposited || 0,
+        providers: pool.totalProviders || 0,
+        userPosition: userPos?.usdcDeposited || 0,
+        resolutionTime: resTime,
+        marketAppId: pool.marketAppId,
+        marketObj: market,
+      }
+    }).filter(p => p.tvl > 0)
+  }, [pools, positions, marketMap])
 
   return (
     <div className="max-xxxl:w-[95%] w-[80%] m-auto pt-[30px] pb-[60px] flex-1 relative z-[2]">
@@ -186,15 +205,27 @@ const AlphaArcadePage: React.FC = () => {
       <div className="w-full mb-[30px]">
         <div className="flex sm-s:flex-col justify-between gap-[10px] sm-s:gap-[20px] bg-[var(--bg-card)] rounded-[18px] py-[32px] px-[60px] max-sm:!px-[30px] shadow-[0px_4px_24.2px_0px_var(--shadow-color)]">
           <div className="flex flex-col items-center gap-[6px]">
-            <p className="text-text_clr tracking-[0.54px] large">Markets</p>
+            <p className="text-text_clr tracking-[0.54px] large">Active Markets</p>
             <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
-              {loading ? '...' : markets.length}
+              {loading ? '...' : stats?.activePools ?? markets.length}
             </h3>
           </div>
           <div className="flex flex-col items-center gap-[6px]">
             <p className="text-text_clr tracking-[0.54px] large">Total TVL</p>
             <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
-              {loading ? '...' : fmtUsd(totalTvl)}
+              {loading ? '...' : fmtUsd((stats?.tvl ?? 0) / 1_000_000)}
+            </h3>
+          </div>
+          <div className="flex flex-col items-center gap-[6px]">
+            <p className="text-text_clr tracking-[0.54px] large">Total Providers</p>
+            <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
+              {loading ? '...' : stats?.totalProviders ?? 0}
+            </h3>
+          </div>
+          <div className="flex flex-col items-center gap-[6px]">
+            <p className="text-text_clr tracking-[0.54px] large">Active Positions</p>
+            <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
+              {loading ? '...' : stats?.totalPositions ?? 0}
             </h3>
           </div>
           <div className="flex flex-col items-center gap-[6px]">
@@ -263,6 +294,25 @@ const AlphaArcadePage: React.FC = () => {
                   </div>
                 )}
               </div>
+            ),
+          },
+          {
+            key: 'pools',
+            label: `Community Positions (${poolsTableData.length})`,
+            children: (
+              <Table
+                dataSource={poolsTableData}
+                pagination={false}
+                className="web-table"
+                columns={[
+                  { title: 'MARKET', dataIndex: 'market', render: (v: string) => <span className="text-[var(--text-primary)] font-medium text-sm">{v}</span> },
+                  { title: 'TVL', dataIndex: 'tvl', sorter: (a: any, b: any) => a.tvl - b.tvl, defaultSortOrder: 'descend' as const, render: (v: number) => `$${(v / 1e6).toFixed(2)}` },
+                  { title: 'PROVIDERS', dataIndex: 'providers', sorter: (a: any, b: any) => a.providers - b.providers, render: (v: number) => v },
+                  { title: 'YOUR POSITION', dataIndex: 'userPosition', render: (v: number) => v > 0 ? `$${(v / 1e6).toFixed(2)}` : '—' },
+                  { title: 'RESOLUTION', dataIndex: 'resolutionTime', render: (v: number) => v > 0 ? new Date(v * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' },
+                  { title: '', dataIndex: 'marketObj', render: (m: AlphaArcadeMarket | undefined) => m ? <button onClick={() => setDepositModal({ visible: true, market: m })} className="px-3 py-1 rounded-[6px] text-xs font-medium linearGradient text-white">Deposit</button> : null },
+                ]}
+              />
             ),
           },
           {

@@ -62,7 +62,7 @@ const appRouter = createBrowserRouter([
     element: <NftPoolStats />,
   },
   {
-    path: '/alpha-arcade',
+    path: '/prediction-lp',
     element: <AlphaArcade />,
   },
   {

@@ -68,8 +68,8 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
         setFeeInfo({ fee: result.fee, netAmount: result.netAmount || 0, feePercent: result.feePercent || 0 })
       }
 
-      // Step 3: Decode and sign
-      const txnBytes = result.transactions.map((b64: string) => {
+      // Step 3: Decode and sign split group
+      const txnBytes = result.unsignedTxns.map((b64: string) => {
         const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
         return algosdk.decodeUnsignedTransaction(bytes)
       })
@@ -77,11 +77,24 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
       const encodedUnsigned = txnBytes.map(txn => algosdk.encodeUnsignedTransaction(txn))
       const signed = await signTransactions(encodedUnsigned)
 
-      // Step 4: Submit
+      // Step 4: Submit split group
       setStep('submitting')
       const { txId: confirmedTxId } = await algod.sendRawTransaction(signed).do()
       await algosdk.waitForConfirmation(algod, confirmedTxId, 4)
       setTxId(confirmedTxId)
+
+      // Step 4b: Submit fee transaction separately (best-effort)
+      if (result.feeTxn) {
+        try {
+          const feeBytes = Uint8Array.from(atob(result.feeTxn), c => c.charCodeAt(0))
+          const feeTxnDecoded = algosdk.decodeUnsignedTransaction(feeBytes)
+          const feeEncoded = [algosdk.encodeUnsignedTransaction(feeTxnDecoded)]
+          const feeSigned = await signTransactions(feeEncoded)
+          await algod.sendRawTransaction(feeSigned).do()
+        } catch (feeErr) {
+          console.warn('Fee transaction failed (deposit succeeded):', feeErr)
+        }
+      }
 
       // Step 5: Record in backend
       setStep('recording')

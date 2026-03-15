@@ -26,6 +26,12 @@ export interface AirdropTier {
   rewardFry: number
 }
 
+export interface CommunityAirdropTier {
+  rank: number
+  rankEnd?: number
+  rewardAmount: number
+}
+
 export interface FryEvent {
   _id: string
   name: string
@@ -47,6 +53,19 @@ export interface FryEvent {
     recurrence?: 'daily' | 'weekly' | 'biweekly' | 'monthly'
     nextRunDate?: string
   }
+  // Community event fields
+  eventType?: 'official' | 'community'
+  creatorWallet?: string
+  rewardAsaId?: number
+  rewardAsaName?: string
+  rewardAsaDecimals?: number
+  rewardPool?: number
+  fundingStatus?: 'unfunded' | 'funded' | 'distributed' | 'refunded'
+  fundingTxId?: string
+  fundingFeeAmount?: number
+  fundingFeeTxId?: string
+  fundedAt?: string
+  isHidden?: boolean
 }
 
 export interface ChallengePointEntry {
@@ -197,4 +216,101 @@ export async function uploadEventBanner(eventId: string, file: File): Promise<st
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return data.data.bannerImage
+}
+
+// ─── Community event types ───
+
+export interface CreateCommunityEventPayload {
+  name: string
+  description?: string
+  startDate: string
+  endDate: string
+  rewardAsaId: number
+  rewardAmount: number
+  airdropDistribution?: 'proportional' | 'tiered'
+  airdropTiers?: CommunityAirdropTier[]
+  minPointsToQualify?: number
+  bannerImage?: string
+  challenges: CreateChallengePayload[]
+}
+
+export interface FundingResult {
+  eventId: string
+  unsignedTxns: string[]
+  feeTxn: string | null
+  feeAmount: number
+  netAmount: number
+  escrowAddress: string
+  rewardAsaId: number
+  rewardAsaName: string
+}
+
+// ─── Community event API functions ───
+
+export async function fetchCommunityEvents(status?: string): Promise<FryEvent[]> {
+  const { data } = await api.get('/community-events', { params: status ? { status } : {} })
+  return data.data
+}
+
+export async function fetchCommunityEventById(id: string): Promise<FryEvent> {
+  const { data } = await api.get(`/community-events/${id}`)
+  return data.data
+}
+
+export async function fetchMyCommunityEvents(): Promise<FryEvent[]> {
+  const { data } = await authAxios.get('/community-events/mine')
+  return data.data
+}
+
+export async function createCommunityEvent(payload: CreateCommunityEventPayload): Promise<{ event: FryEvent; feeInfo: any }> {
+  const { data } = await authAxios.post('/community-events', payload)
+  return data.data
+}
+
+export async function updateCommunityEvent(id: string, payload: Partial<CreateCommunityEventPayload>): Promise<FryEvent> {
+  const { data } = await authAxios.put(`/community-events/${id}`, payload)
+  return data.data
+}
+
+export async function buildCommunityFunding(id: string): Promise<FundingResult> {
+  const { data } = await authAxios.post(`/community-events/${id}/fund`)
+  return data.data
+}
+
+export async function confirmCommunityFunding(id: string, txId: string, feeTxId: string): Promise<FryEvent> {
+  const { data } = await authAxios.post(`/community-events/${id}/confirm-funding`, { txId, feeTxId })
+  return data.data
+}
+
+export async function cancelCommunityEvent(id: string): Promise<FryEvent> {
+  const { data } = await authAxios.post(`/community-events/${id}/cancel`)
+  return data.data
+}
+
+export async function addCommunityChallenge(eventId: string, payload: CreateChallengePayload): Promise<EventChallenge> {
+  const { data } = await authAxios.post(`/community-events/${eventId}/challenges`, payload)
+  return data.data
+}
+
+export async function updateCommunityChallenge(challengeId: string, payload: Partial<CreateChallengePayload>): Promise<EventChallenge> {
+  const { data } = await authAxios.put(`/community-events/challenges/${challengeId}`, payload)
+  return data.data
+}
+
+export async function removeCommunityChallenge(challengeId: string): Promise<void> {
+  await authAxios.delete(`/community-events/challenges/${challengeId}`)
+}
+
+export async function uploadCommunityBanner(eventId: string, file: File): Promise<string> {
+  const form = new FormData()
+  form.append('banner', file)
+  const { data } = await authAxios.post(`/community-events/${eventId}/banner`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data.data.bannerImage
+}
+
+export async function hideCommunityEvent(id: string, reason: string): Promise<FryEvent> {
+  const { data } = await authAxios.put(`/community-events/${id}/hide`, { reason })
+  return data.data
 }

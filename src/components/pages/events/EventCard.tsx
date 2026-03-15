@@ -73,8 +73,15 @@ const EventCard: React.FC<EventCardProps> = ({
       )}
       <div className="p-6">
       <div className="flex justify-between items-start mb-4">
-        <h3 className="text-[var(--text-heading)] font-apex font-bold text-xl uppercase">{event.name}</h3>
-        <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>
+        <div className="flex items-center gap-2">
+          <h3 className="text-[var(--text-heading)] font-apex font-bold text-xl uppercase">{event.name}</h3>
+          {event.eventType === 'community' && (
+            <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-[10px] font-medium uppercase">
+              Community
+            </span>
+          )}
+        </div>
+        <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium shrink-0 ${statusStyle.bg} ${statusStyle.text}`}>
           {statusStyle.pulse && (
             <span className="w-2 h-2 rounded-full bg-green animate-pulse" />
           )}
@@ -84,6 +91,13 @@ const EventCard: React.FC<EventCardProps> = ({
 
       {event.description && (
         <p className="text-text_clr text-sm mb-4 line-clamp-2">{event.description}</p>
+      )}
+
+      {event.eventType === 'community' && event.creatorWallet && (
+        <div className="flex items-center gap-1.5 text-text_clr text-xs mb-3">
+          <Icon icon="mdi:account" width={14} />
+          <span>by {event.creatorWallet.slice(0, 6)}...{event.creatorWallet.slice(-4)}</span>
+        </div>
       )}
 
       <div className="flex flex-wrap gap-4 text-sm">
@@ -103,11 +117,26 @@ const EventCard: React.FC<EventCardProps> = ({
       </div>
 
       <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-[var(--border-color)]">
-        {event.airdropPoolFry > 0 && (
+        {event.airdropPoolFry > 0 && event.eventType !== 'community' && (
           <div className="flex items-center gap-1.5 text-[var(--text-heading)] font-medium">
             <Icon icon="mdi:trophy" width={18} color="#DE0308" />
             <span>{event.airdropPoolFry.toLocaleString()} FRY</span>
           </div>
+        )}
+        {event.eventType === 'community' && (event.rewardPool ?? 0) > 0 && (
+          <div className="flex items-center gap-1.5 text-[var(--text-heading)] font-medium">
+            <Icon icon="mdi:trophy" width={18} color="#DE0308" />
+            <span>
+              {(event.rewardPool! / Math.pow(10, event.rewardAsaDecimals || 6)).toLocaleString()}{' '}
+              {event.rewardAsaName || `ASA #${event.rewardAsaId}`}
+            </span>
+          </div>
+        )}
+        {event.eventType === 'community' && event.fundingStatus === 'unfunded' && (
+          <span className="flex items-center gap-1 text-yellow-400 text-xs">
+            <Icon icon="mdi:clock-outline" width={14} />
+            Awaiting Funding
+          </span>
         )}
         <div className="flex items-center gap-1.5 text-text_clr">
           <Icon icon="mdi:account-group" width={16} />

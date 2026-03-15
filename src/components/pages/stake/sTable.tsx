@@ -48,13 +48,14 @@ interface STableProps {
   stacks: DataType[]
   fetchData: () => Promise<void>
   showExpandable: string
+  allPools?: DataType[]
 }
 
 const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 
 // Define the columns for the table
 // const STable: React.FC<STableProps> = memo(({ stacks, fetchData }) => {
-const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable }) => {
+const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable, allPools }) => {
   const { ensureAuth } = useAuth();
 
   const api_base_url = import.meta.env.VITE_API_BASE_URL;
@@ -655,8 +656,9 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       return
     }
 
-    // Find matching V2 pool (same stake + reward token pair)
-    const v2Pool = stacks.find(p =>
+    // Find matching V2 pool (same stake + reward token pair) — search all pools, not just filtered tab
+    const v2SearchPools = allPools || stacks
+    const v2Pool = v2SearchPools.find(p =>
       p.contractVersion === 2 &&
       p.stakeTokenId === record.stakeTokenId &&
       p.rewardTokenId === record.rewardTokenId
@@ -726,7 +728,16 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
       await fetchData()
     } catch (error: any) {
       console.error('Migration error:', error)
-      toast.error(error?.message || 'Migration failed.')
+      const msg = error?.message || ''
+      if (msg.includes('cancelled') || msg.includes('rejected') || msg.includes('User rejected') || msg.includes('4001')) {
+        toast.error('Transaction cancelled by wallet.')
+      } else if (msg.includes('4100') || msg.includes('pending')) {
+        toast.error('You have a pending transaction in your wallet. Please approve or reject it first.')
+      } else if (msg.includes('Network') || msg.includes('fetch') || msg.includes('ECONNREFUSED')) {
+        toast.error('Network error. Please check your connection and try again.')
+      } else {
+        toast.error('Migration failed: ' + (msg || 'Unknown error'))
+      }
     } finally {
       setIsMigrating(null)
     }
@@ -818,7 +829,8 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable 
                       const lockSecs = record.lockPeriod || 0
                       const now = Math.floor(Date.now() / 1000)
                       const isLocked = stakeTime && lockSecs > 0 && (stakeTime + lockSecs) > now
-                      const hasV2 = stacks.some(p => p.contractVersion === 2 && p.stakeTokenId === record.stakeTokenId && p.rewardTokenId === record.rewardTokenId)
+                      const v2SearchPools = allPools || stacks
+                      const hasV2 = v2SearchPools.some(p => p.contractVersion === 2 && p.stakeTokenId === record.stakeTokenId && p.rewardTokenId === record.rewardTokenId)
 
                       if (userStaked <= 0) return null
 

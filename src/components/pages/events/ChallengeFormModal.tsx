@@ -20,6 +20,8 @@ const CHALLENGE_TYPES = [
   'daily_claim_streak',
   'hold_duration',
   'referral',
+  'nft_staking_volume',
+  'prediction_lp_volume',
 ]
 
 interface ChallengeFormModalProps {
@@ -80,8 +82,8 @@ const ChallengeFormModal: React.FC<ChallengeFormModalProps> = ({
     }
   }
 
-  const showMinAmount = ['staking_volume', 'farming_volume', 'trading_volume'].includes(type)
-  const showPoolIds = ['staking_volume', 'farming_volume'].includes(type)
+  const showMinAmount = ['staking_volume', 'farming_volume', 'trading_volume', 'prediction_lp_volume'].includes(type)
+  const showPoolIds = ['staking_volume', 'farming_volume', 'nft_staking_volume'].includes(type)
   const showTokenIds = type === 'trading_volume'
   const showStreakBonus = type === 'daily_claim_streak'
 

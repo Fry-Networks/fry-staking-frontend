@@ -65,11 +65,26 @@ export interface AlphaArcadeOrderbook {
   midPrice: number
 }
 
+export interface AlphaArcadeStats {
+  tvl: number
+  totalProviders: number
+  totalPositions: number
+  activePools: number
+}
+
 export interface BuildTxnResponse {
-  transactions: string[]
+  unsignedTxns: string[]
+  feeTxn?: string | null
   poolId: string
   pool: AlphaArcadePool
   fee?: number
   netAmount?: number
   feePercent?: number
+  yesAsaId?: number
+  noAsaId?: number
+  marketAddress?: string
+  spreadBps?: number
+  midPrice?: number
+  spreadOffset?: number
+  marketAppId?: number
 }

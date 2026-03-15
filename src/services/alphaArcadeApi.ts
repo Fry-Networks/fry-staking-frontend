@@ -5,6 +5,7 @@ import type {
   AlphaArcadePool,
   AlphaArcadePosition,
   AlphaArcadeOrderbook,
+  AlphaArcadeStats,
   BuildTxnResponse,
 } from '../types/alphaArcade'
 
@@ -14,44 +15,50 @@ const api = axios.create({
   baseURL: API_BASE,
 })
 
+// Stats (public)
+export async function getStats(): Promise<AlphaArcadeStats> {
+  const { data } = await api.get('/prediction-lp/stats')
+  return data.data
+}
+
 // Public reads (no auth)
 export async function getMarkets(): Promise<AlphaArcadeMarket[]> {
-  const { data } = await api.get('/alpha-arcade/markets')
+  const { data } = await api.get('/prediction-lp/markets')
   return data.data
 }
 
 export async function getRewardMarkets(): Promise<AlphaArcadeMarket[]> {
-  const { data } = await api.get('/alpha-arcade/markets/rewards')
+  const { data } = await api.get('/prediction-lp/markets/rewards')
   return data.data
 }
 
 export async function getMarketDetail(appId: number): Promise<AlphaArcadeMarket> {
-  const { data } = await api.get(`/alpha-arcade/markets/${appId}`)
+  const { data } = await api.get(`/prediction-lp/markets/${appId}`)
   return data.data
 }
 
 export async function getOrderbook(appId: number): Promise<AlphaArcadeOrderbook> {
-  const { data } = await api.get(`/alpha-arcade/orderbook/${appId}`)
+  const { data } = await api.get(`/prediction-lp/orderbook/${appId}`)
   return data.data
 }
 
 export async function getPools(): Promise<AlphaArcadePool[]> {
-  const { data } = await api.get('/alpha-arcade/pools')
+  const { data } = await api.get('/prediction-lp/pools')
   return data.data
 }
 
 export async function getPool(poolId: string): Promise<AlphaArcadePool> {
-  const { data } = await api.get(`/alpha-arcade/pool/${poolId}`)
+  const { data } = await api.get(`/prediction-lp/pool/${poolId}`)
   return data.data
 }
 
 export async function getPositionsByWallet(wallet: string): Promise<AlphaArcadePosition[]> {
-  const { data } = await api.get(`/alpha-arcade/positions/${wallet}`)
+  const { data } = await api.get(`/prediction-lp/positions/${wallet}`)
   return data.data
 }
 
 export async function getPositionByPool(wallet: string, poolId: string): Promise<AlphaArcadePosition> {
-  const { data } = await api.get(`/alpha-arcade/position/${wallet}/${poolId}`)
+  const { data } = await api.get(`/prediction-lp/position/${wallet}/${poolId}`)
   return data.data
 }
 
@@ -62,7 +69,7 @@ export async function buildDeposit(payload: {
   usdcAmount: number
   spread?: number
 }): Promise<BuildTxnResponse> {
-  const { data } = await authAxios.post('/alpha-arcade/build-deposit', payload)
+  const { data } = await authAxios.post('/prediction-lp/build-deposit', payload)
   return data.data
 }
 
@@ -70,7 +77,7 @@ export async function buildWithdraw(payload: {
   wallet: string
   poolId: string
 }): Promise<BuildTxnResponse> {
-  const { data } = await authAxios.post('/alpha-arcade/build-withdraw', payload)
+  const { data } = await authAxios.post('/prediction-lp/build-withdraw', payload)
   return data.data
 }
 
@@ -86,7 +93,7 @@ export async function recordDeposit(payload: {
   txId: string
   depositFee?: number
 }): Promise<AlphaArcadePosition> {
-  const { data } = await authAxios.post('/alpha-arcade/record-deposit', payload)
+  const { data } = await authAxios.post('/prediction-lp/record-deposit', payload)
   return data.data
 }
 
@@ -100,6 +107,6 @@ export async function recordWithdraw(payload: {
   txId: string
   withdrawFee?: number
 }): Promise<AlphaArcadePosition> {
-  const { data } = await authAxios.post('/alpha-arcade/record-withdraw', payload)
+  const { data } = await authAxios.post('/prediction-lp/record-withdraw', payload)
   return data.data
 }
