@@ -7,6 +7,8 @@ const CHALLENGE_CONFIG: Record<string, { name: string; description: string; icon
   daily_claim_streak: { name: 'Daily Streak',   description: 'Bonus for consecutive daily claims',       icon: 'mdi:fire' },
   hold_duration:      { name: 'Diamond Hands',  description: 'Points for every hour holding a position', icon: 'mdi:clock-outline' },
   referral:           { name: 'Referral',        description: 'Points for each new user referred',        icon: 'mdi:account-group' },
+  nft_staking_volume: { name: 'NFT Staking Volume', description: 'Points for every NFT staked',           icon: 'mdi:image-multiple' },
+  prediction_lp_volume: { name: 'Prediction LP Volume', description: 'Points for prediction market liquidity', icon: 'mdi:chart-line' },
 }
 
 export function getChallengeConfig(type: string) {
