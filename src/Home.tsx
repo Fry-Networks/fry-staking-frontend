@@ -27,6 +27,9 @@ import NftPoolStats from './pages/nftPoolStats'
 import AlphaArcade from './pages/alphaArcade'
 import Swap from './pages/swap'
 import TransactionHistory from './pages/transactionHistory'
+import DeviceStake from './pages/deviceStake'
+import DevicePoolStats from './pages/devicePoolStats'
+import DeviceDashboard from './pages/deviceDashboard'
 
 const AppLayout = () => {
   return (
@@ -60,6 +63,18 @@ const appRouter = createBrowserRouter([
   {
     path: '/nft-pool-stats',
     element: <NftPoolStats />,
+  },
+  {
+    path: '/device-stake',
+    element: <DeviceStake />,
+  },
+  {
+    path: '/device-pool-stats',
+    element: <DevicePoolStats />,
+  },
+  {
+    path: '/device-dashboard',
+    element: <DeviceDashboard />,
   },
   {
     path: '/prediction-lp',

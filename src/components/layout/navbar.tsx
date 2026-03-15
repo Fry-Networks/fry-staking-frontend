@@ -28,7 +28,7 @@ const Navbar: React.FC = () => {
   const [hasActiveEvents, setHasActiveEvents] = useState(false)
   const { activeAddress } = useWallet();
   const location = useLocation()
-  const isStakeActive = location.pathname === '/token-stake' || location.pathname === '/nft-stake'
+  const isStakeActive = location.pathname === '/token-stake' || location.pathname === '/nft-stake' || location.pathname === '/device-stake'
   const isFarmActive = location.pathname === '/farm' || location.pathname === '/prediction-lp'
 
   useEffect(() => {
@@ -124,6 +124,11 @@ const Navbar: React.FC = () => {
                   <NavLink to="/nft-stake" className={({ isActive }) =>
                     `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
                   }>NFT Stake</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/device-stake" className={({ isActive }) =>
+                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
+                  }>Device Stake</NavLink>
                 </li>
               </ul>
             </li>
@@ -290,6 +295,15 @@ const Navbar: React.FC = () => {
                 }
               >
                 NFT Stake
+              </NavLink>
+              <NavLink
+                to="/device-stake"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive ? 'text-secondary' : ''}`
+                }
+              >
+                Device Stake
               </NavLink>
             </li>
             <li className="flex flex-col gap-2">
