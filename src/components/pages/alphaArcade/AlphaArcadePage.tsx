@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
-import { Tabs, Spin, Input, Select, Alert, Table } from 'antd'
+import { Tabs, Spin, Input, Select, Alert, Table, Tooltip } from 'antd'
 import MarketCard from './MarketCard'
 import PositionCard from './PositionCard'
 import DepositModal from './DepositModal'
@@ -29,6 +29,7 @@ const AlphaArcadePage: React.FC = () => {
     visible: false,
     position: null,
   })
+  const [showHowItWorks, setShowHowItWorks] = useState(false)
 
   // Fetch markets and pools on mount
   useEffect(() => {
@@ -177,6 +178,7 @@ const AlphaArcadePage: React.FC = () => {
         market: pool.marketQuestion || market?.title || `Market #${pool.marketAppId}`,
         tvl: pool.totalUsdcDeposited || 0,
         providers: pool.totalProviders || 0,
+        aprEstimate: (pool as any).aprEstimate?.estimatedApr || 0,
         userPosition: userPos?.usdcDeposited || 0,
         resolutionTime: resTime,
         marketAppId: pool.marketAppId,
@@ -235,6 +237,39 @@ const AlphaArcadePage: React.FC = () => {
             </h3>
           </div>
         </div>
+      </div>
+
+      {/* How it works */}
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => setShowHowItWorks(!showHowItWorks)}
+          className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        >
+          <Icon icon="mdi:information-outline" width={16} />
+          How Prediction Market LP Works
+          <Icon icon={showHowItWorks ? 'mdi:chevron-up' : 'mdi:chevron-down'} width={16} />
+        </button>
+        {showHowItWorks && (
+          <div className="mt-2 bg-[var(--bg-secondary)] rounded-xl p-4 text-sm text-[var(--text-secondary)] flex flex-col gap-3">
+            <div>
+              <p className="font-medium text-[var(--text-primary)]">How you earn</p>
+              <p>Every trade pays a spread (the difference between buy and sell prices). With a 0.5% spread, a $100 trade earns you $0.50. More trading activity means more earnings.</p>
+            </div>
+            <div>
+              <p className="font-medium text-[var(--text-primary)]">Your risk</p>
+              <p>If the market resolves while you hold an imbalanced position (more YES than NO or vice versa), you may lose capital. Markets near 50/50 are lower risk.</p>
+            </div>
+            <div>
+              <p className="font-medium text-[var(--text-primary)]">When you get paid</p>
+              <p>Spread revenue accumulates in your position. Withdraw anytime before resolution, or your position settles automatically at resolution.</p>
+            </div>
+            <div>
+              <p className="font-medium text-[var(--text-primary)]">Tips</p>
+              <p>Higher spread = more per trade but less volume. More time to resolution = more time to earn. Diversify across markets to reduce directional risk.</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -307,6 +342,7 @@ const AlphaArcadePage: React.FC = () => {
                 columns={[
                   { title: 'MARKET', dataIndex: 'market', render: (v: string) => <span className="text-[var(--text-primary)] font-medium text-sm">{v}</span> },
                   { title: 'TVL', dataIndex: 'tvl', sorter: (a: any, b: any) => a.tvl - b.tvl, defaultSortOrder: 'descend' as const, render: (v: number) => `$${(v / 1e6).toFixed(2)}` },
+                  { title: () => <span className="flex items-center gap-1">EST. APR <Tooltip title="Estimated annual return from spread fees. Based on assumed 10% daily TVL turnover. Actual returns depend on trading volume."><Icon icon="mdi:information-outline" width={14} className="cursor-help text-[var(--text-secondary)]" /></Tooltip></span>, dataIndex: 'aprEstimate', sorter: (a: any, b: any) => a.aprEstimate - b.aprEstimate, render: (v: number) => v > 0 ? <span className="text-green-500 font-medium">{v.toFixed(1)}%</span> : <span className="text-[var(--text-secondary)]">N/A</span> },
                   { title: 'PROVIDERS', dataIndex: 'providers', sorter: (a: any, b: any) => a.providers - b.providers, render: (v: number) => v },
                   { title: 'YOUR POSITION', dataIndex: 'userPosition', render: (v: number) => v > 0 ? `$${(v / 1e6).toFixed(2)}` : '—' },
                   { title: 'RESOLUTION', dataIndex: 'resolutionTime', render: (v: number) => v > 0 ? new Date(v * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' },
