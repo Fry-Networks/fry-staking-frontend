@@ -69,6 +69,40 @@ const MULTIPLIER_TYPES = [
   { value: 'requirement_met', label: 'Requirement Met' },
 ]
 
+const DEPIN_COLLECTIONS: { name: string; description: string; category: string; creatorAddress: string; defunct?: boolean }[] = [
+  {
+    name: 'PlanetWatch Sensors',
+    description: 'Air quality monitoring sensor NFTs',
+    creatorAddress: 'U2RDZ4FGEKYMIQBAE7LTDZFIMO32C5H3WOZWI2SHU5ULPFWVCRJ7PVOT5Q',
+    category: 'Environmental',
+  },
+  {
+    name: 'Blockcreate Blocks',
+    description: 'Physical light-emitting cubes',
+    creatorAddress: '3CWBQEJY6XAEQUES5JHPSCFA6YCWXSVVEOB3ZIH3PBOVCT4WCPKL42J7VU',
+    category: 'Gaming',
+  },
+  {
+    name: 'PiPhi Network',
+    description: 'PiPhi DePIN network tokens',
+    creatorAddress: 'MHWVMMSIJRMTH4WWOWF64RWUU4HV2K3BPDVWR35AT2MYGUMJN4SOE6XMYE',
+    category: 'Infrastructure',
+  },
+  {
+    name: 'Fry Networks',
+    description: 'Multi-purpose DePIN mining devices',
+    creatorAddress: 'ATPVJYGEGP5H6GCZ4T6CG4PK7LH5OMWXHLXZHDPGO7RO6T3EHWTF6UUY6E',
+    category: 'Mining',
+  },
+  {
+    name: 'Wayru Airblocks',
+    description: 'WiFi hotspot nodes — project wound down Dec 2025',
+    creatorAddress: 'EJX27KM3PLKO2RLWBNADRMDAEXFF2VNM6AJCOSLAPY6WLUSY3K6POHOLFE',
+    category: 'Connectivity',
+    defunct: true,
+  },
+]
+
 const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
   isOpen,
   setIsOpen,
@@ -89,6 +123,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
   // Step 0: Staking Mode
   const [stakingMode, setStakingMode] = useState<'verified-hold' | 'escrow'>('verified-hold')
   const [verifierAddress, setVerifierAddress] = useState('')
+  const [showModeAdvanced, setShowModeAdvanced] = useState(false)
 
   // Step 1: NFT Collection
   const [poolName, setPoolName] = useState('')
@@ -567,12 +602,15 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
             <div className="flex flex-col gap-3">
               <div
                 onClick={() => setStakingMode('verified-hold')}
-                className={`p-4 rounded-xl cursor-pointer transition-all border-2 ${
+                className={`relative p-4 rounded-xl cursor-pointer transition-all border-2 ${
                   stakingMode === 'verified-hold'
-                    ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                    : 'border-transparent bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)]'
+                    ? 'border-green-500 bg-green-50 dark:bg-green-900/30 ring-1 ring-green-500/30'
+                    : 'border-[var(--border-color)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)]'
                 }`}
               >
+                {stakingMode === 'verified-hold' && (
+                  <Icon icon="mdi:check-circle" className="text-green-500 absolute top-3 right-3" width={22} />
+                )}
                 <div className="flex items-center gap-2">
                   <Icon icon="mdi:shield-check" width={20} className="text-green-600" />
                   <p className="font-medium text-[var(--text-primary)]">Verified Hold</p>
@@ -581,12 +619,15 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
               </div>
               <div
                 onClick={() => setStakingMode('escrow')}
-                className={`p-4 rounded-xl cursor-pointer transition-all border-2 ${
+                className={`relative p-4 rounded-xl cursor-pointer transition-all border-2 ${
                   stakingMode === 'escrow'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-transparent bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)]'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-500/30'
+                    : 'border-[var(--border-color)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)]'
                 }`}
               >
+                {stakingMode === 'escrow' && (
+                  <Icon icon="mdi:check-circle" className="text-blue-500 absolute top-3 right-3" width={22} />
+                )}
                 <div className="flex items-center gap-2">
                   <Icon icon="mdi:lock" width={20} className="text-blue-600" />
                   <p className="font-medium text-[var(--text-primary)]">Escrow Lock</p>
@@ -596,18 +637,36 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
             </div>
 
             {stakingMode === 'verified-hold' && (
-              <div className="flex flex-col gap-[10px]">
-                <p className="large text-[var(--text-primary)]">Verifier Address</p>
-                <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                  <Input
-                    type="text"
-                    placeholder="Address authorized to verify device ownership"
-                    value={verifierAddress}
-                    onChange={(e) => setVerifierAddress(e.target.value)}
-                    className="input-wrapper text-[16px] w-full"
-                  />
-                </div>
-                <p className="text-xs text-[var(--text-secondary)]">Defaults to your wallet. This address can call the verification method.</p>
+              <div className="border-t border-[var(--border-color)] pt-3 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModeAdvanced(!showModeAdvanced)}
+                  className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                >
+                  <Icon icon={showModeAdvanced ? 'mdi:chevron-up' : 'mdi:chevron-down'} className="w-4 h-4" />
+                  Advanced Settings
+                </button>
+                {showModeAdvanced && (
+                  <div className="flex flex-col gap-4 mt-3">
+                    <p className="text-xs text-[var(--text-secondary)] bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2">
+                      <Icon icon="mdi:information-outline" width={14} className="inline mr-1 -mt-0.5" />
+                      The Fry platform verifier will automatically handle verification for your pool. Only set a custom address if you need a different verifier.
+                    </p>
+                    <div className="flex flex-col gap-[10px]">
+                      <p className="large text-[var(--text-primary)]">Verifier Address</p>
+                      <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
+                        <Input
+                          type="text"
+                          placeholder="Address authorized to verify device ownership"
+                          value={verifierAddress}
+                          onChange={(e) => setVerifierAddress(e.target.value)}
+                          className="input-wrapper text-[16px] w-full"
+                        />
+                      </div>
+                      <p className="text-xs text-[var(--text-secondary)]">The verifier is the wallet authorized to confirm device ownership on-chain during periodic verification checks. Defaults to your wallet address.</p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -632,6 +691,49 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
             </div>
 
             {(collectionMode === 0 || collectionMode === 2) && (
+              <>
+              <div className="flex flex-col gap-[10px]">
+                <p className="large text-[var(--text-primary)]">Known DePIN Collections</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {DEPIN_COLLECTIONS.filter(c => c.creatorAddress).map((collection) => (
+                    <div
+                      key={collection.name}
+                      onClick={() => {
+                        setCollectionCreator(collection.creatorAddress)
+                        if (!useCustomName) setPoolName(`Stake ${collection.name}`)
+                      }}
+                      className={`relative p-3 rounded-xl cursor-pointer transition-all border-2 ${
+                        collectionCreator === collection.creatorAddress
+                          ? 'border-green-500 bg-green-50 dark:bg-green-900/30 ring-1 ring-green-500/30'
+                          : 'border-[var(--border-color)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)]'
+                      }`}
+                    >
+                      {collectionCreator === collection.creatorAddress && (
+                        <Icon icon="mdi:check-circle" className="text-green-500 absolute top-2 right-2" width={18} />
+                      )}
+                      <p className="font-medium text-sm text-[var(--text-primary)]">{collection.name}</p>
+                      <p className="text-xs text-[var(--text-secondary)] mt-0.5">{collection.description}</p>
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        <span className="text-[10px] text-[var(--text-secondary)] bg-[var(--input-bg)] rounded px-1.5 py-0.5">
+                          {collection.category}
+                        </span>
+                        {collection.defunct && (
+                          <span className="text-[10px] text-orange-500 bg-orange-100 dark:bg-orange-900/20 rounded px-1.5 py-0.5">
+                            Defunct
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                <div className="flex-1 border-t border-[var(--border-color)]" />
+                Or enter a custom creator address
+                <div className="flex-1 border-t border-[var(--border-color)]" />
+              </div>
+
               <div className="flex flex-col gap-[10px]">
                 <p className="large text-[var(--text-primary)]">Collection Creator Address</p>
                 <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
@@ -645,6 +747,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
                 </div>
                 {creatorNfd && <p className="text-xs text-green">{creatorNfd}</p>}
               </div>
+              </>
             )}
 
             {(collectionMode === 1 || collectionMode === 2) && (
