@@ -4,6 +4,7 @@ import { useWallet } from '@txnlab/use-wallet'
 import P_STable from './PsTable'
 import { tokenServiceInstance } from '../../../../services/TokenService'
 import { fetchPriceMap } from '../../../../services/PriceService'
+import { getUserData } from '../../../../staking_func'
 
 export type PoolStatus = 'active' | 'ending-soon' | 'ended'
 export type PoolFilter = 'all' | 'active' | 'ending-soon' | 'ended'
@@ -123,6 +124,24 @@ const PstakeTable: React.FC = () => {
         return isCreator || hasStaked
       })
 
+      // Fetch on-chain staker data for each pool the user participates in
+      const onChainDataMap: Record<number, { stakedAmount: number; stakeTime: number }> = {}
+      await Promise.allSettled(
+        userPools.map(async (pool: any) => {
+          try {
+            const contractId = Number(pool.stakingContractId)
+            if (!contractId || !activeAddress) return
+            const data = await getUserData(contractId, activeAddress)
+            onChainDataMap[contractId] = {
+              stakedAmount: Number(data.stakedAmount),
+              stakeTime: Number(data.stakeTime),
+            }
+          } catch {
+            // User may not have a box (e.g., creator-only, or box deleted after full unstake)
+          }
+        })
+      )
+
       // Fetch real prices for all stake tokens
       const asaIds = [...new Set(userPools.map((p: any) =>
         Number(p?.stakeToken?.id ?? p?.stakeTokenId)
@@ -147,7 +166,11 @@ const PstakeTable: React.FC = () => {
         const stakeTokenImage = imageMap[stakeTokenId] || `https://asa-list.tinyman.org/assets/${stakeTokenId}/icon.png`
         const rewardTokenImage = imageMap[rewardTokenId] || `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`
 
-        const userStakedAmount = stakedAmountMap[pool._id] || 0
+        // Use on-chain data when available, fall back to MongoDB
+        const contractId = Number(pool.stakingContractId)
+        const onChainData = onChainDataMap[contractId]
+        const userStakedMicro = onChainData?.stakedAmount ?? (stakedAmountMap[pool._id] || 0)
+
         const usdPrice = priceMap[stakeTokenId] ?? 0
         const tvlUsd = (pool.totalAmountStaked || 0) * usdPrice
 
@@ -161,8 +184,10 @@ const PstakeTable: React.FC = () => {
           rewardTokenImage,
           tvl: `$${Number(tvlUsd.toFixed(6)).toString()}`,
           apr: `${pool.aprRate || 0}%`,
-          userStaked: userStakedAmount > 0 ? `${(userStakedAmount / 1_000_000).toFixed(3)}` : '0',
-          reward: `${pool.totalAmountStaked ? ((pool.totalAmountStaked * pool.aprRate * ((now - pool.stakingTime) / 31104000)) / 1_000_000).toFixed(3) : '0'}`,
+          userStaked: userStakedMicro > 0 ? `${(userStakedMicro / 1_000_000).toFixed(3)}` : '0',
+          reward: onChainData && onChainData.stakedAmount > 0 && pool.aprRate
+            ? `${((onChainData.stakedAmount * (pool.aprRate / 100) * ((now - onChainData.stakeTime) / 31104000)) / 1_000_000).toFixed(3)}`
+            : '0',
           endsIn: daysLeft >= 0 ? `${Math.max(daysLeft, 1)} ${Math.max(daysLeft, 1) === 1 ? 'day' : 'days'}` : 'Ended',
           lockDays: Math.floor((pool.lockPeriod || 0) / 86400),
           stakingContractId: Number(pool.stakingContractId),

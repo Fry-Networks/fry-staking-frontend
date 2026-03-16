@@ -42,6 +42,7 @@ interface StakingRecord {
   rewardToken?: number
   stakeToken?: number
   poolTime?: number
+  totalStaked?: number
 }
 
 interface STableProps {
@@ -295,40 +296,44 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
           toast.error('No active address found for staking.');
           return;
         }
-        const getStakingRecord = await getStakingData(args.stakingContractId, activeAddress, signer) as StakingRecord;
-        const StakerData = await getUserData(args.stakingContractId, activeAddress);
-        const stakingTokenPayload = {
-          apr: getStakingRecord.apr,
-          lockPeriod: getStakingRecord.lockPeriod,
-          poolStartTime: getStakingRecord.poolStartTime,
-          poolEndTime: getStakingRecord.poolEndTime,
-          poolTime: getStakingRecord.poolTime || (getStakingRecord.poolEndTime - getStakingRecord.poolStartTime),
-          rewardToken: Number(getStakingRecord.rewardToken || FRY_ASSET_ID),
-          stakeTokens: Number(getStakingRecord.stakeToken || FRY_ASSET_ID),
-          totalStaked: args.adjustedStackValue - (args.feeAmount || 0),
-          poolId: args._id,
-          appId: Number(args.stakingContractId),
-          wallet: activeAddress
-        };
-        await authAxios.post('/stakingtoken/add', stakingTokenPayload);
-        const { stakedAmount, stakeTime } = StakerData;
-        const apr_response = await authAxios.put(`/staking/update/${args._id}`, {
-          aprRate: getStakingRecord.apr / 100,
-          totalAmountStaked: Number(stakedAmount) / 1_000_000,
-          totalStakers: 1,
-          stakingTime: stakeTime,
-        });
-        if (apr_response.status >= 200 && apr_response.status < 300) {
-          await new Promise(r => setTimeout(r, 500));
-          await fetchData();
-          fetchBalance();
-          const pool = stacks.find(s => s._id === args._id)
-          if (pool?.stakeTokenId && pool?.key) fetchTokenBalance(pool.key, pool.stakeTokenId)
-          toast.success('Staking successful!');
-          setStackValue(0);
-        } else {
-          toast.error('Failed to update staking data.');
+
+        // Backend updates — best-effort after successful on-chain stake
+        try {
+          const getStakingRecord = await getStakingData(args.stakingContractId, activeAddress, signer) as StakingRecord;
+          const StakerData = await getUserData(args.stakingContractId, activeAddress);
+          const stakingTokenPayload = {
+            apr: getStakingRecord.apr,
+            lockPeriod: getStakingRecord.lockPeriod,
+            poolStartTime: getStakingRecord.poolStartTime,
+            poolEndTime: getStakingRecord.poolEndTime,
+            poolTime: getStakingRecord.poolTime || (getStakingRecord.poolEndTime - getStakingRecord.poolStartTime),
+            rewardToken: Number(getStakingRecord.rewardToken || FRY_ASSET_ID),
+            stakeTokens: Number(getStakingRecord.stakeToken || FRY_ASSET_ID),
+            totalStaked: args.adjustedStackValue - (args.feeAmount || 0),
+            poolId: args._id,
+            appId: Number(args.stakingContractId),
+            wallet: activeAddress
+          };
+          await authAxios.post('/stakingtoken/add', stakingTokenPayload);
+          const { stakeTime } = StakerData;
+          await authAxios.put(`/staking/update/${args._id}`, {
+            aprRate: getStakingRecord.apr / 100,
+            totalAmountStaked: Number(getStakingRecord.totalStaked ?? 0) / 1_000_000,
+            totalStakers: 1,
+            stakingTime: stakeTime,
+          });
+        } catch (backendErr) {
+          console.warn('Backend update failed after successful stake:', backendErr);
         }
+
+        // Always show success since on-chain stake succeeded
+        await new Promise(r => setTimeout(r, 500));
+        await fetchData();
+        fetchBalance();
+        const pool = stacks.find(s => s._id === args._id)
+        if (pool?.stakeTokenId && pool?.key) fetchTokenBalance(pool.key, pool.stakeTokenId)
+        toast.success('Staking successful!');
+        setStackValue(0);
       } catch (error: any) {
         console.error('Error during staking operation:', error);
         const msg = error?.response?.data?.message || error?.message || 'Error during staking operation.';
@@ -426,48 +431,38 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
         return;
       }
 
-      const getStakingRecord = await getStakingData(args.stakingContractId, activeAddress!, signer);
-      const StakerData = await getUserData(args.stakingContractId, activeAddress!);
+      // Backend updates — best-effort after successful on-chain unstake
+      try {
+        const getStakingRecord = await getStakingData(args.stakingContractId, activeAddress!, signer) as StakingRecord;
+        const StakerData = await getUserData(args.stakingContractId, activeAddress!);
 
-      if (!getStakingRecord || typeof (getStakingRecord as { apr: number }).apr !== 'number') {
-        toast.error('Invalid staking record received');
-        return;
-      }
-      if (!StakerData || typeof StakerData.stakedAmount !== 'number') {
-        toast.error('Invalid staker data received');
-        return;
-      }
+        const { stakeTime } = StakerData;
+        const calculateAPR = getStakingRecord.apr / 100;
 
-      const { stakedAmount, stakeTime } = StakerData;
-      const calculateAPR = (getStakingRecord as { apr: number }).apr / 100;
-
-      const apr_response = await authAxios.put(`/staking/update/${args._id}`, {
-        aprRate: calculateAPR,
-        totalAmountStaked: Number(stakedAmount) / 1_000_000,
-        totalStakers: 1,
-        stakingTime: stakeTime,
-      });
-
-      if (apr_response.status >= 200 && apr_response.status < 300) {
-        const logResponse = await authAxios.post('/withdraw/add', {
+        await authAxios.put(`/staking/update/${args._id}`, {
+          aprRate: calculateAPR,
+          totalAmountStaked: Number(getStakingRecord.totalStaked ?? 0) / 1_000_000,
+          totalStakers: 1,
+          stakingTime: stakeTime,
+        });
+        await authAxios.post('/withdraw/add', {
           tokens: Number(withdrawValue),
           wallet: activeAddress,
           poolId: args._id,
           appId: Number(args.stakingContractId),
         });
-        if (logResponse.status === 201) {
-          console.log("Withdrawal log saved:", logResponse.data);
-        }
-        await new Promise(r => setTimeout(r, 500));
-        await fetchData();
-        fetchBalance();
-        const pool = stacks.find(s => s._id === args._id)
-        if (pool?.stakeTokenId && pool?.key) fetchTokenBalance(pool.key, pool.stakeTokenId)
-        toast.success('Withdrawal successful');
-        setWithdrawValue(0);
-      } else {
-        toast.error('Failed to update staking data');
+      } catch (backendErr) {
+        console.warn('Backend update failed after successful withdraw:', backendErr);
       }
+
+      // Always show success since on-chain unstake succeeded
+      await new Promise(r => setTimeout(r, 500));
+      await fetchData();
+      fetchBalance();
+      const pool = stacks.find(s => s._id === args._id)
+      if (pool?.stakeTokenId && pool?.key) fetchTokenBalance(pool.key, pool.stakeTokenId)
+      toast.success('Withdrawal successful');
+      setWithdrawValue(0);
     } catch (error: any) {
       if (error?.message?.includes('Network mismatch')) {
         toast.error('Network mismatch: Please switch wallet to correct network.');
@@ -698,30 +693,34 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
         return
       }
 
-      // Update backend records
-      const getStakingRecord = await getStakingData(v2Pool.stakingContractId, activeAddress, signer) as StakingRecord
-      const stakerData = await getUserData(v2Pool.stakingContractId, activeAddress)
+      // Backend updates — best-effort after successful on-chain migration
+      try {
+        const getStakingRecord = await getStakingData(v2Pool.stakingContractId, activeAddress, signer) as StakingRecord
+        const stakerData = await getUserData(v2Pool.stakingContractId, activeAddress)
 
-      await authAxios.post('/stakingtoken/add', {
-        apr: getStakingRecord.apr,
-        lockPeriod: getStakingRecord.lockPeriod,
-        poolStartTime: getStakingRecord.poolStartTime,
-        poolEndTime: getStakingRecord.poolEndTime,
-        poolTime: getStakingRecord.poolTime || (getStakingRecord.poolEndTime - getStakingRecord.poolStartTime),
-        rewardToken: Number(getStakingRecord.rewardToken || FRY_ASSET_ID),
-        stakeTokens: Number(getStakingRecord.stakeToken || FRY_ASSET_ID),
-        totalStaked: stakedMicro,
-        poolId: v2Pool._id,
-        appId: Number(v2Pool.stakingContractId),
-        wallet: activeAddress,
-      })
+        await authAxios.post('/stakingtoken/add', {
+          apr: getStakingRecord.apr,
+          lockPeriod: getStakingRecord.lockPeriod,
+          poolStartTime: getStakingRecord.poolStartTime,
+          poolEndTime: getStakingRecord.poolEndTime,
+          poolTime: getStakingRecord.poolTime || (getStakingRecord.poolEndTime - getStakingRecord.poolStartTime),
+          rewardToken: Number(getStakingRecord.rewardToken || FRY_ASSET_ID),
+          stakeTokens: Number(getStakingRecord.stakeToken || FRY_ASSET_ID),
+          totalStaked: stakedMicro,
+          poolId: v2Pool._id,
+          appId: Number(v2Pool.stakingContractId),
+          wallet: activeAddress,
+        })
 
-      await authAxios.put(`/staking/update/${v2Pool._id}`, {
-        aprRate: getStakingRecord.apr / 100,
-        totalAmountStaked: Number(stakerData.stakedAmount) / 1_000_000,
-        totalStakers: 1,
-        stakingTime: stakerData.stakeTime,
-      })
+        await authAxios.put(`/staking/update/${v2Pool._id}`, {
+          aprRate: getStakingRecord.apr / 100,
+          totalAmountStaked: Number(getStakingRecord.totalStaked ?? 0) / 1_000_000,
+          totalStakers: 1,
+          stakingTime: stakerData.stakeTime,
+        })
+      } catch (backendErr) {
+        console.warn('Backend update failed after successful migration:', backendErr)
+      }
 
       toast.success('Migration complete! Your tokens are now in the V2 pool.')
       await new Promise(r => setTimeout(r, 500))
