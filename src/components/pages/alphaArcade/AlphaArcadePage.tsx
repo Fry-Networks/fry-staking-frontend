@@ -319,13 +319,17 @@ const AlphaArcadePage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {filteredMarkets.map((market) => (
-                      <MarketCard
-                        key={market.marketAppId}
-                        market={market}
-                        onDeposit={(m) => setDepositModal({ visible: true, market: m })}
-                      />
-                    ))}
+                    {filteredMarkets.map((market) => {
+                      const pool = poolMap.get(market.marketAppId)
+                      return (
+                        <MarketCard
+                          key={market.marketAppId}
+                          market={market}
+                          aprEstimate={(pool as any)?.aprEstimate?.estimatedApr}
+                          onDeposit={(m) => setDepositModal({ visible: true, market: m })}
+                        />
+                      )
+                    })}
                   </div>
                 )}
               </div>

@@ -129,7 +129,7 @@ const DeviceTable: React.FC<DeviceTableProps> = memo(({ pools, fetchData, tokenI
             />
           </div>
           <div className="flex flex-col">
-            <h6 className="text-[var(--text-primary)] font-bold tracking-[0.1px]">{pool.name || 'Device Pool'}</h6>
+            <h6 className="text-[var(--text-primary)] font-bold tracking-[0.1px]">{pool.name || 'DePIN Pool'}</h6>
             <p className="text-green font-medium small">Earn {pool.rewardToken?.symbol}</p>
             {pool.lockPeriod > 0 && (
               <p className="text-text_clr small">with {pool.lockPeriod / 86400} days lock</p>
@@ -164,7 +164,7 @@ const DeviceTable: React.FC<DeviceTableProps> = memo(({ pools, fetchData, tokenI
       key: 'pool',
     },
     {
-      title: 'Devices',
+      title: 'DePINs',
       dataIndex: 'devicesStaked',
       key: 'devicesStaked',
       sorter: (a, b) => a.devicesStaked - b.devicesStaked,

@@ -37,7 +37,7 @@ const LOCK_OPTIONS = [
 ]
 
 const REWARD_MODEL_OPTIONS = [
-  { label: 'Fixed Rate', value: 'fixed_rate', desc: 'Fixed amount of tokens per device per day' },
+  { label: 'Fixed Rate', value: 'fixed_rate', desc: 'Fixed amount of tokens per DePIN per day' },
   { label: 'Proportional', value: 'proportional', desc: 'Total reward pool divided among stakers over time' },
   { label: 'APR', value: 'apr', desc: 'Annual percentage rate based on device NFT value' },
 ]
@@ -155,10 +155,10 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
   const [poolEndDate, setPoolEndDate] = useState<Date | null>(null)
   const [estimatedNfts, setEstimatedNfts] = useState('10')
 
-  // Step 4: Fees
-  const [depositFeeBps, setDepositFeeBps] = useState('0')
-  const [withdrawFeeBps, setWithdrawFeeBps] = useState('0')
-  const [claimFeeBps, setClaimFeeBps] = useState('800')
+  // Fixed platform fees (not user-configurable)
+  const depositFeeBps = 50    // 0.50%
+  const withdrawFeeBps = 25   // 0.25%
+  const claimFeeBps = 800     // 8.00%
 
   // Step 5: Requirements
   const [requirementsEnabled, setRequirementsEnabled] = useState(false)
@@ -203,7 +203,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
   // Auto-generate pool name
   useEffect(() => {
     if (!useCustomName) {
-      const modeSuffix = stakingMode === 'verified-hold' ? 'Device Staking' : 'Device Pool'
+      const modeSuffix = stakingMode === 'verified-hold' ? 'DePIN Staking' : 'DePIN Pool'
       const prefix = autoCollectionName || creatorNfd || (collectionCreator.trim() ? collectionCreator.slice(0, 8) + '...' : '')
       setPoolName(prefix ? `${prefix} ${modeSuffix}` : modeSuffix)
     }
@@ -345,9 +345,6 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
     setAutoFetchingImage(false)
     setAutoCollectionName('')
     setCreatorNfd(null)
-    setDepositFeeBps('0')
-    setWithdrawFeeBps('0')
-    setClaimFeeBps('800')
     setRequirementsEnabled(false)
     setRequirements([])
     setMultipliersEnabled(false)
@@ -376,21 +373,13 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
         if (rewardModel === 'apr') return Number(aprRate) > 0 && Number(valuePerNft) > 0
         return false
       }
-      case 4: {
-        const d = Number(depositFeeBps)
-        const w = Number(withdrawFeeBps)
-        const c = Number(claimFeeBps)
-        return !isNaN(d) && d >= 0 && d <= 10000
-          && !isNaN(w) && w >= 0 && w <= 10000
-          && !isNaN(c) && c >= 0 && c <= 10000
-      }
-      case 5:
+      case 4:
         if (!requirementsEnabled) return true
         return requirements.every(r => r.type && r.label.trim().length > 0)
-      case 6:
+      case 5:
         if (!multipliersEnabled) return true
         return multipliers.every(m => m.type && m.label.trim().length > 0)
-      case 7:
+      case 6:
         return true
       default:
         return true
@@ -587,7 +576,6 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
     { title: 'Collection' },
     { title: 'Token' },
     { title: 'Rewards' },
-    { title: 'Fees' },
     { title: 'Requirements' },
     { title: 'Multipliers' },
     { title: 'Review' },
@@ -615,7 +603,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
                   <Icon icon="mdi:shield-check" width={20} className="text-green-600" />
                   <p className="font-medium text-[var(--text-primary)]">Verified Hold</p>
                 </div>
-                <p className="text-sm text-[var(--text-secondary)] mt-1">Device NFT stays in the user's wallet. A verifier periodically confirms ownership.</p>
+                <p className="text-sm text-[var(--text-secondary)] mt-1">DePIN NFT stays in the user's wallet. A verifier periodically confirms ownership.</p>
               </div>
               <div
                 onClick={() => setStakingMode('escrow')}
@@ -632,7 +620,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
                   <Icon icon="mdi:lock" width={20} className="text-blue-600" />
                   <p className="font-medium text-[var(--text-primary)]">Escrow Lock</p>
                 </div>
-                <p className="text-sm text-[var(--text-secondary)] mt-1">Device NFT is transferred to and locked in the smart contract.</p>
+                <p className="text-sm text-[var(--text-secondary)] mt-1">DePIN NFT is transferred to and locked in the smart contract.</p>
               </div>
             </div>
 
@@ -657,13 +645,13 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
                       <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
                         <Input
                           type="text"
-                          placeholder="Address authorized to verify device ownership"
+                          placeholder="Address authorized to verify DePIN NFT ownership"
                           value={verifierAddress}
                           onChange={(e) => setVerifierAddress(e.target.value)}
                           className="input-wrapper text-[16px] w-full"
                         />
                       </div>
-                      <p className="text-xs text-[var(--text-secondary)]">The verifier is the wallet authorized to confirm device ownership on-chain during periodic verification checks. Defaults to your wallet address.</p>
+                      <p className="text-xs text-[var(--text-secondary)]">The verifier is the wallet authorized to confirm DePIN NFT ownership on-chain during periodic verification checks. Defaults to your wallet address.</p>
                     </div>
                   </div>
                 )}
@@ -675,7 +663,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
       case 1:
         return (
           <div className="flex flex-col gap-4">
-            <p className="text-[var(--text-secondary)] text-sm">Set up your device NFT collection and pool details.</p>
+            <p className="text-[var(--text-secondary)] text-sm">Set up your DePIN NFT collection and pool details.</p>
 
             <div className="flex flex-col gap-[10px]">
               <p className="large text-[var(--text-primary)]">Collection Mode</p>
@@ -739,7 +727,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
                 <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
                   <Input
                     type="text"
-                    placeholder="Algorand address of device NFT creator"
+                    placeholder="Algorand address of DePIN NFT creator"
                     value={collectionCreator}
                     onChange={(e) => setCollectionCreator(e.target.value)}
                     className="input-wrapper text-[16px] w-full"
@@ -804,7 +792,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
                     <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
                       <Input
                         type="text"
-                        placeholder="Describe your device staking pool"
+                        placeholder="Describe your DePIN staking pool"
                         value={poolDescription}
                         onChange={(e) => setPoolDescription(e.target.value)}
                         className="input-wrapper text-[16px] w-full"
@@ -880,9 +868,9 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
 
             {rewardModel === 'fixed_rate' && (
               <div className="flex flex-col gap-[10px]">
-                <p className="large text-[var(--text-primary)]">Rate Per Day (per device)</p>
+                <p className="large text-[var(--text-primary)]">Rate Per Day (per DePIN)</p>
                 <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                  <Input type="number" placeholder="Tokens per device per day" value={rewardPerDay} onChange={(e) => setRewardPerDay(e.target.value)} className="input-wrapper text-[16px] w-full" min={0} />
+                  <Input type="number" placeholder="Tokens per DePIN per day" value={rewardPerDay} onChange={(e) => setRewardPerDay(e.target.value)} className="input-wrapper text-[16px] w-full" min={0} />
                 </div>
               </div>
             )}
@@ -906,9 +894,9 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
                   </div>
                 </div>
                 <div className="flex flex-col gap-[10px]">
-                  <p className="large text-[var(--text-primary)]">Value Per Device NFT (in reward token)</p>
+                  <p className="large text-[var(--text-primary)]">Value Per DePIN NFT (in reward token)</p>
                   <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                    <Input type="number" placeholder="Assigned value per device" value={valuePerNft} onChange={(e) => setValuePerNft(e.target.value)} className="input-wrapper text-[16px] w-full" min={0} />
+                    <Input type="number" placeholder="Assigned value per DePIN" value={valuePerNft} onChange={(e) => setValuePerNft(e.target.value)} className="input-wrapper text-[16px] w-full" min={0} />
                   </div>
                 </div>
               </>
@@ -970,37 +958,6 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
       case 4:
         return (
           <div className="flex flex-col gap-4">
-            <p className="text-[var(--text-secondary)] text-sm">Configure fee rates for pool interactions (in basis points, 100 = 1%).</p>
-
-            <div className="flex flex-col gap-[10px]">
-              <p className="large text-[var(--text-primary)]">Deposit Fee (BPS)</p>
-              <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                <Input type="number" placeholder="0" value={depositFeeBps} onChange={(e) => setDepositFeeBps(e.target.value)} className="input-wrapper text-[16px] w-full" min={0} max={10000} />
-              </div>
-              <p className="text-xs text-[var(--text-secondary)]">{(Number(depositFeeBps) / 100).toFixed(2)}%</p>
-            </div>
-
-            <div className="flex flex-col gap-[10px]">
-              <p className="large text-[var(--text-primary)]">Withdraw Fee (BPS)</p>
-              <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                <Input type="number" placeholder="0" value={withdrawFeeBps} onChange={(e) => setWithdrawFeeBps(e.target.value)} className="input-wrapper text-[16px] w-full" min={0} max={10000} />
-              </div>
-              <p className="text-xs text-[var(--text-secondary)]">{(Number(withdrawFeeBps) / 100).toFixed(2)}%</p>
-            </div>
-
-            <div className="flex flex-col gap-[10px]">
-              <p className="large text-[var(--text-primary)]">Claim Fee (BPS)</p>
-              <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                <Input type="number" placeholder="800" value={claimFeeBps} onChange={(e) => setClaimFeeBps(e.target.value)} className="input-wrapper text-[16px] w-full" min={0} max={10000} />
-              </div>
-              <p className="text-xs text-[var(--text-secondary)]">{(Number(claimFeeBps) / 100).toFixed(2)}%</p>
-            </div>
-          </div>
-        )
-
-      case 5:
-        return (
-          <div className="flex flex-col gap-4">
             <p className="text-[var(--text-secondary)] text-sm">Optionally add requirements that stakers must meet.</p>
 
             <div className="flex items-center gap-3">
@@ -1050,7 +1007,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
           </div>
         )
 
-      case 6:
+      case 5:
         return (
           <div className="flex flex-col gap-4">
             <p className="text-[var(--text-secondary)] text-sm">Optionally add boost multipliers for stakers.</p>
@@ -1102,10 +1059,10 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
           </div>
         )
 
-      case 7:
+      case 6:
         return (
           <div className="flex flex-col gap-4">
-            <p className="text-[var(--text-secondary)] text-sm mb-2">Review your device staking pool configuration before deploying.</p>
+            <p className="text-[var(--text-secondary)] text-sm mb-2">Review your DePIN staking pool configuration before deploying.</p>
 
             <div className="flex flex-col gap-3 bg-[var(--bg-secondary)] rounded-xl p-4">
               <div className="flex justify-between">
@@ -1152,7 +1109,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
               {rewardModel === 'fixed_rate' && (
                 <div className="flex justify-between">
                   <span className="text-[var(--text-secondary)] text-sm">Rate Per Day</span>
-                  <span className="font-medium text-sm">{rewardPerDay} {rewardToken?.symbol}/device/day</span>
+                  <span className="font-medium text-sm">{rewardPerDay} {rewardToken?.symbol}/DePIN/day</span>
                 </div>
               )}
               {rewardModel === 'proportional' && (
@@ -1168,7 +1125,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
                     <span className="font-medium text-sm text-green">{aprRate}%</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-[var(--text-secondary)] text-sm">Value Per Device</span>
+                    <span className="text-[var(--text-secondary)] text-sm">Value Per DePIN</span>
                     <span className="font-medium text-sm">{valuePerNft} {rewardToken?.symbol}</span>
                   </div>
                 </>
@@ -1255,7 +1212,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
       maskClosable={!isSubmitting}
     >
       <div className="modal-content flex flex-col pt-[24px] pb-[24px] px-[24px]">
-        <h5 className="text-[var(--text-primary)] font-apex text-center">Create Device Staking Pool</h5>
+        <h5 className="text-[var(--text-primary)] font-apex text-center">Create DePIN Staking Pool</h5>
         <div className="red-line w-full h-[1px] mt-[16px] mb-[16px]" />
 
         <Steps
@@ -1303,7 +1260,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
             />
           ) : (
             <Button
-              text={isSubmitting ? deployStatus || 'Deploying...' : 'Create Device Pool'}
+              text={isSubmitting ? deployStatus || 'Deploying...' : 'Create DePIN Pool'}
               className="button btn-primary flex-1"
               height={48}
               onClick={handleDeploy}

@@ -5,9 +5,10 @@ import type { AlphaArcadeMarket } from '../../../types/alphaArcade'
 interface MarketCardProps {
   market: AlphaArcadeMarket
   onDeposit: (market: AlphaArcadeMarket) => void
+  aprEstimate?: number
 }
 
-const MarketCard: React.FC<MarketCardProps> = ({ market, onDeposit }) => {
+const MarketCard: React.FC<MarketCardProps> = ({ market, onDeposit, aprEstimate }) => {
   const yesPercent = Math.round(market.yesProb ?? 50)
   const noPercent = 100 - yesPercent
   const isResolved = market.endTs > 0 && market.endTs * 1000 < Date.now()
@@ -119,6 +120,10 @@ const MarketCard: React.FC<MarketCardProps> = ({ market, onDeposit }) => {
           <span>24h: {formatVolume(market.twentyFourHrVolume)}</span>
           <span>Vol: {formatVolume(market.volume)}</span>
         </div>
+
+        {aprEstimate != null && aprEstimate > 0 && (
+          <p className="text-xs font-medium text-green-500">Est. APR: {aprEstimate.toFixed(1)}%</p>
+        )}
 
         {/* Resolution date */}
         {resolutionDate && (

@@ -128,7 +128,7 @@ const Navbar: React.FC = () => {
                 <li>
                   <NavLink to="/device-stake" className={({ isActive }) =>
                     `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
-                  }>Device Stake</NavLink>
+                  }>DePIN Stake</NavLink>
                 </li>
               </ul>
             </li>
@@ -303,7 +303,7 @@ const Navbar: React.FC = () => {
                   `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive ? 'text-secondary' : ''}`
                 }
               >
-                Device Stake
+                DePIN Stake
               </NavLink>
             </li>
             <li className="flex flex-col gap-2">

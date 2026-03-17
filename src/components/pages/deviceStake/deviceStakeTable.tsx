@@ -129,7 +129,7 @@ const DeviceStakeTable: React.FC = () => {
             <div className="flex flex-col md:items-end gap-[14px] w-full">
               <div className="flex justify-center md:justify-end">
                 <Button
-                  text="Create Device Pool"
+                  text="Create DePIN Pool"
                   onClick={() => setIsCreateOpen(true)}
                   img="ic:sharp-add"
                   className="button btn-red-border w-[250px] md:w-[220px]"
@@ -141,7 +141,7 @@ const DeviceStakeTable: React.FC = () => {
                 <Icon icon="si:search-line" color="#A8A8A8" width={22} height={22} />
                 <input
                   type="search"
-                  placeholder="Search device pool"
+                  placeholder="Search DePIN pool"
                   className="w-full"
                   value={searchToken}
                   onChange={handleSearchChange}
@@ -153,11 +153,11 @@ const DeviceStakeTable: React.FC = () => {
           <div className="w-full mt-1">
             <p className="text-sm text-gray-500">
               {{
-                MyLive: 'Showing your active device staking pools.',
-                MyEnded: 'Showing your ended device staking pools.',
-                Live: 'Showing active device staking pools.',
-                Ended: 'Showing ended device staking pools.',
-                All: 'Showing all device staking pools.',
+                MyLive: 'Showing your active DePIN staking pools.',
+                MyEnded: 'Showing your ended DePIN staking pools.',
+                Live: 'Showing active DePIN staking pools.',
+                Ended: 'Showing ended DePIN staking pools.',
+                All: 'Showing all DePIN staking pools.',
               }[activeTab]}
             </p>
           </div>
@@ -172,7 +172,7 @@ const DeviceStakeTable: React.FC = () => {
               <div className="flex flex-col items-center justify-center p-8 bg-[var(--bg-card)] rounded-lg shadow-sm">
                 <Icon icon="mdi:folder-open-outline" className="w-16 h-16 text-gray-400 mb-4" />
                 <h3 className="text-xl font-semibold text-[var(--text-heading)] mb-2">No Pools Found</h3>
-                <p className="text-gray-500 text-center">There are currently no device staking pools available in this category.</p>
+                <p className="text-gray-500 text-center">There are currently no DePIN staking pools available in this category.</p>
               </div>
             ) : (
               <DeviceTable
