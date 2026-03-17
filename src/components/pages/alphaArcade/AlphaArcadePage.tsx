@@ -325,7 +325,7 @@ const AlphaArcadePage: React.FC = () => {
                         <MarketCard
                           key={market.marketAppId}
                           market={market}
-                          aprEstimate={(pool as any)?.aprEstimate?.estimatedApr}
+                          aprEstimate={(pool as any)?.aprEstimate?.estimatedApr ?? (0.1 * (50 / 10000) * 365 * 100)}
                           onDeposit={(m) => setDepositModal({ visible: true, market: m })}
                         />
                       )
