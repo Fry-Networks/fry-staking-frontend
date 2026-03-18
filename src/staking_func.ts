@@ -506,6 +506,41 @@ export const estimateStakingReward = async (stakingId: number, sender: string, s
   }
 }
 
+export const checkPoolRewardBalance = async (appId: number, rewardTokenId: number) => {
+  const algod = await getAlgodClient()
+  const appAddress = algosdk.getApplicationAddress(appId)
+  try {
+    const info = await algod.accountAssetInformation(appAddress, rewardTokenId).do()
+    return BigInt(info['asset-holding']?.amount ?? 0)
+  } catch {
+    return 0n
+  }
+}
+
+export const topUpRewards = async (
+  appId: number,
+  rewardTokenId: number,
+  amount: number,
+  sender: string,
+  signer: TransactionSigner,
+) => {
+  const { stakingClient, algorandClient } = await createFryStakingClient(signer, sender, appId)
+
+  const rewardTx = await algorandClient.transactions.assetTransfer({
+    assetId: BigInt(rewardTokenId),
+    amount: BigInt(amount),
+    receiver: algosdk.getApplicationAddress(appId),
+    signer,
+    sender,
+  })
+
+  await stakingClient.assetReceive({
+    rewardTokenTransfer: rewardTx,
+  })
+
+  return { success: true, amount }
+}
+
 /**
  * @deprecated takeOutAsset is not routed in the current TEAL contract.
  * The ABI method exists in the AppSpec but has no matching routing entry,

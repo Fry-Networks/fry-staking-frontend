@@ -7,18 +7,21 @@ import React, { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { usePoolData } from '../../../context/PoolDataContext'
-import { claimTokens, getStakingData, getUserData, stakeTokens, unstakeTokens, getAlgodClient, estimateStakingReward } from '../../../staking_func'
+import { claimTokens, getStakingData, getUserData, stakeTokens, unstakeTokens, getAlgodClient, estimateStakingReward, topUpRewards, checkPoolRewardBalance } from '../../../staking_func'
 import { getAlgodConfigFromViteEnvironment } from '../../../utils/network/getAlgoClientConfigs'
 import Button from '../../shared/button'
 import Input from '../../shared/input'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
 import { authAxios } from '../../../services/apiClient'
+import { usePreferences } from '../../../contexts/PreferencesContext'
+import { friendlyApr, friendlyPoolSize } from '../../../utils/grandmaLabels'
 import { useAuth } from '../../../hooks/useAuth'
 import { fetchFeeConfig, calculateFeeSimple } from '../../../services/FeeService'
 import type { FeeCalculation } from '../../../services/FeeService'
 import FeeConfirmation from '../../shared/FeeConfirmation'
 import StakeModal from '../../shared/StakeModal'
 import WithdrawModal from '../../shared/WithdrawModal'
+import AiAnalysisModal from '../../../Modals/AiAnalysisModal'
 
 interface DataType {
   [x: string]: any
@@ -57,7 +60,8 @@ const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 // Define the columns for the table
 // const STable: React.FC<STableProps> = memo(({ stacks, fetchData }) => {
 const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable, allPools }) => {
-  const { ensureAuth } = useAuth();
+  const { ensureAuth, isAdmin } = useAuth();
+  const { isSimpleMode } = usePreferences()
 
   const api_base_url = import.meta.env.VITE_API_BASE_URL;
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
@@ -88,7 +92,11 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
   // Modal state
   const [stakeModalOpen, setStakeModalOpen] = useState(false)
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
-  const [modalTarget, setModalTarget] = useState<{ appId: number; stakeTokenId: number; stakeTokenName: string; userStake: number } | null>(null)
+  const [modalTarget, setModalTarget] = useState<{ appId: number; stakeTokenId: number; stakeTokenName: string; userStake: number; rewardTokenId?: number } | null>(null)
+
+  // AI Analysis modal state
+  const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [aiPoolTarget, setAiPoolTarget] = useState<DataType | null>(null)
 
   const navigate = useNavigate()
 
@@ -205,13 +213,13 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
   const columns: TableColumnsType<DataType> = [
     { title: <div className=" w-[350px]">Pool </div>, dataIndex: 'pool', key: 'pool' },
     {
-      title: 'TVL',
+      title: isSimpleMode ? 'Pool Size' : 'TVL',
       dataIndex: 'tvl',
       key: 'tvl',
       sorter: (a, b) => (parseFloat(a.tvl.replace(/[$,\s]/g, '')) || 0) - (parseFloat(b.tvl.replace(/[$,\s]/g, '')) || 0),
-      render: (value) => <p className="text-text_clr font-medium medium">{value}</p>,
+      render: (value) => <p className="text-text_clr font-medium medium">{isSimpleMode ? friendlyPoolSize(parseFloat(value.replace(/[$,\s]/g, '')) || 0) : value}</p>,
     },
-    { title: 'APR', dataIndex: 'apr', key: 'apr', sorter: (a, b) => (parseFloat(a.apr) || 0) - (parseFloat(b.apr) || 0), render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
+    { title: isSimpleMode ? 'Earnings' : 'APR', dataIndex: 'apr', key: 'apr', sorter: (a, b) => (parseFloat(a.apr) || 0) - (parseFloat(b.apr) || 0), render: (value) => <p className="text-text_clr font-medium medium">{isSimpleMode ? friendlyApr(parseFloat(value) || 0) : value}</p> },
     { title: 'STAKED', dataIndex: 'staked', key: 'staked', sorter: (a, b) => (a.totalAmountStaked || 0) - (b.totalAmountStaked || 0), render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
     {
       title: 'REWARD',
@@ -912,6 +920,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
                               stakeTokenId: record.stakeTokenId || FRY_ASSET_ID,
                               stakeTokenName: record.stakeTokenName || 'tokens',
                               userStake: userStakes[String(record.key)] || 0,
+                              rewardTokenId: record.rewardTokenId || FRY_ASSET_ID,
                             })
                             setWithdrawModalOpen(true)
                           }}
@@ -993,8 +1002,40 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
                         height={45}
                         width={128}
                         onClick={() => navigate(`/stake-pool-stats?appId=${record.stakingContractId}`)}
-                        // onClick={() => handleViewDetailsClick(record)} // Use the function here
                       />
+                      <Button
+                        text="AI Analysis"
+                        className="button btn-red-border"
+                        height={45}
+                        width={128}
+                        img="mdi:sparkles"
+                        onClick={() => { setAiPoolTarget(record); setAiModalOpen(true) }}
+                      />
+                      {isAdmin && (showExpandable === 'Ended' || showExpandable === 'MyEnded') && (
+                        <Button
+                          text="Top Up Rewards"
+                          className="button btn-red-border"
+                          height={45}
+                          width={156}
+                          onClick={async () => {
+                            const amountStr = prompt('Enter reward token amount (in micro-units) to send to contract:')
+                            if (!amountStr) return
+                            const amount = parseInt(amountStr, 10)
+                            if (isNaN(amount) || amount <= 0) { toast.error('Invalid amount'); return }
+                            try {
+                              await ensureAuth()
+                              const rewardTokenId = record.rewardTokenId || FRY_ASSET_ID
+                              await topUpRewards(record.stakingContractId, rewardTokenId, amount, activeAddress!, signer)
+                              await authAxios.post('/staking/admin/topup', { poolId: record._id, amount })
+                              toast.success(`Topped up ${amount} reward tokens`)
+                              await fetchData()
+                            } catch (err: any) {
+                              console.error('Top up failed:', err)
+                              toast.error(err?.message || 'Top up failed')
+                            }
+                          }}
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1040,9 +1081,17 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
           stakeTokenName={modalTarget.stakeTokenName}
           userStake={modalTarget.userStake}
           isLpFarm={false}
+          rewardTokenId={modalTarget.rewardTokenId}
         />
       </>
     )}
+    <AiAnalysisModal
+      isOpen={aiModalOpen}
+      onClose={() => { setAiModalOpen(false); setAiPoolTarget(null) }}
+      type="pool"
+      poolId={aiPoolTarget?._id}
+      poolName={aiPoolTarget?.stakeTokenName || 'Pool'}
+    />
     </>
   )
 })
