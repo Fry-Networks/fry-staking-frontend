@@ -8,13 +8,15 @@ export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
   const [isAdmin, setIsAdmin] = useState(authService.isAdmin());
 
-  // Clear auth only when wallet actually changes, not on every mount
+  // Clear auth only on genuine wallet change or disconnect, not on mount/hydration
   const prevAddressRef = useRef(activeAddress);
   useEffect(() => {
     if (prevAddressRef.current !== activeAddress) {
-      authService.clearAuth();
-      setIsAuthenticated(false);
-      setIsAdmin(false);
+      if (prevAddressRef.current !== undefined) {
+        authService.clearAuth();
+        setIsAuthenticated(false);
+        setIsAdmin(false);
+      }
       prevAddressRef.current = activeAddress;
     }
   }, [activeAddress]);
