@@ -9,6 +9,7 @@ class AuthService {
   private _isAdmin = false;
   private _wallet: string | null = null;
   private checkAuthPromise: Promise<boolean> | null = null;
+  private pendingCheck: Promise<{ authenticated: boolean; isAdmin: boolean }> | null = null;
   private _logoutSent = false;
 
   isAuthenticated(): boolean {
@@ -61,6 +62,27 @@ class AuthService {
       this._wallet = null;
       return false;
     }
+  }
+
+  async checkSession(wallet: string): Promise<{ authenticated: boolean; isAdmin: boolean }> {
+    if (this.pendingCheck) return this.pendingCheck;
+    this.pendingCheck = this._doCheckSession(wallet);
+    this.pendingCheck.finally(() => { this.pendingCheck = null; });
+    return this.pendingCheck;
+  }
+
+  private async _doCheckSession(wallet: string): Promise<{ authenticated: boolean; isAdmin: boolean }> {
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+      const data = await res.json();
+      if (data.authenticated && data.wallet === wallet) {
+        this._authenticated = true;
+        this._isAdmin = data.isAdmin === true;
+        this._wallet = wallet;
+        return { authenticated: true, isAdmin: this._isAdmin };
+      }
+    } catch {}
+    return { authenticated: false, isAdmin: false };
   }
 
   async authenticate(

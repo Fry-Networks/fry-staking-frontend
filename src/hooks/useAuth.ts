@@ -28,12 +28,19 @@ export function useAuth() {
   }, [activeAddress]);
 
   // Auto-authenticate when wallet connects (address + signer both ready)
+  // First checks if existing session cookie is still valid to avoid unnecessary signature popup
   useEffect(() => {
     if (activeAddress && signer && !isAuthenticated) {
-      authService.authenticate(activeAddress, signer)
-        .then(() => {
-          setIsAuthenticated(true);
-          setIsAdmin(authService.isAdmin());
+      authService.checkSession(activeAddress)
+        .then(async (session) => {
+          if (session.authenticated) {
+            setIsAuthenticated(true);
+            setIsAdmin(session.isAdmin);
+          } else {
+            await authService.authenticate(activeAddress, signer);
+            setIsAuthenticated(true);
+            setIsAdmin(authService.isAdmin());
+          }
         })
         .catch(() => {}); // Silent — user will auth on-demand via ensureAuth
     }
