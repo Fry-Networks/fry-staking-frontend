@@ -27,6 +27,18 @@ export function useAuth() {
     }
   }, [activeAddress]);
 
+  // Auto-authenticate when wallet connects (address + signer both ready)
+  useEffect(() => {
+    if (activeAddress && signer && !isAuthenticated) {
+      authService.authenticate(activeAddress, signer)
+        .then(() => {
+          setIsAuthenticated(true);
+          setIsAdmin(authService.isAdmin());
+        })
+        .catch(() => {}); // Silent — user will auth on-demand via ensureAuth
+    }
+  }, [activeAddress, signer, isAuthenticated]);
+
   const ensureAuth = useCallback(async (): Promise<void> => {
     if (!activeAddress) {
       throw new Error('Please connect your wallet first.');

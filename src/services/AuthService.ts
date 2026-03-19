@@ -9,6 +9,7 @@ class AuthService {
   private _isAdmin = false;
   private _wallet: string | null = null;
   private checkAuthPromise: Promise<boolean> | null = null;
+  private _logoutSent = false;
 
   isAuthenticated(): boolean {
     return this._authenticated;
@@ -27,8 +28,13 @@ class AuthService {
     this._isAdmin = false;
     this._wallet = null;
     this.pendingAuth = null;
-    // Tell backend to clear the HttpOnly cookie
-    fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
+    // Tell backend to clear the HttpOnly cookie (deduplicated)
+    if (!this._logoutSent) {
+      this._logoutSent = true;
+      fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+        .catch(() => {})
+        .finally(() => { this._logoutSent = false; });
+    }
   }
 
   async checkAuth(): Promise<boolean> {
