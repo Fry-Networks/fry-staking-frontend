@@ -517,6 +517,30 @@ export const checkPoolRewardBalance = async (appId: number, rewardTokenId: numbe
   }
 }
 
+export const getPoolRewardDeficit = async (appId: number, rewardTokenId: number, signer: TransactionSigner, sender: string) => {
+  const decimals = 6
+
+  const balanceMicro = await checkPoolRewardBalance(appId, rewardTokenId)
+
+  const { stakingClient } = await createFryStakingClient(signer, sender, appId)
+  const globalState: any = await stakingClient.getGlobalState()
+  const totalConfiguredMicro = BigInt(globalState.rewardTokenAmount?.asNumber() ?? 0)
+  const totalDistributedMicro = BigInt(globalState.rewardsDistributed?.asNumber() ?? 0)
+
+  const unclaimedMicro = totalConfiguredMicro - totalDistributedMicro
+  const deficitMicro = unclaimedMicro > balanceMicro ? unclaimedMicro - balanceMicro : 0n
+  const divisor = 10 ** decimals
+
+  return {
+    currentBalance: Number(balanceMicro) / divisor,
+    totalConfigured: Number(totalConfiguredMicro) / divisor,
+    totalDistributed: Number(totalDistributedMicro) / divisor,
+    unclaimed: Number(unclaimedMicro) / divisor,
+    deficit: Number(deficitMicro) / divisor,
+    decimals,
+  }
+}
+
 export const topUpRewards = async (
   appId: number,
   rewardTokenId: number,

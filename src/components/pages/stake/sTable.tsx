@@ -7,7 +7,7 @@ import React, { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { usePoolData } from '../../../context/PoolDataContext'
-import { claimTokens, getStakingData, getUserData, stakeTokens, unstakeTokens, getAlgodClient, estimateStakingReward, topUpRewards, checkPoolRewardBalance } from '../../../staking_func'
+import { claimTokens, getStakingData, getUserData, stakeTokens, unstakeTokens, getAlgodClient, estimateStakingReward, topUpRewards, checkPoolRewardBalance, getPoolRewardDeficit } from '../../../staking_func'
 import { getAlgodConfigFromViteEnvironment } from '../../../utils/network/getAlgoClientConfigs'
 import Button from '../../shared/button'
 import Input from '../../shared/input'
@@ -1018,16 +1018,29 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
                           height={45}
                           width={156}
                           onClick={async () => {
-                            const amountStr = prompt('Enter reward token amount (in micro-units) to send to contract:')
-                            if (!amountStr) return
-                            const amount = parseInt(amountStr, 10)
-                            if (isNaN(amount) || amount <= 0) { toast.error('Invalid amount'); return }
                             try {
                               await ensureAuth()
                               const rewardTokenId = record.rewardTokenId || FRY_ASSET_ID
-                              await topUpRewards(record.stakingContractId, rewardTokenId, amount, activeAddress!, signer)
-                              await authAxios.post('/staking/admin/topup', { poolId: record._id, amount })
-                              toast.success(`Topped up ${amount} reward tokens`)
+                              const info = await getPoolRewardDeficit(record.stakingContractId, rewardTokenId, signer, activeAddress!)
+                              const message = [
+                                `Pool Reward Status:`,
+                                `  Configured: ${info.totalConfigured.toLocaleString()} tokens`,
+                                `  Claimed: ${info.totalDistributed.toLocaleString()} tokens`,
+                                `  Unclaimed (owed): ${info.unclaimed.toLocaleString()} tokens`,
+                                `  Contract balance: ${info.currentBalance.toLocaleString()} tokens`,
+                                `  Deficit: ${info.deficit.toLocaleString()} tokens`,
+                                ``,
+                                `Enter amount to top up (e.g. 1000):`,
+                                info.deficit > 0 ? `Suggested: ${Math.ceil(info.deficit)}` : `No deficit detected.`
+                              ].join('\n')
+                              const input = window.prompt(message, info.deficit > 0 ? String(Math.ceil(info.deficit)) : '')
+                              if (!input) return
+                              const humanAmount = parseFloat(input)
+                              if (isNaN(humanAmount) || humanAmount <= 0) { toast.error('Invalid amount'); return }
+                              const microAmount = Math.floor(humanAmount * Math.pow(10, info.decimals))
+                              await topUpRewards(record.stakingContractId, rewardTokenId, microAmount, activeAddress!, signer)
+                              await authAxios.post('/staking/admin/topup', { poolId: record._id, amount: microAmount })
+                              toast.success(`Topped up ${humanAmount} reward tokens`)
                               await fetchData()
                             } catch (err: any) {
                               console.error('Top up failed:', err)
