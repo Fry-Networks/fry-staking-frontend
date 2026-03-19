@@ -8,14 +8,6 @@ export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
   const [isAdmin, setIsAdmin] = useState(authService.isAdmin());
 
-  // Sync state from the initial checkAuth (fired in App.tsx)
-  useEffect(() => {
-    authService.checkAuth().then(() => {
-      setIsAuthenticated(authService.isAuthenticated());
-      setIsAdmin(authService.isAdmin());
-    });
-  }, []);
-
   // Clear auth only when wallet actually changes, not on every mount
   const prevAddressRef = useRef(activeAddress);
   useEffect(() => {
