@@ -3,7 +3,7 @@ import algosdk, { TransactionSigner } from 'algosdk'
 import { FryDeviceStakingClient, APP_SPEC } from './contracts/FryDeviceStakingClient'
 import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryDeviceStakingCompiled'
 import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
-import { authFetch } from './services/apiClient'
+import { logFee } from './utils/logFee'
 
 const BOX_PRICE = 2500 + 400 * 864
 
@@ -261,15 +261,16 @@ export const stakeDeviceNft = async (
 
     if (feeAmount > 0) {
       try {
+        let feeResult
         if (feeTokenId === 0) {
-          await algorandClient.send.payment({
+          feeResult = await algorandClient.send.payment({
             sender,
             signer,
             receiver: feeRecipient,
             amount: algokit.microAlgos(feeAmount),
           })
         } else {
-          await algorandClient.send.assetTransfer({
+          feeResult = await algorandClient.send.assetTransfer({
             sender,
             signer,
             receiver: feeRecipient,
@@ -277,18 +278,16 @@ export const stakeDeviceNft = async (
             assetId: BigInt(feeTokenId),
           })
         }
+        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
 
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            appId,
-            userId: sender,
-            gasAmount: feeAmount,
-            gasType: 'deviceStakingStake',
-            feeType: 'percentage',
-          }),
-        }).catch((err) => console.error('Error logging fee:', err))
+        await logFee({
+          appId,
+          userId: sender,
+          gasAmount: feeAmount,
+          gasType: 'deviceStakingStake',
+          feeType: 'percentage',
+          txId: feeTxId,
+        })
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful device stake:', feeErr)
       }
@@ -330,15 +329,16 @@ export const unstakeDeviceNft = async (
 
     if (feeAmount > 0) {
       try {
+        let feeResult
         if (feeTokenId === 0) {
-          await algorandClient.send.payment({
+          feeResult = await algorandClient.send.payment({
             sender,
             signer,
             receiver: feeRecipient,
             amount: algokit.microAlgos(feeAmount),
           })
         } else {
-          await algorandClient.send.assetTransfer({
+          feeResult = await algorandClient.send.assetTransfer({
             sender,
             signer,
             receiver: feeRecipient,
@@ -346,18 +346,16 @@ export const unstakeDeviceNft = async (
             assetId: BigInt(feeTokenId),
           })
         }
+        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
 
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            appId,
-            userId: sender,
-            gasAmount: feeAmount,
-            gasType: 'deviceStakingWithdraw',
-            feeType: 'percentage',
-          }),
-        }).catch((err) => console.error('Error logging fee:', err))
+        await logFee({
+          appId,
+          userId: sender,
+          gasAmount: feeAmount,
+          gasType: 'deviceStakingWithdraw',
+          feeType: 'percentage',
+          txId: feeTxId,
+        })
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful device unstake:', feeErr)
       }
@@ -434,15 +432,16 @@ export const unregisterDeviceHolder = async (
 
     if (feeAmount > 0) {
       try {
+        let feeResult
         if (feeTokenId === 0) {
-          await algorandClient.send.payment({
+          feeResult = await algorandClient.send.payment({
             sender,
             signer,
             receiver: feeRecipient,
             amount: algokit.microAlgos(feeAmount),
           })
         } else {
-          await algorandClient.send.assetTransfer({
+          feeResult = await algorandClient.send.assetTransfer({
             sender,
             signer,
             receiver: feeRecipient,
@@ -450,18 +449,16 @@ export const unregisterDeviceHolder = async (
             assetId: BigInt(feeTokenId),
           })
         }
+        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
 
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            appId,
-            userId: sender,
-            gasAmount: feeAmount,
-            gasType: 'deviceStakingWithdraw',
-            feeType: 'percentage',
-          }),
-        }).catch((err) => console.error('Error logging fee:', err))
+        await logFee({
+          appId,
+          userId: sender,
+          gasAmount: feeAmount,
+          gasType: 'deviceStakingWithdraw',
+          feeType: 'percentage',
+          txId: feeTxId,
+        })
       } catch (feeErr) {
         console.warn('Fee transfer failed after device unregister:', feeErr)
       }
@@ -502,15 +499,16 @@ export const claimDeviceRewardsOnChain = async (
 
     if (feeAmount > 0) {
       try {
+        let feeResult
         if (feeTokenId === 0) {
-          await algorandClient.send.payment({
+          feeResult = await algorandClient.send.payment({
             sender,
             signer,
             receiver: feeRecipient,
             amount: algokit.microAlgos(feeAmount),
           })
         } else {
-          await algorandClient.send.assetTransfer({
+          feeResult = await algorandClient.send.assetTransfer({
             sender,
             signer,
             receiver: feeRecipient,
@@ -518,18 +516,16 @@ export const claimDeviceRewardsOnChain = async (
             assetId: BigInt(feeTokenId),
           })
         }
+        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
 
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            appId,
-            userId: sender,
-            gasAmount: feeAmount,
-            gasType: 'deviceStakingClaim',
-            feeType: 'percentage',
-          }),
-        }).catch((err) => console.error('Error logging fee:', err))
+        await logFee({
+          appId,
+          userId: sender,
+          gasAmount: feeAmount,
+          gasType: 'deviceStakingClaim',
+          feeType: 'percentage',
+          txId: feeTxId,
+        })
       } catch (feeErr) {
         console.warn('Fee transfer failed after device claim:', feeErr)
       }

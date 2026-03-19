@@ -20,6 +20,8 @@ import algosdk, { Algodv2, decodeUnsignedTransaction, generateAccount } from 'al
 import ConnectWallet from '../../ConnectWallet'
 import '../../../styles/shared/scrollbar.css'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
+import { usePreferences } from '../../../contexts/PreferencesContext'
+import { friendlySlippage, friendlyPriceImpact } from '../../../utils/grandmaLabels'
 
 // ...existing code...
 interface Currency {
@@ -62,6 +64,7 @@ const algodMain = new algosdk.Algodv2(algodToken, algodMainServer, '')
 const TINYMAN_ASA_LIST_URL = 'https://asa-list.tinyman.org/assets.json';
 
 const SwapMain = () => {
+  const { isSimpleMode } = usePreferences()
   // Fallback list in case database fetch fails
   const FALLBACK_CURRENCIES: Currency[] = [
     { code: 'ALGO', label: 'Algorand', img: 'https://asa-list.tinyman.org/assets/0/icon.png', id: 0, decimals: 6 },
@@ -990,7 +993,7 @@ const SwapMain = () => {
                   <p className={`medium tracking-[0.48px] font-medium ${
                     slippageBps > 100 ? 'text-yellow-500' : slippageBps < 10 ? 'text-yellow-500' : 'text-green'
                   }`}>
-                    {(slippageBps / 100).toFixed(slippageBps % 100 === 0 ? 1 : 2)}%
+                    {isSimpleMode ? friendlySlippage(slippageBps) : `${(slippageBps / 100).toFixed(slippageBps % 100 === 0 ? 1 : 2)}%`}
                   </p>
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -999,7 +1002,7 @@ const SwapMain = () => {
                   </svg>
                 </div>
               </div>
-              {showSlippageSettings && (
+              {showSlippageSettings && !isSimpleMode && (
                 <div className="flex flex-col gap-[8px] mt-[8px] p-[12px] bg-[var(--bg-card)] rounded-[10px] border border-[var(--border-color)]">
                   <div className="flex gap-[6px]">
                     {[
@@ -1052,7 +1055,7 @@ const SwapMain = () => {
                   <p className={`medium tracking-[0.48px] font-medium ${
                     parseFloat(priceImpact) > 5 ? 'text-red-500' : 'text-green'
                   }`}>
-                    {priceImpact}%
+                    {isSimpleMode ? friendlyPriceImpact(parseFloat(priceImpact)) : `${priceImpact}%`}
                   </p>
                 </div>
               </div>

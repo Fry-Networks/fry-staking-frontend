@@ -12,7 +12,7 @@ import { getAssetBalance } from '../../services/ZapService'
 import { getNftMetadata } from '../../services/nftCollectionService'
 import { lookupNfd } from '../../services/nfdService'
 import axios from 'axios'
-import { authFetch } from '../../services/apiClient'
+import { logFee } from '../../utils/logFee'
 import * as algokit from '@algorandfoundation/algokit-utils'
 import { getAlgodConfigFromViteEnvironment } from '../../utils/network/getAlgoClientConfigs'
 import TokenSelector from '../../components/shared/TokenSelector'
@@ -348,16 +348,13 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
           })
         }
 
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: activeAddress,
-            gasAmount: feeCalc.feeAmount,
-            gasType: 'nftPoolCreationFee',
-            feeType: 'percentage',
-          }),
-        }).catch((err) => console.error('Error logging fee:', err))
+        await logFee({
+          appId: 0,
+          userId: activeAddress,
+          gasAmount: feeCalc.feeAmount,
+          gasType: 'nftPoolCreationFee',
+          feeType: 'percentage',
+        })
       }
 
       // Deploy contract

@@ -57,6 +57,19 @@ interface STableProps {
 
 const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 
+/** Retry an async function up to `retries` times with exponential backoff */
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): Promise<T> {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      if (attempt === retries - 1) throw err
+      await new Promise(r => setTimeout(r, delayMs * (attempt + 1)))
+    }
+  }
+  throw new Error('withRetry exhausted') // unreachable
+}
+
 // Define the columns for the table
 // const STable: React.FC<STableProps> = memo(({ stacks, fetchData }) => {
 const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable, allPools }) => {
@@ -295,43 +308,49 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
     if (type === 'stake') {
       setIsStaking(true)
       try {
-        const StackToken = await stakeTokens(args.stakingContractId, args.adjustedStackValue, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
-        if (StackToken instanceof Error) {
+        const stakeResult = await stakeTokens(args.stakingContractId, args.adjustedStackValue, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
+        if (stakeResult instanceof Error) {
           toast.error('Transaction canceled or staking failed.');
           return;
         }
+        const { tx: StackToken, feeTxId: stakeFeetxId, feeTokenId: stakeFeeTokenId } = stakeResult as any;
         if (!activeAddress) {
           toast.error('No active address found for staking.');
           return;
         }
 
-        // Backend updates — best-effort after successful on-chain stake
+        // Backend updates — retry up to 3x after successful on-chain stake
         try {
-          const getStakingRecord = await getStakingData(args.stakingContractId, activeAddress, signer) as StakingRecord;
-          const StakerData = await getUserData(args.stakingContractId, activeAddress);
-          const stakingTokenPayload = {
-            apr: getStakingRecord.apr,
-            lockPeriod: getStakingRecord.lockPeriod,
-            poolStartTime: getStakingRecord.poolStartTime,
-            poolEndTime: getStakingRecord.poolEndTime,
-            poolTime: getStakingRecord.poolTime || (getStakingRecord.poolEndTime - getStakingRecord.poolStartTime),
-            rewardToken: Number(getStakingRecord.rewardToken || FRY_ASSET_ID),
-            stakeTokens: Number(getStakingRecord.stakeToken || FRY_ASSET_ID),
-            totalStaked: args.adjustedStackValue - (args.feeAmount || 0),
-            poolId: args._id,
-            appId: Number(args.stakingContractId),
-            wallet: activeAddress
-          };
-          await authAxios.post('/stakingtoken/add', stakingTokenPayload);
-          const { stakeTime } = StakerData;
-          await authAxios.put(`/staking/update/${args._id}`, {
-            aprRate: getStakingRecord.apr / 100,
-            totalAmountStaked: Number(getStakingRecord.totalStaked ?? 0) / 1_000_000,
-            totalStakers: 1,
-            stakingTime: stakeTime,
+          await withRetry(async () => {
+            await ensureAuth();
+            const getStakingRecord = await getStakingData(args.stakingContractId, activeAddress, signer) as StakingRecord;
+            const StakerData = await getUserData(args.stakingContractId, activeAddress);
+            const stakingTokenPayload = {
+              apr: getStakingRecord.apr,
+              lockPeriod: getStakingRecord.lockPeriod,
+              poolStartTime: getStakingRecord.poolStartTime,
+              poolEndTime: getStakingRecord.poolEndTime,
+              poolTime: getStakingRecord.poolTime || (getStakingRecord.poolEndTime - getStakingRecord.poolStartTime),
+              rewardToken: Number(getStakingRecord.rewardToken || FRY_ASSET_ID),
+              stakeTokens: Number(getStakingRecord.stakeToken || FRY_ASSET_ID),
+              totalStaked: args.adjustedStackValue - (args.feeAmount || 0),
+              poolId: args._id,
+              appId: Number(args.stakingContractId),
+              wallet: activeAddress,
+              feeTxId: stakeFeetxId,
+              feeAssetId: stakeFeeTokenId,
+            };
+            await authAxios.post('/stakingtoken/add', stakingTokenPayload);
+            const { stakeTime } = StakerData;
+            await authAxios.put(`/staking/update/${args._id}`, {
+              aprRate: getStakingRecord.apr / 100,
+              totalAmountStaked: Number(getStakingRecord.totalStaked ?? 0) / 1_000_000,
+              totalStakers: 1,
+              stakingTime: stakeTime,
+            });
           });
         } catch (backendErr) {
-          console.warn('Backend update failed after successful stake:', backendErr);
+          console.warn('Backend update failed after successful stake (retries exhausted):', backendErr);
         }
 
         // Always show success since on-chain stake succeeded
@@ -428,39 +447,45 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
   const executeWithdraw = async (args: any) => {
     setIsWithdrawing(true);
     try {
-      const withdrawToken = await unstakeTokens(args.stakingContractId, args.adjustedWithdrawValue, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
+      const withdrawResult = await unstakeTokens(args.stakingContractId, args.adjustedWithdrawValue, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
 
-      if (withdrawToken instanceof Error) {
-        toast.error(`Transaction failed: ${withdrawToken.message}`);
+      if (withdrawResult instanceof Error) {
+        toast.error(`Transaction failed: ${withdrawResult.message}`);
         return;
       }
-      if (!withdrawToken) {
+      if (!withdrawResult) {
         toast.error('Withdrawal failed due to invalid response');
         return;
       }
+      const { tx: withdrawToken, feeTxId: withdrawFeeTxId, feeTokenId: withdrawFeeTokenId } = withdrawResult as any;
 
-      // Backend updates — best-effort after successful on-chain unstake
+      // Backend updates — retry up to 3x after successful on-chain unstake
       try {
-        const getStakingRecord = await getStakingData(args.stakingContractId, activeAddress!, signer) as StakingRecord;
-        const StakerData = await getUserData(args.stakingContractId, activeAddress!);
+        await withRetry(async () => {
+          await ensureAuth();
+          const getStakingRecord = await getStakingData(args.stakingContractId, activeAddress!, signer) as StakingRecord;
+          const StakerData = await getUserData(args.stakingContractId, activeAddress!);
 
-        const { stakeTime } = StakerData;
-        const calculateAPR = getStakingRecord.apr / 100;
+          const { stakeTime } = StakerData;
+          const calculateAPR = getStakingRecord.apr / 100;
 
-        await authAxios.put(`/staking/update/${args._id}`, {
-          aprRate: calculateAPR,
-          totalAmountStaked: Number(getStakingRecord.totalStaked ?? 0) / 1_000_000,
-          totalStakers: 1,
-          stakingTime: stakeTime,
-        });
-        await authAxios.post('/withdraw/add', {
-          tokens: Number(withdrawValue),
-          wallet: activeAddress,
-          poolId: args._id,
-          appId: Number(args.stakingContractId),
+          await authAxios.put(`/staking/update/${args._id}`, {
+            aprRate: calculateAPR,
+            totalAmountStaked: Number(getStakingRecord.totalStaked ?? 0) / 1_000_000,
+            totalStakers: 1,
+            stakingTime: stakeTime,
+          });
+          await authAxios.post('/withdraw/add', {
+            tokens: Number(withdrawValue),
+            wallet: activeAddress,
+            poolId: args._id,
+            appId: Number(args.stakingContractId),
+            feeTxId: withdrawFeeTxId,
+            feeAssetId: withdrawFeeTokenId,
+          });
         });
       } catch (backendErr) {
-        console.warn('Backend update failed after successful withdraw:', backendErr);
+        console.warn('Backend update failed after successful withdraw (retries exhausted):', backendErr);
       }
 
       // Always show success since on-chain unstake succeeded
@@ -520,7 +545,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
         return;
       }
 
-      const { rewardClaimed, stakedAmount, updatedApr, tx, stakedTime } = claimToken;
+      const { rewardClaimed, stakedAmount, updatedApr, tx, stakedTime, feeTxId: claimFeeTxId, feeTokenId: claimFeeTokenId } = claimToken;
 
       const stakerData = {
         walletId: activeAddress,
@@ -528,6 +553,8 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
         stakeTime: stakedTime,
         poolId: args._id,
         rewardClaimed,
+        feeTxId: claimFeeTxId,
+        feeAssetId: claimFeeTokenId,
       };
 
       const claimData = {
@@ -536,6 +563,8 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
         stakedTime,
         poolId: args._id,
         rewardClaimed,
+        feeTxId: claimFeeTxId,
+        feeAssetId: claimFeeTokenId,
       };
 
       const stakerRes = await authAxios.post('/stakerData/add', stakerData, {
@@ -597,16 +626,19 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
       const rewardClaimed = claimResult.rewardClaimed || 0;
       const stakedAmount = claimResult.stakedAmount || 0;
       const stakedTime = claimResult.stakedTime || 0;
+      const { feeTxId: cwClaimFeeTxId, feeTokenId: cwClaimFeeTokenId } = claimResult;
 
       // Log claim to backend
       await authAxios.post('/stakerData/add', {
         walletId: activeAddress, stakedAmount, stakeTime: stakedTime,
         poolId: args._id, rewardClaimed,
+        feeTxId: cwClaimFeeTxId, feeAssetId: cwClaimFeeTokenId,
       }, { headers: { 'Content-Type': 'application/json' } });
 
       await authAxios.post('/claimreward/add', {
         walletId: activeAddress, stakedAmount, stakedTime,
         poolId: args._id, rewardClaimed,
+        feeTxId: cwClaimFeeTxId, feeAssetId: cwClaimFeeTokenId,
       }, { headers: { 'Content-Type': 'application/json' } });
 
       // Step 2: Withdraw full staked amount (if any)
@@ -616,17 +648,19 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
         const stakeTokenId = pool?.stakeTokenId || FRY_ASSET_ID;
         const withdrawFee = calculateFeeSimple('stakingWithdraw', stakedAmount, config);
 
-        const withdrawResult = await unstakeTokens(
+        const cwWithdrawResult = await unstakeTokens(
           args.stakingContractId, stakedAmount, activeAddress!, signer,
           withdrawFee.feeAmount, stakeTokenId, withdrawFee.feeRecipient
         );
 
-        if (withdrawResult instanceof Error) {
-          toast.warning('Rewards claimed but withdrawal failed: ' + withdrawResult.message);
+        if (cwWithdrawResult instanceof Error) {
+          toast.warning('Rewards claimed but withdrawal failed: ' + cwWithdrawResult.message);
         } else {
+          const { feeTxId: cwWithdrawFeeTxId, feeTokenId: cwWithdrawFeeTokenId } = cwWithdrawResult as any;
           await authAxios.post('/withdraw/add', {
             tokens: stakedAmount / 1_000_000, wallet: activeAddress,
             poolId: args._id, appId: Number(args.stakingContractId),
+            feeTxId: cwWithdrawFeeTxId, feeAssetId: cwWithdrawFeeTokenId,
           });
           toast.success('Rewards claimed and tokens withdrawn!');
         }
@@ -679,27 +713,29 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
 
       // Step 1: Unstake from V1 (with zero fee for migration)
       toast.info('Step 1/2: Unstaking from legacy pool...')
-      const unstakeResult = await unstakeTokens(
+      const migrateUnstakeResult = await unstakeTokens(
         record.stakingContractId, stakedMicro, activeAddress, signer,
         0, record.stakeTokenId, ''
       )
 
-      if (unstakeResult instanceof Error) {
-        toast.error('Unstake failed: ' + unstakeResult.message)
+      if (migrateUnstakeResult instanceof Error) {
+        toast.error('Unstake failed: ' + migrateUnstakeResult.message)
         return
       }
+      const { feeTxId: migrateUnstakeFeeTxId, feeTokenId: migrateUnstakeFeeTokenId } = migrateUnstakeResult as any;
 
       // Step 2: Stake into V2 (with zero fee for migration)
       toast.info('Step 2/2: Staking into V2 pool...')
-      const stakeResult = await stakeTokens(
+      const migrateStakeResult = await stakeTokens(
         v2Pool.stakingContractId, stakedMicro, activeAddress, signer,
         0, record.stakeTokenId, ''
       )
 
-      if (stakeResult instanceof Error) {
+      if (migrateStakeResult instanceof Error) {
         toast.warning('Unstake succeeded but V2 stake failed. Your tokens are in your wallet — please stake manually.')
         return
       }
+      const { feeTxId: migrateStakeFeeTxId, feeTokenId: migrateStakeFeeTokenId } = migrateStakeResult as any;
 
       // Backend updates — best-effort after successful on-chain migration
       try {
@@ -718,6 +754,8 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
           poolId: v2Pool._id,
           appId: Number(v2Pool.stakingContractId),
           wallet: activeAddress,
+          feeTxId: migrateStakeFeeTxId,
+          feeAssetId: migrateStakeFeeTokenId,
         })
 
         await authAxios.put(`/staking/update/${v2Pool._id}`, {

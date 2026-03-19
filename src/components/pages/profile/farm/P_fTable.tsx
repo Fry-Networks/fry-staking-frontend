@@ -171,8 +171,12 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
 
   const executeClaim = async (args: any) => {
     try {
+      let claimFeeTxId: string | undefined
+      let claimFeeTokenId: number | undefined
       try {
-        await claimRewards(args.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        const claimResult = await claimRewards(args.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        claimFeeTxId = claimResult.feeTxId
+        claimFeeTokenId = claimResult.feeTokenId
       } catch (error: any) {
         const msg = error?.message || ''
         if (msg.includes('Farming not active') || msg.includes('assert') || msg.includes('logic eval error')) {
@@ -189,6 +193,7 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
         stakeStartTime: Math.floor(Date.now() / 1000),
         claimTime: Math.floor(Date.now() / 1000),
         rewardClaimed: 0,
+        feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
       })
 
       toast.success('Rewards claimed successfully!')
@@ -226,8 +231,12 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
   const executeClaimAndWithdraw = async (args: any) => {
     try {
       // Step 1: Claim rewards
+      let claimFeeTxId: string | undefined
+      let claimFeeTokenId: number | undefined
       try {
-        await claimRewards(args.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        const claimResult = await claimRewards(args.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        claimFeeTxId = claimResult.feeTxId
+        claimFeeTokenId = claimResult.feeTokenId
       } catch (error: any) {
         const msg = error?.message || ''
         if (msg.includes('Farming not active') || msg.includes('assert') || msg.includes('logic eval error')) {
@@ -244,6 +253,7 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
         stakeStartTime: Math.floor(Date.now() / 1000),
         claimTime: Math.floor(Date.now() / 1000),
         rewardClaimed: 0,
+        feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
       })
 
       toast.success('Rewards claimed!')
@@ -257,13 +267,14 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
         const stakeTokenId = args.stakeTokenId || FRY_ASSET_ID
         const withdrawFee = calculateFeeSimple('farmingWithdraw', stakedAmount, config)
 
-        await unstakeTokens(args.appId, stakedAmount, activeAddress!, signer, withdrawFee.feeAmount, stakeTokenId, withdrawFee.feeRecipient)
+        const withdrawResult = await unstakeTokens(args.appId, stakedAmount, activeAddress!, signer, withdrawFee.feeAmount, stakeTokenId, withdrawFee.feeRecipient)
 
         await authAxios.post('/farmingwithdraw/add', {
           amount: stakedAmount / 1_000_000,
           userWallet: activeAddress!,
           poolId: String(args.appId),
           farmingTokenId: String(args.appId),
+          feeTxId: withdrawResult.feeTxId, feeAssetId: withdrawResult.feeTokenId,
         })
 
         toast.success('Tokens withdrawn!')

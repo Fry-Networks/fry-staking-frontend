@@ -65,8 +65,12 @@ const appRouter = createBrowserRouter([
     element: <NftPoolStats />,
   },
   {
-    path: '/device-stake',
+    path: '/depin-stake',
     element: <DeviceStake />,
+  },
+  {
+    path: '/device-stake',
+    element: <Navigate to="/depin-stake" replace />,
   },
   {
     path: '/device-pool-stats',

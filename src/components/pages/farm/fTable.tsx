@@ -10,6 +10,8 @@ import Input from '../../shared/input'
 import { stakeTokens, claimRewards, unstakeTokens, getUserStakeForPool, getAlgodClient } from '../../../farming_func'
 import axios from 'axios'
 import algosdk from 'algosdk'
+import { usePreferences } from '../../../contexts/PreferencesContext'
+import { friendlyApr, friendlyPoolSize } from '../../../utils/grandmaLabels'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
 import { authAxios } from '../../../services/apiClient'
 import { useAuth } from '../../../hooks/useAuth'
@@ -18,6 +20,7 @@ import type { FeeCalculation } from '../../../services/FeeService'
 import FeeConfirmation from '../../shared/FeeConfirmation'
 import StakeModal from '../../shared/StakeModal'
 import WithdrawModal from '../../shared/WithdrawModal'
+import AiAnalysisModal from '../../../Modals/AiAnalysisModal'
 
 interface DataType {
   key: React.Key
@@ -47,6 +50,7 @@ interface FTableProps {
 const FRY_ASSET_ID = import.meta.env.VITE_FRY_TOKEN_ID ? Number(import.meta.env.VITE_FRY_TOKEN_ID) : 2485314946;
 
 const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => {
+  const { isSimpleMode } = usePreferences()
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
   const [stakeInput, setStakeInput] = useState<{ [key: string]: string }>({})
   const [withdrawInput, setWithdrawInput] = useState<{ [key: string]: string }>({})
@@ -63,6 +67,10 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
   const [stakeModalOpen, setStakeModalOpen] = useState(false)
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
   const [modalTarget, setModalTarget] = useState<{ appId: number; stakeTokenId: number; stakeTokenBId: number; pairName: string; userStake: number } | null>(null)
+
+  // AI Analysis modal state
+  const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [aiPoolTarget, setAiPoolTarget] = useState<any>(null)
 
   // Fee confirmation state
   const [feeModalVisible, setFeeModalVisible] = useState(false)
@@ -262,7 +270,8 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     try {
       setStakeLoadingKeys((prev) => [...prev, record.key])
 
-      const tx = await stakeTokens(record.appId, stakeAmount, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+      const stakeResult = await stakeTokens(record.appId, stakeAmount, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient) as any
+      const { result: tx, feeTxId, feeTokenId } = stakeResult
 
       const netFloat = floatAmount - ((args.feeAmount || 0) / 1_000_000)
       const stakingData = {
@@ -273,6 +282,8 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
         earnedReward: 0,
         lastStakedAt: Date.now(),
         claimedAt: null,
+        feeTxId,
+        feeAssetId: feeTokenId,
       }
 
       await authAxios.post('/stakingfarmingtoken/add', stakingData)
@@ -335,13 +346,15 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     try {
       setWithdrawLoadingKeys((prev) => [...prev, record.key])
 
-      const withdrawToken = await unstakeTokens(record.appId, adjustedWithdrawValue, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+      const { tx: withdrawToken, feeTxId, feeTokenId } = await unstakeTokens(record.appId, adjustedWithdrawValue, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
 
       await authAxios.post('/farmingwithdraw/add', {
         amount: floatAmount,
         userWallet: activeAddress!,
         poolId: String(record.appId),
         farmingTokenId: String(record.appId),
+        feeTxId,
+        feeAssetId: feeTokenId,
       })
 
       toast.success('Withdraw successful')
@@ -404,8 +417,13 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     const { record } = args
     try {
       let result: any
+      let feeTxId: string | undefined
+      let feeTokenId: string | number | undefined
       try {
-        result = await claimRewards(record.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        const claimResult = await claimRewards(record.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        result = claimResult.tx
+        feeTxId = claimResult.feeTxId
+        feeTokenId = claimResult.feeTokenId
       } catch (error: any) {
         const msg = error?.message || ''
         if (msg.includes('Farming not active') || msg.includes('assert') || msg.includes('logic eval error')) {
@@ -426,6 +444,8 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
         stakeStartTime: stakeTime || Math.floor(Date.now() / 1000),
         claimTime: Math.floor(Date.now() / 1000),
         rewardClaimed: Number(result?.claimedAmount || 0),
+        feeTxId,
+        feeAssetId: feeTokenId,
       })
 
       console.log(dbResult)
@@ -469,8 +489,12 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
     const { record } = args
     try {
       // Step 1: Claim rewards
+      let claimFeeTxId: string | undefined
+      let claimFeeTokenId: string | number | undefined
       try {
-        await claimRewards(record.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        const claimResult = await claimRewards(record.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        claimFeeTxId = claimResult.feeTxId
+        claimFeeTokenId = claimResult.feeTokenId
       } catch (error: any) {
         const msg = error?.message || ''
         if (msg.includes('Farming not active') || msg.includes('assert') || msg.includes('logic eval error')) {
@@ -490,6 +514,8 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
         stakeStartTime: stakeTime || Math.floor(Date.now() / 1000),
         claimTime: Math.floor(Date.now() / 1000),
         rewardClaimed: 0,
+        feeTxId: claimFeeTxId,
+        feeAssetId: claimFeeTokenId,
       })
 
       toast.success('Rewards claimed!')
@@ -502,13 +528,15 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
         const stakeTokenName = (record as any).stakeTokenName || 'tokens'
         const withdrawFee = calculateFeeSimple('farmingWithdraw', stakedAmount, config)
 
-        await unstakeTokens(record.appId, stakedAmount, activeAddress!, signer, withdrawFee.feeAmount, stakeTokenId, withdrawFee.feeRecipient)
+        const { feeTxId: withdrawFeeTxId, feeTokenId: withdrawFeeTokenId } = await unstakeTokens(record.appId, stakedAmount, activeAddress!, signer, withdrawFee.feeAmount, stakeTokenId, withdrawFee.feeRecipient)
 
         await authAxios.post('/farmingwithdraw/add', {
           amount: stakedAmount / 1_000_000,
           userWallet: activeAddress!,
           poolId: String(record.appId),
           farmingTokenId: String(record.appId),
+          feeTxId: withdrawFeeTxId,
+          feeAssetId: withdrawFeeTokenId,
         })
 
         toast.success('Tokens withdrawn!')
@@ -527,14 +555,14 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
   const columns: TableColumnsType<DataType> = [
     { title: <div className="w-[350px]">Pool</div>, dataIndex: 'pool', key: 'pool' },
     {
-      title: 'TVL',
+      title: isSimpleMode ? 'Pool Size' : 'TVL',
       dataIndex: 'tvl',
       key: 'tvl',
       sorter: (a, b) => (parseFloat(a.tvl.replace(/[$,\s]/g, '')) || 0) - (parseFloat(b.tvl.replace(/[$,\s]/g, '')) || 0),
       defaultSortOrder: 'descend' as const,
-      render: (value) => <p className="text-text_clr font-medium medium">{value}</p>,
+      render: (value) => <p className="text-text_clr font-medium medium">{isSimpleMode ? friendlyPoolSize(parseFloat(value.replace(/[$,\s]/g, '')) || 0) : value}</p>,
     },
-    { title: 'APR', dataIndex: 'apr', key: 'apr', sorter: (a, b) => (parseFloat(a.apr) || 0) - (parseFloat(b.apr) || 0), render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
+    { title: isSimpleMode ? 'Earnings' : 'APR', dataIndex: 'apr', key: 'apr', sorter: (a, b) => (parseFloat(a.apr) || 0) - (parseFloat(b.apr) || 0), render: (value) => <p className="text-text_clr font-medium medium">{isSimpleMode ? friendlyApr(parseFloat(value) || 0) : value}</p> },
     { title: 'STAKED', dataIndex: 'staked', key: 'staked', sorter: (a, b) => (parseFloat(a.staked.replace(/[$,\s]/g, '')) || 0) - (parseFloat(b.staked.replace(/[$,\s]/g, '')) || 0), render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
     {
       title: 'REWARD',
@@ -735,6 +763,14 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                             width={128}
                             onClick={() => navigate(`/farm-pool-stats?appId=${record.appId}`)}
                           />
+                          <Button
+                            text="AI Analysis"
+                            className="button btn-red-border"
+                            height={45}
+                            width={128}
+                            img="mdi:sparkles"
+                            onClick={() => { setAiPoolTarget(record); setAiModalOpen(true) }}
+                          />
                         </div>
                       </div>
                     </div>
@@ -787,6 +823,13 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
           />
         </>
       )}
+      <AiAnalysisModal
+        isOpen={aiModalOpen}
+        onClose={() => { setAiModalOpen(false); setAiPoolTarget(null) }}
+        type="pool"
+        poolId={aiPoolTarget?._id}
+        poolName={aiPoolTarget?.pairName || 'Farm'}
+      />
     </div>
   )
 }

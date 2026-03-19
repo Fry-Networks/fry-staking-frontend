@@ -50,7 +50,8 @@ export interface AlphaArcadePosition {
   noEscrowAppIds: number[]
   spreadUsed: number
   entryMidPrice: number
-  status: 'active' | 'pending_withdrawal' | 'withdrawing' | 'withdrawn' | 'auto_withdrawn' | 'resolved'
+  status: 'active' | 'pending_withdrawal' | 'withdrawing' | 'withdrawn' | 'auto_withdrawn' | 'resolved' | 'claimed'
+  claimedAt?: string
   warningsSent?: { type: '48hr' | '24hr' | '6hr'; sentAt: string }[]
   usdcRecovered: number
   remainingYesTokens: number
@@ -87,4 +88,6 @@ export interface BuildTxnResponse {
   midPrice?: number
   spreadOffset?: number
   marketAppId?: number
+  positionId?: string
+  outcome?: 'yes' | 'no'
 }

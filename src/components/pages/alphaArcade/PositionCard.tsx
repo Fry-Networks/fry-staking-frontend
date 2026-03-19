@@ -1,12 +1,14 @@
 import React from 'react'
 import { Icon } from '@iconify/react'
 import type { AlphaArcadePosition } from '../../../types/alphaArcade'
+import { usePreferences } from '../../../contexts/PreferencesContext'
 
 interface PositionCardProps {
   position: AlphaArcadePosition
   marketQuestion?: string
   resolutionTime?: number
   onWithdraw: (position: AlphaArcadePosition) => void
+  onClaim?: (position: AlphaArcadePosition) => void
 }
 
 const statusConfig: Record<string, { label: string; color: string; icon: string }> = {
@@ -16,9 +18,11 @@ const statusConfig: Record<string, { label: string; color: string; icon: string 
   withdrawn: { label: 'Withdrawn', color: 'bg-gray-500', icon: 'mdi:logout' },
   auto_withdrawn: { label: 'Auto Withdrawn', color: 'bg-gray-500', icon: 'mdi:logout' },
   resolved: { label: 'Resolved', color: 'bg-blue-500', icon: 'mdi:flag-checkered' },
+  claimed: { label: 'Claimed', color: 'bg-green-600', icon: 'mdi:check-decagram' },
 }
 
-const PositionCard: React.FC<PositionCardProps> = ({ position, marketQuestion, resolutionTime, onWithdraw }) => {
+const PositionCard: React.FC<PositionCardProps> = ({ position, marketQuestion, resolutionTime, onWithdraw, onClaim }) => {
+  const { isSimpleMode } = usePreferences()
   const status = statusConfig[position.status] || statusConfig.active
   const depositedUsdc = (position.usdcDeposited / 1_000_000).toFixed(2)
   const recoveredUsdc = (position.usdcRecovered / 1_000_000).toFixed(2)
@@ -64,19 +68,23 @@ const PositionCard: React.FC<PositionCardProps> = ({ position, marketQuestion, r
 
       <div className="grid grid-cols-2 gap-3 text-sm mb-4">
         <div>
-          <p className="text-[var(--text-secondary)] text-xs">Deposited</p>
+          <p className="text-[var(--text-secondary)] text-xs">{isSimpleMode ? 'Your Investment' : 'Deposited'}</p>
           <p className="text-[var(--text-primary)] font-medium">{depositedUsdc} USDC</p>
         </div>
+        {!isSimpleMode && (
+          <div>
+            <p className="text-[var(--text-secondary)] text-xs">Entry Mid-Price</p>
+            <p className="text-[var(--text-primary)] font-medium">{entryPrice}%</p>
+          </div>
+        )}
+        {!isSimpleMode && (
+          <div>
+            <p className="text-[var(--text-secondary)] text-xs">Spread</p>
+            <p className="text-[var(--text-primary)] font-medium">{((position.spreadUsed || 50) / 100).toFixed(2)}%</p>
+          </div>
+        )}
         <div>
-          <p className="text-[var(--text-secondary)] text-xs">Entry Mid-Price</p>
-          <p className="text-[var(--text-primary)] font-medium">{entryPrice}%</p>
-        </div>
-        <div>
-          <p className="text-[var(--text-secondary)] text-xs">Spread</p>
-          <p className="text-[var(--text-primary)] font-medium">{((position.spreadUsed || 50) / 100).toFixed(2)}%</p>
-        </div>
-        <div>
-          <p className="text-[var(--text-secondary)] text-xs">Open Orders</p>
+          <p className="text-[var(--text-secondary)] text-xs">{isSimpleMode ? 'Active Trades' : 'Open Orders'}</p>
           <p className="text-[var(--text-primary)] font-medium">{escrowCount}</p>
         </div>
       </div>
@@ -84,19 +92,23 @@ const PositionCard: React.FC<PositionCardProps> = ({ position, marketQuestion, r
       {/* Withdrawn stats */}
       {(position.status === 'withdrawn' || position.status === 'auto_withdrawn' || position.status === 'resolved') && (
         <div className="border-t border-[var(--border-color)] pt-3 mb-4">
-          <div className="grid grid-cols-3 gap-3 text-sm">
+          <div className={`grid ${isSimpleMode ? 'grid-cols-1' : 'grid-cols-3'} gap-3 text-sm`}>
             <div>
-              <p className="text-[var(--text-secondary)] text-xs">Recovered</p>
+              <p className="text-[var(--text-secondary)] text-xs">{isSimpleMode ? 'Money Returned' : 'Recovered'}</p>
               <p className="text-[var(--text-primary)] font-medium">{recoveredUsdc} USDC</p>
             </div>
-            <div>
-              <p className="text-[var(--text-secondary)] text-xs">YES Remaining</p>
-              <p className="text-[var(--text-primary)] font-medium">{position.remainingYesTokens || 0}</p>
-            </div>
-            <div>
-              <p className="text-[var(--text-secondary)] text-xs">NO Remaining</p>
-              <p className="text-[var(--text-primary)] font-medium">{position.remainingNoTokens || 0}</p>
-            </div>
+            {!isSimpleMode && (
+              <div>
+                <p className="text-[var(--text-secondary)] text-xs">YES Remaining</p>
+                <p className="text-[var(--text-primary)] font-medium">{position.remainingYesTokens || 0}</p>
+              </div>
+            )}
+            {!isSimpleMode && (
+              <div>
+                <p className="text-[var(--text-secondary)] text-xs">NO Remaining</p>
+                <p className="text-[var(--text-primary)] font-medium">{position.remainingNoTokens || 0}</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -108,6 +120,16 @@ const PositionCard: React.FC<PositionCardProps> = ({ position, marketQuestion, r
           className="w-full py-2.5 rounded-lg font-bold text-sm text-white transition-colors linearGradient"
         >
           Withdraw
+        </button>
+      )}
+
+      {/* Claim button for resolved positions */}
+      {position.status === 'resolved' && onClaim && (
+        <button
+          onClick={() => onClaim(position)}
+          className="w-full py-2.5 rounded-lg font-bold text-sm text-white transition-colors bg-green-600 hover:bg-green-700"
+        >
+          Claim Winnings
         </button>
       )}
 

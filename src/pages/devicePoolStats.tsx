@@ -9,6 +9,8 @@ import { useWallet } from '@txnlab/use-wallet'
 import type { DevicePool, DevicePosition, DeviceAnnouncement } from '../types/deviceStaking'
 import { Spin } from 'antd'
 import { Icon } from '@iconify/react'
+import { usePreferences } from '../contexts/PreferencesContext'
+import { friendlyFee } from '../utils/grandmaLabels'
 
 const REWARD_MODELS: Record<string, string> = {
   fixed_rate: 'Fixed Rate',
@@ -20,6 +22,7 @@ const DevicePoolStats = () => {
   const [searchParams] = useSearchParams()
   const appId = searchParams.get('appId') || ''
   const { activeAddress } = useWallet()
+  const { isSimpleMode } = usePreferences()
 
   const [pool, setPool] = useState<DevicePool | null>(null)
   const [positions, setPositions] = useState<DevicePosition[]>([])
@@ -190,15 +193,15 @@ const DevicePoolStats = () => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[var(--text-secondary)]">Deposit Fee</span>
-                      <span className="text-[var(--text-primary)]">{((pool.depositFeeBps || 0) / 100).toFixed(2)}%</span>
+                      <span className="text-[var(--text-primary)]">{isSimpleMode ? friendlyFee((pool.depositFeeBps || 0) / 100) : `${((pool.depositFeeBps || 0) / 100).toFixed(2)}%`}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[var(--text-secondary)]">Withdraw Fee</span>
-                      <span className="text-[var(--text-primary)]">{((pool.withdrawFeeBps || 0) / 100).toFixed(2)}%</span>
+                      <span className="text-[var(--text-primary)]">{isSimpleMode ? friendlyFee((pool.withdrawFeeBps || 0) / 100) : `${((pool.withdrawFeeBps || 0) / 100).toFixed(2)}%`}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[var(--text-secondary)]">Claim Fee</span>
-                      <span className="text-[var(--text-primary)]">{((pool.claimFeeBps || 0) / 100).toFixed(2)}%</span>
+                      <span className="text-[var(--text-primary)]">{isSimpleMode ? friendlyFee((pool.claimFeeBps || 0) / 100) : `${((pool.claimFeeBps || 0) / 100).toFixed(2)}%`}</span>
                     </div>
                     {pool.gatedAccessEnabled && pool.gatedAccessLabel && (
                       <div className="flex justify-between">
@@ -256,29 +259,33 @@ const DevicePoolStats = () => {
                 {pool.boostMultipliers?.length > 0 && (
                   <div className="bg-[var(--bg-card)] rounded-xl p-6 shadow">
                     <h4 className="text-lg font-bold text-[var(--text-primary)] mb-4">Boost Multipliers</h4>
-                    <div className="flex flex-col gap-3">
-                      {pool.boostMultipliers.map((mult) => (
-                        <div key={mult.multiplierId} className="bg-[var(--bg-secondary)] rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-1">
-                            <p className="text-sm font-medium text-[var(--text-primary)]">{mult.label}</p>
-                            <span className="text-xs text-[var(--text-secondary)]">
-                              Max: {(mult.maxMultiplier / 10000).toFixed(2)}x
-                            </span>
-                          </div>
-                          {mult.description && <p className="text-xs text-[var(--text-secondary)]">{mult.description}</p>}
-                          <div className="flex gap-2 mt-1">
-                            <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                              {mult.type.replace('_', ' ')}
-                            </span>
-                            {mult.stackable && (
-                              <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                                Stackable
+                    {isSimpleMode ? (
+                      <p className="text-sm text-[var(--text-secondary)]">Bonus rewards available for meeting certain conditions</p>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {pool.boostMultipliers.map((mult) => (
+                          <div key={mult.multiplierId} className="bg-[var(--bg-secondary)] rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <p className="text-sm font-medium text-[var(--text-primary)]">{mult.label}</p>
+                              <span className="text-xs text-[var(--text-secondary)]">
+                                Max: {(mult.maxMultiplier / 10000).toFixed(2)}x
                               </span>
-                            )}
+                            </div>
+                            {mult.description && <p className="text-xs text-[var(--text-secondary)]">{mult.description}</p>}
+                            <div className="flex gap-2 mt-1">
+                              <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                {mult.type.replace('_', ' ')}
+                              </span>
+                              {mult.stackable && (
+                                <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                  Stackable
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -301,7 +308,7 @@ const DevicePoolStats = () => {
                           }`}>
                             {pos.status}
                           </span>
-                          {pos.effectiveMultiplier > 10000 && (
+                          {pos.effectiveMultiplier > 10000 && !isSimpleMode && (
                             <p className="text-[10px] text-blue-500 mt-0.5">{(pos.effectiveMultiplier / 10000).toFixed(2)}x</p>
                           )}
                         </div>

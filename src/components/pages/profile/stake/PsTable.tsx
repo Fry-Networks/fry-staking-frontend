@@ -12,6 +12,8 @@ import { fetchFeeConfig, calculateFeeSimple } from '../../../../services/FeeServ
 import type { FeeCalculation } from '../../../../services/FeeService'
 import FeeConfirmation from '../../../shared/FeeConfirmation'
 import { authAxios } from '../../../../services/apiClient'
+import { usePreferences } from '../../../../contexts/PreferencesContext'
+import { friendlyApr, friendlyPoolSize } from '../../../../utils/grandmaLabels'
 
 const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 
@@ -66,6 +68,7 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
   const navigate = useNavigate()
   const { activeAddress, signer } = useWallet()
   const { ensureAuth } = useAuth()
+  const { isSimpleMode } = usePreferences()
 
   const [isClaimingId, setIsClaimingId] = useState<string | null>(null)
   const [estimatedRewards, setEstimatedRewards] = useState<Record<string, number>>({})
@@ -169,18 +172,19 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
         return;
       }
 
+      const { feeTxId, feeTokenId } = claimResult;
       const rewardClaimed = claimResult.rewardClaimed || 0;
       const stakedAmount = claimResult.stakedAmount || 0;
       const stakedTime = claimResult.stakedTime || 0;
 
       await authAxios.post('/stakerData/add', {
         walletId: activeAddress, stakedAmount, stakeTime: stakedTime,
-        poolId: args._id, rewardClaimed,
+        poolId: args._id, rewardClaimed, feeTxId, feeAssetId: feeTokenId,
       }, { headers: { 'Content-Type': 'application/json' } });
 
       await authAxios.post('/claimreward/add', {
         walletId: activeAddress, stakedAmount, stakedTime,
-        poolId: args._id, rewardClaimed,
+        poolId: args._id, rewardClaimed, feeTxId, feeAssetId: feeTokenId,
       }, { headers: { 'Content-Type': 'application/json' } });
 
       toast.success('Rewards claimed successfully!');
@@ -219,18 +223,19 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
         return;
       }
 
+      const { feeTxId: claimFeeTxId, feeTokenId: claimFeeTokenId } = claimResult;
       const rewardClaimed = claimResult.rewardClaimed || 0;
       const stakedAmount = claimResult.stakedAmount || 0;
       const stakedTime = claimResult.stakedTime || 0;
 
       await authAxios.post('/stakerData/add', {
         walletId: activeAddress, stakedAmount, stakeTime: stakedTime,
-        poolId: args._id, rewardClaimed,
+        poolId: args._id, rewardClaimed, feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
       }, { headers: { 'Content-Type': 'application/json' } });
 
       await authAxios.post('/claimreward/add', {
         walletId: activeAddress, stakedAmount, stakedTime,
-        poolId: args._id, rewardClaimed,
+        poolId: args._id, rewardClaimed, feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
       }, { headers: { 'Content-Type': 'application/json' } });
 
       // Step 2: Withdraw full staked amount
@@ -247,9 +252,11 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
         if (withdrawResult instanceof Error) {
           toast.warning('Rewards claimed but withdrawal failed: ' + withdrawResult.message);
         } else {
+          const { feeTxId: wFeeTxId, feeTokenId: wFeeTokenId } = withdrawResult as any;
           await authAxios.post('/withdraw/add', {
             tokens: stakedAmount / 1_000_000, wallet: activeAddress,
             poolId: args._id, appId: Number(args.stakingContractId),
+            feeTxId: wFeeTxId, feeAssetId: wFeeTokenId,
           });
           toast.success('Rewards claimed and tokens withdrawn!');
         }
@@ -270,16 +277,17 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
     {
       title: (
         <div className="flex items-center gap-[2px]">
-          TVL
+          {isSimpleMode ? 'Pool Size' : 'TVL'}
           <Icon icon="solar:arrow-down-outline" width={18} height={21} color="var(--text-primary)" />
         </div>
       ),
       dataIndex: 'tvl',
       key: 'tvl',
-      render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{value}</p>,
+      render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{isSimpleMode ? friendlyPoolSize(parseFloat(String(value).replace(/[$,\s]/g, '')) || 0) : value}</p>,
     },
-    { title: 'APR', dataIndex: 'apr', key: 'apr', render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{value}</p> },
+    { title: isSimpleMode ? 'Earnings' : 'APR', dataIndex: 'apr', key: 'apr', render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{isSimpleMode ? friendlyApr(parseFloat(value) || 0) : value}</p> },
     { title: 'MY STAKE', dataIndex: 'staked', key: 'staked', render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{value}</p> },
+    { title: 'REWARD', dataIndex: 'reward', key: 'reward', render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{value}</p> },
     { title: 'STATUS', dataIndex: 'status', key: 'status' },
     {
       title: 'ENDS',

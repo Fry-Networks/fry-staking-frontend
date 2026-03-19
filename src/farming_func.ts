@@ -3,7 +3,6 @@ import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClient
 import * as algokit from '@algorandfoundation/algokit-utils';
 import algosdk, { Transaction, TransactionSigner } from 'algosdk';
 import axios from 'axios';
-import { authFetch } from './services/apiClient';
 
 const BOX_PRICE = 2500 + 400 * 64
 
@@ -531,39 +530,23 @@ export const stakeTokens = async (
     }
 
     // Send fee in the transacted token AFTER successful contract call
+    let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        await algorandClient.send.assetTransfer({
+        const feeResult = await algorandClient.send.assetTransfer({
           sender,
           signer,
           receiver: feeRecipient,
           amount: BigInt(feeAmount),
           assetId: BigInt(feeTokenId),
         });
-
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            appId: stakingId,
-            userId: sender,
-            gasAmount: feeAmount,
-            gasType: 'farmingDeposit',
-            feeType: 'percentage',
-          }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success) console.log('Fee logged:', data);
-            else console.warn('Fee log response:', data.message);
-          })
-          .catch((err) => console.error('Error logging fee:', err));
+        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful farming stake:', feeErr);
       }
     }
 
-    return result;
+    return { result, feeTxId, feeTokenId };
   } catch (error) {
     console.error('Error during staking:', error);
     throw error;
@@ -735,39 +718,23 @@ export const unstakeTokens = async (
     console.log('Unstake successful:', tx);
 
     // Send fee in the transacted token AFTER successful contract call
+    let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        await algorandClient.send.assetTransfer({
+        const feeResult = await algorandClient.send.assetTransfer({
           sender,
           signer,
           receiver: feeRecipient,
           amount: BigInt(feeAmount),
           assetId: BigInt(feeTokenId),
         });
-
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            appId: farmingId,
-            userId: sender,
-            gasAmount: feeAmount,
-            gasType: 'farmingWithdraw',
-            feeType: 'percentage',
-          }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success) console.log('Fee logged:', data);
-            else console.warn('Fee log response:', data.message);
-          })
-          .catch((err) => console.error('Error logging fee:', err));
+        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful farming unstake:', feeErr);
       }
     }
 
-    return tx;
+    return { tx, feeTxId, feeTokenId };
 
   } catch (e) {
     console.error('Unstaking failed:', e);
@@ -862,39 +829,23 @@ export const claimRewards = async (
     );
 
     // Send fee in the reward token AFTER successful contract call
+    let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        await algorandClient.send.assetTransfer({
+        const feeResult = await algorandClient.send.assetTransfer({
           sender,
           signer,
           receiver: feeRecipient,
           amount: BigInt(feeAmount),
           assetId: BigInt(feeTokenId),
         });
-
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            appId: farmingId,
-            userId: sender,
-            gasAmount: feeAmount,
-            gasType: 'farmingClaim',
-            feeType: 'percentage',
-          }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success) console.log('Fee logged:', data);
-            else console.warn('Fee log response:', data.message);
-          })
-          .catch((err) => console.error('Error logging fee:', err));
+        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful farming claim:', feeErr);
       }
     }
 
-    return tx;
+    return { tx, feeTxId, feeTokenId };
   } catch (e) {
     console.error('Claiming rewards failed:', e);
     throw new Error(`Claiming rewards failed: ${e instanceof Error ? e.message : String(e)}`);

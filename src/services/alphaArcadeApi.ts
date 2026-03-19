@@ -110,3 +110,22 @@ export async function recordWithdraw(payload: {
   const { data } = await authAxios.post('/prediction-lp/record-withdraw', payload)
   return data.data
 }
+
+export async function buildClaim(payload: {
+  wallet: string
+  poolId: string
+}): Promise<BuildTxnResponse> {
+  const { data } = await authAxios.post('/prediction-lp/build-claim', payload)
+  return data.data
+}
+
+export async function recordClaim(payload: {
+  wallet: string
+  poolId: string
+  positionId: string
+  amountClaimed: number
+  txId: string
+}): Promise<AlphaArcadePosition> {
+  const { data } = await authAxios.post('/prediction-lp/record-claim', payload)
+  return data.data
+}

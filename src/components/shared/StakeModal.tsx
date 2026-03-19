@@ -230,10 +230,18 @@ const StakeModal: React.FC<StakeModalProps> = ({
 
       const tokenId = isAdvancedLp ? pool!.poolTokenID! : stakeTokenId
 
+      let feeTxId: string | undefined
+      let feeTokenId: number | undefined
+
       if (isLpFarm) {
-        await stakeFarmTokens(appId, stakeAmountMicro, activeAddress, signer, fee.feeAmount, tokenId, fee.feeRecipient)
+        const farmResult = await stakeFarmTokens(appId, stakeAmountMicro, activeAddress, signer, fee.feeAmount, tokenId, fee.feeRecipient) as any
+        feeTxId = farmResult.feeTxId
+        feeTokenId = farmResult.feeTokenId
       } else {
-        await stakePoolTokens(appId, stakeAmountMicro, activeAddress, signer, fee.feeAmount, tokenId, fee.feeRecipient)
+        const poolResult = await stakePoolTokens(appId, stakeAmountMicro, activeAddress, signer, fee.feeAmount, tokenId, fee.feeRecipient) as any
+        if (poolResult.tx instanceof Error) throw poolResult.tx
+        feeTxId = poolResult.feeTxId
+        feeTokenId = poolResult.feeTokenId
       }
 
       // Log staking to backend (record net amount after fee deduction)
@@ -249,6 +257,8 @@ const StakeModal: React.FC<StakeModalProps> = ({
             earnedReward: 0,
             lastStakedAt: Date.now(),
             claimedAt: null,
+            feeTxId,
+            feeAssetId: feeTokenId,
           })
         } else {
           await authAxios.post('/stakingtoken/add', {
@@ -256,6 +266,8 @@ const StakeModal: React.FC<StakeModalProps> = ({
             totalStaked: netAmountMicro,
             appId: appId,
             wallet: activeAddress,
+            feeTxId,
+            feeAssetId: feeTokenId,
           })
         }
       } catch (e) {
@@ -329,7 +341,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
       const feeConfig = await fetchFeeConfig()
       const fee = calculateFeeSimple('farmingDeposit', lpDeltaNum, feeConfig)
 
-      await stakeFarmTokens(
+      const zapFarmResult = await stakeFarmTokens(
         appId,
         lpDeltaNum,
         activeAddress,
@@ -337,7 +349,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
         fee.feeAmount,
         quote.poolTokenId,
         fee.feeRecipient,
-      )
+      ) as any
 
       const netLpFloat = (lpDeltaNum - fee.feeAmount) / Math.pow(10, inputDecimals)
       try {
@@ -349,6 +361,8 @@ const StakeModal: React.FC<StakeModalProps> = ({
           earnedReward: 0,
           lastStakedAt: Date.now(),
           claimedAt: null,
+          feeTxId: zapFarmResult.feeTxId,
+          feeAssetId: zapFarmResult.feeTokenId,
         })
       } catch (e) {
         console.warn('Failed to log staking data:', e)
@@ -434,8 +448,11 @@ const StakeModal: React.FC<StakeModalProps> = ({
       </div>
 
       <button
-        onClick={handleSimpleStake}
-        disabled={!canStakeSimple}
+        onClick={() => {
+          if (!activeAddress) { window.dispatchEvent(new Event('openConnectWallet')); return }
+          handleSimpleStake()
+        }}
+        disabled={activeAddress ? !canStakeSimple : false}
         className="w-full py-3 rounded-lg font-bold text-white transition-colors linearGradient disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {!activeAddress ? 'Connect Wallet' : insufficientBalance ? 'Insufficient Balance' : 'Stake'}
@@ -598,8 +615,11 @@ const StakeModal: React.FC<StakeModalProps> = ({
 
       {/* ZAP button */}
       <button
-        onClick={() => setStep('confirm')}
-        disabled={!canZap}
+        onClick={() => {
+          if (!activeAddress) { window.dispatchEvent(new Event('openConnectWallet')); return }
+          setStep('confirm')
+        }}
+        disabled={activeAddress ? !canZap : false}
         className="w-full py-3 rounded-lg font-bold text-white transition-colors linearGradient disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {!activeAddress ? 'Connect Wallet' : insufficientBalance ? 'Insufficient Balance' : 'Deposit'}
@@ -654,11 +674,14 @@ const StakeModal: React.FC<StakeModalProps> = ({
               </div>
             </div>
             <button
-              onClick={handleSimpleStake}
-              disabled={!activeAddress || !lpStakeAmount || parseFloat(lpStakeAmount) <= 0}
+              onClick={() => {
+                if (!activeAddress) { window.dispatchEvent(new Event('openConnectWallet')); return }
+                handleSimpleStake()
+              }}
+              disabled={activeAddress ? (!lpStakeAmount || parseFloat(lpStakeAmount) <= 0) : false}
               className="w-full py-3 rounded-lg font-bold text-white transition-colors linearGradient disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Stake LP Tokens
+              {!activeAddress ? 'Connect Wallet' : 'Stake LP Tokens'}
             </button>
           </div>
         )}
