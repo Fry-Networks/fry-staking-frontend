@@ -13,6 +13,7 @@ import { getAlgodConfigFromViteEnvironment, getKmdConfigFromViteEnvironment } fr
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { PreferencesProvider } from './contexts/PreferencesContext';
 import { authService } from './services/AuthService';
 
 let providersArray: ProvidersArray
@@ -93,7 +94,9 @@ function AppInner() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppInner />
+      <PreferencesProvider>
+        <AppInner />
+      </PreferencesProvider>
     </ThemeProvider>
   )
 }

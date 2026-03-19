@@ -6,7 +6,7 @@ import dayjs from 'dayjs';
 import { useWallet } from '@txnlab/use-wallet';
 import { initStaking } from '../../staking_func';
 import { authAxios } from '../../services/apiClient';
-import { authFetch } from '../../services/apiClient';
+import { logFee } from '../../utils/logFee';
 import { useAuth } from '../../hooks/useAuth';
 import { fetchFeeConfig, calculateFeeSimple, FEE_RECIPIENT } from '../../services/FeeService';
 import * as algokit from '@algorandfoundation/algokit-utils';
@@ -221,16 +221,13 @@ const CreateStakeWizard: React.FC<CreateStakeWizardProps> = ({
           });
         }
 
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: activeAddress,
-            gasAmount: feeCalc.feeAmount,
-            gasType: 'poolCreationFee',
-            feeType: 'percentage',
-          }),
-        }).catch((err) => console.error('Error logging fee:', err));
+        await logFee({
+          appId: 0,
+          userId: activeAddress,
+          gasAmount: feeCalc.feeAmount,
+          gasType: 'poolCreationFee',
+          feeType: 'percentage',
+        });
 
         toast.info(`Pool creation fee: ${(feeCalc.feeAmount / 1_000_000).toFixed(2)} ${rewardToken.symbol || 'tokens'} (${feeCalc.feePercent}%)`);
       }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
 import { fetchPriceMap } from '../../../services/PriceService'
+import { usePreferences } from '../../../contexts/PreferencesContext'
 
 interface StakeStats {
   tvlUsd: number
@@ -13,6 +14,7 @@ interface StakeBannerProps {
 }
 
 const Stakebanner: React.FC<StakeBannerProps> = ({ wallet }) => {
+  const { isSimpleMode } = usePreferences()
   const [stats, setStats] = useState<StakeStats>({
     tvlUsd: 0,
     myStakeUsd: 0,
@@ -92,7 +94,7 @@ const Stakebanner: React.FC<StakeBannerProps> = ({ wallet }) => {
     <div className="w-full mt-[40px] mb-[47px]">
       <div className="max-xxxl:w-[95%] w-[80%] m-auto flex sm-s:flex-col justify-between gap-[10px] sm-s:gap-[20px] bg-[var(--bg-card)] rounded-[18px] py-[32px] max-xxxl:px-[140px] px-[190px] max-sm:!px-[40px] shadow-[0px_4px_24.2px_0px_var(--shadow-color)]">
         <div className="flex flex-col items-center gap-[24px] sm-s:gap-[6px]">
-          <p className="text-text_clr tracking-[0.54px] large">Stake TVL</p>
+          <p className="text-text_clr tracking-[0.54px] large">{isSimpleMode ? 'Total Value Staked' : 'Stake TVL'}</p>
           <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
             {loading ? '...' : fmt(stats.tvlUsd)}
           </h3>

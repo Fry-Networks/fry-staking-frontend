@@ -1,5 +1,7 @@
 import React from 'react'
 import { Modal } from 'antd'
+import { usePreferences } from '../../contexts/PreferencesContext'
+import { friendlyFee } from '../../utils/grandmaLabels'
 
 interface FeeConfirmationProps {
   visible: boolean
@@ -22,6 +24,7 @@ const FeeConfirmation: React.FC<FeeConfirmationProps> = ({
   netAmountFormatted,
   loading,
 }) => {
+  const { isSimpleMode } = usePreferences()
   return (
     <Modal
       open={visible}
@@ -43,7 +46,7 @@ const FeeConfirmation: React.FC<FeeConfirmationProps> = ({
           </div>
           <div className="flex justify-between">
             <span className="text-[var(--text-secondary)]">Fee rate</span>
-            <span className="font-medium">{feePercent}%</span>
+            <span className="font-medium">{isSimpleMode ? friendlyFee(feePercent) : `${feePercent}%`}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-[var(--text-secondary)]">Platform fee</span>

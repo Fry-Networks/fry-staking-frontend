@@ -1,15 +1,13 @@
 import * as algokit from '@algorandfoundation/algokit-utils'
 import algosdk, { TransactionSigner } from 'algosdk'
-import { FryNftStakingClient, APP_SPEC } from './contracts/FryNftStakingClient'
-import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryNftStakingCompiled'
-import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
+import { FryDeviceStakingClient, APP_SPEC } from './contracts/FryDeviceStakingClient'
+import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryDeviceStakingCompiled'
+import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 import { logFee } from './utils/logFee'
-import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
-import type { AppDetails } from '@algorandfoundation/algokit-utils/types/app-client'
 
-const BOX_PRICE = 2500 + 400 * 64
+const BOX_PRICE = 2500 + 400 * 864
 
-const createNftStakingClient = async (signer: TransactionSigner, activeAddress: string, appId: number) => {
+const createDeviceStakingClient = async (signer: TransactionSigner, activeAddress: string, appId: number) => {
   algokit.Config.configure({ populateAppCallResources: true })
 
   const algodConfig = getAlgodConfigFromViteEnvironment()
@@ -22,7 +20,7 @@ const createNftStakingClient = async (signer: TransactionSigner, activeAddress: 
     token: algodConfig.token,
   })
 
-  const client = new FryNftStakingClient(
+  const client = new FryDeviceStakingClient(
     {
       resolveBy: 'id',
       id: appId,
@@ -43,19 +41,10 @@ const getAlgodClient = () => {
   })
 }
 
-const getIndexerClient = () => {
-  const indexerConfig = getIndexerConfigFromViteEnvironment()
-  return algokit.getAlgoIndexerClient({
-    server: indexerConfig.server,
-    port: indexerConfig.port,
-    token: indexerConfig.token,
-  })
-}
-
 /**
- * Create a new NFT staking pool on-chain.
+ * Create a new device staking pool on-chain.
  */
-export const createNftPool = async (
+export const createDevicePool = async (
   rewardTokenId: number,
   rewardModel: number,
   collectionMode: number,
@@ -71,15 +60,16 @@ export const createNftPool = async (
   depositFeeBps: number,
   withdrawFeeBps: number,
   claimFeeBps: number,
+  stakingMode: number,
+  verifier: string,
   sender: string,
   signer: TransactionSigner,
 ) => {
   try {
     const algodClient = getAlgodClient()
 
-    // Build ABI method from APP_SPEC contract definition (no runtime TEAL compilation)
     const abiContract = new algosdk.ABIContract(APP_SPEC.contract as any)
-    const initPoolMethod = abiContract.getMethodByName('init_pool')
+    const initPoolMethod = abiContract.getMethodByName('init_device_pool')
 
     const suggestedParams = await algodClient.getTransactionParams().do()
 
@@ -103,11 +93,13 @@ export const createNftPool = async (
         depositFeeBps,
         withdrawFeeBps,
         claimFeeBps,
+        stakingMode,
+        verifier || sender,
       ],
       approvalProgram: COMPILED_APPROVAL,
       clearProgram: COMPILED_CLEAR,
-      numGlobalInts: 17,
-      numGlobalByteSlices: 3,
+      numGlobalInts: 19,
+      numGlobalByteSlices: 4,
       numLocalInts: 0,
       numLocalByteSlices: 0,
       sender,
@@ -119,12 +111,11 @@ export const createNftPool = async (
     const result = await atc.execute(algodClient, 4)
     const appId = result.methodResults[0].txInfo?.['application-index']
     if (!appId) {
-      throw new Error('Failed to create NFT staking pool.')
+      throw new Error('Failed to create device staking pool.')
     }
 
-    const { algorandClient } = await createNftStakingClient(signer, sender, Number(appId))
+    const { algorandClient } = await createDeviceStakingClient(signer, sender, Number(appId))
 
-    // MBR payment for contract
     await algorandClient.send.payment({
       sender,
       receiver: algosdk.getApplicationAddress(BigInt(appId)),
@@ -136,22 +127,22 @@ export const createNftPool = async (
 
     return Number(appId)
   } catch (e) {
-    console.error('Error in createNftPool:', e)
+    console.error('Error in createDevicePool:', e)
     throw e
   }
 }
 
 /**
- * Opt the contract into an NFT ASA. Must be called before first stake of each ASA.
+ * Opt the contract into an ASA. Must be called before first stake of each ASA.
  */
-export const optInContractToNft = async (
+export const optInDeviceContractToAsset = async (
   appId: number,
   assetId: number,
   sender: string,
   signer: TransactionSigner,
 ) => {
   try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
+    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const mbrPay = await algorandClient.transactions.payment({
       sender,
@@ -165,15 +156,71 @@ export const optInContractToNft = async (
 
     return true
   } catch (e) {
-    console.error('Error in optInContractToNft:', e)
+    console.error('Error in optInDeviceContractToAsset:', e)
     throw e
   }
 }
 
 /**
- * Stake an NFT into the pool.
+ * Deposit rewards into the pool (ASA token).
  */
-export const stakeNft = async (
+export const depositDeviceRewards = async (
+  appId: number,
+  rewardTokenId: number,
+  amount: number,
+  sender: string,
+  signer: TransactionSigner,
+) => {
+  try {
+    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+
+    const rewardTxn = await algorandClient.transactions.assetTransfer({
+      sender,
+      receiver: algosdk.getApplicationAddress(appId),
+      assetId: BigInt(rewardTokenId),
+      amount: BigInt(amount),
+      signer,
+    })
+
+    const tx = await client.depositRewards({ rewardTxn })
+    return tx
+  } catch (e) {
+    console.error('Error in depositDeviceRewards:', e)
+    throw e
+  }
+}
+
+/**
+ * Deposit ALGO rewards into the pool.
+ */
+export const depositDeviceRewardsAlgo = async (
+  appId: number,
+  amount: number,
+  sender: string,
+  signer: TransactionSigner,
+) => {
+  try {
+    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+
+    const payment = await algorandClient.transactions.payment({
+      sender,
+      receiver: algosdk.getApplicationAddress(appId),
+      amount: algokit.microAlgos(amount),
+      signer,
+    })
+
+    const tx = await client.depositRewardsAlgo({ payment })
+    return tx
+  } catch (e) {
+    console.error('Error in depositDeviceRewardsAlgo:', e)
+    throw e
+  }
+}
+
+/**
+ * Stake an NFT into the pool (escrow mode).
+ */
+export const stakeDeviceNft = async (
   appId: number,
   nftAsaId: number,
   sender: string,
@@ -183,7 +230,7 @@ export const stakeNft = async (
   feeRecipient: string,
 ) => {
   try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
+    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const nftTransfer = await algorandClient.transactions.assetTransfer({
       sender,
@@ -212,7 +259,6 @@ export const stakeNft = async (
 
     if (tx instanceof Error) return tx
 
-    // Send fee after successful contract call
     if (feeAmount > 0) {
       try {
         let feeResult
@@ -238,26 +284,26 @@ export const stakeNft = async (
           appId,
           userId: sender,
           gasAmount: feeAmount,
-          gasType: 'nftStakingStake',
+          gasType: 'deviceStakingStake',
           feeType: 'percentage',
           txId: feeTxId,
         })
       } catch (feeErr) {
-        console.warn('Fee transfer failed after successful NFT stake:', feeErr)
+        console.warn('Fee transfer failed after successful device stake:', feeErr)
       }
     }
 
     return tx
   } catch (e) {
-    console.error('Error in stakeNft:', e)
+    console.error('Error in stakeDeviceNft:', e)
     return e
   }
 }
 
 /**
- * Unstake an NFT from the pool (auto-claims rewards).
+ * Unstake an NFT from the pool (escrow mode).
  */
-export const unstakeNft = async (
+export const unstakeDeviceNft = async (
   appId: number,
   nftAsaId: number,
   sender: string,
@@ -267,7 +313,7 @@ export const unstakeNft = async (
   feeRecipient: string,
 ) => {
   try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
+    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const tx = await client
       .unstakeNft(
@@ -306,26 +352,62 @@ export const unstakeNft = async (
           appId,
           userId: sender,
           gasAmount: feeAmount,
-          gasType: 'nftStakingWithdraw',
+          gasType: 'deviceStakingWithdraw',
           feeType: 'percentage',
           txId: feeTxId,
         })
       } catch (feeErr) {
-        console.warn('Fee transfer failed after successful NFT unstake:', feeErr)
+        console.warn('Fee transfer failed after successful device unstake:', feeErr)
       }
     }
 
     return tx
   } catch (e) {
-    console.error('Error in unstakeNft:', e)
+    console.error('Error in unstakeDeviceNft:', e)
     return e
   }
 }
 
 /**
- * Claim accumulated rewards from the pool.
+ * Register as a verified holder (verified-hold mode). No NFT transfer.
  */
-export const claimRewards = async (
+export const registerDeviceHolder = async (
+  appId: number,
+  sender: string,
+  signer: TransactionSigner,
+) => {
+  try {
+    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+
+    const boxPayment = await algorandClient.transactions.payment({
+      sender,
+      receiver: algosdk.getApplicationAddress(appId),
+      amount: algokit.microAlgos(BOX_PRICE),
+      signer,
+    })
+
+    const tx = await client
+      .registerHolder(
+        { boxPayment },
+        {
+          boxes: [{ appIndex: 0, name: algosdk.decodeAddress(sender).publicKey }],
+          sendParams: { fee: algokit.algos(0.003) },
+        },
+      )
+      .catch((e: any) => e)
+
+    if (tx instanceof Error) return tx
+    return tx
+  } catch (e) {
+    console.error('Error in registerDeviceHolder:', e)
+    return e
+  }
+}
+
+/**
+ * Unregister as a verified holder (verified-hold mode).
+ */
+export const unregisterDeviceHolder = async (
   appId: number,
   sender: string,
   signer: TransactionSigner,
@@ -334,7 +416,74 @@ export const claimRewards = async (
   feeRecipient: string,
 ) => {
   try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
+    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+
+    const tx = await client
+      .unregisterHolder(
+        {},
+        {
+          boxes: [{ appIndex: 0, name: algosdk.decodeAddress(sender).publicKey }],
+          sendParams: { fee: algokit.algos(0.003) },
+        },
+      )
+      .catch((e: any) => e)
+
+    if (tx instanceof Error) return tx
+
+    if (feeAmount > 0) {
+      try {
+        let feeResult
+        if (feeTokenId === 0) {
+          feeResult = await algorandClient.send.payment({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: algokit.microAlgos(feeAmount),
+          })
+        } else {
+          feeResult = await algorandClient.send.assetTransfer({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: BigInt(feeAmount),
+            assetId: BigInt(feeTokenId),
+          })
+        }
+        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+
+        await logFee({
+          appId,
+          userId: sender,
+          gasAmount: feeAmount,
+          gasType: 'deviceStakingWithdraw',
+          feeType: 'percentage',
+          txId: feeTxId,
+        })
+      } catch (feeErr) {
+        console.warn('Fee transfer failed after device unregister:', feeErr)
+      }
+    }
+
+    return tx
+  } catch (e) {
+    console.error('Error in unregisterDeviceHolder:', e)
+    return e
+  }
+}
+
+/**
+ * Claim accumulated rewards from the pool.
+ */
+export const claimDeviceRewardsOnChain = async (
+  appId: number,
+  sender: string,
+  signer: TransactionSigner,
+  feeAmount: number,
+  feeTokenId: number,
+  feeRecipient: string,
+) => {
+  try {
+    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const tx = await client
       .claimRewards(
@@ -373,148 +522,80 @@ export const claimRewards = async (
           appId,
           userId: sender,
           gasAmount: feeAmount,
-          gasType: 'nftStakingClaim',
+          gasType: 'deviceStakingClaim',
           feeType: 'percentage',
           txId: feeTxId,
         })
       } catch (feeErr) {
-        console.warn('Fee transfer failed after successful NFT claim:', feeErr)
+        console.warn('Fee transfer failed after device claim:', feeErr)
       }
     }
 
     return tx
   } catch (e) {
-    console.error('Error in claimRewards:', e)
+    console.error('Error in claimDeviceRewardsOnChain:', e)
     return e
   }
 }
 
 /**
- * Deposit rewards into the pool (ASA token).
+ * Set the verifier address (creator only).
  */
-export const depositRewards = async (
-  appId: number,
-  rewardTokenId: number,
-  amount: number,
-  sender: string,
-  signer: TransactionSigner,
-) => {
-  try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
-
-    const rewardTxn = await algorandClient.transactions.assetTransfer({
-      sender,
-      receiver: algosdk.getApplicationAddress(appId),
-      assetId: BigInt(rewardTokenId),
-      amount: BigInt(amount),
-      signer,
-    })
-
-    const tx = await client.depositRewards({ rewardTxn })
-    return tx
-  } catch (e) {
-    console.error('Error in depositRewards:', e)
-    throw e
-  }
-}
-
-/**
- * Deposit ALGO rewards into the pool.
- */
-export const depositRewardsAlgo = async (
-  appId: number,
-  amount: number,
-  sender: string,
-  signer: TransactionSigner,
-) => {
-  try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
-
-    const payment = await algorandClient.transactions.payment({
-      sender,
-      receiver: algosdk.getApplicationAddress(appId),
-      amount: algokit.microAlgos(amount),
-      signer,
-    })
-
-    const tx = await client.depositRewardsAlgo({ payment })
-    return tx
-  } catch (e) {
-    console.error('Error in depositRewardsAlgo:', e)
-    throw e
-  }
+export const setDeviceVerifier = async (appId: number, newVerifier: string, sender: string, signer: TransactionSigner) => {
+  const { client } = await createDeviceStakingClient(signer, sender, appId)
+  return client.setVerifier({ newVerifier })
 }
 
 /**
  * Pause the pool (creator only).
  */
-export const pausePool = async (appId: number, sender: string, signer: TransactionSigner) => {
-  const { client } = await createNftStakingClient(signer, sender, appId)
+export const pauseDevicePool = async (appId: number, sender: string, signer: TransactionSigner) => {
+  const { client } = await createDeviceStakingClient(signer, sender, appId)
   return client.pausePool({})
 }
 
 /**
  * Resume the pool (creator only).
  */
-export const resumePool = async (appId: number, sender: string, signer: TransactionSigner) => {
-  const { client } = await createNftStakingClient(signer, sender, appId)
+export const resumeDevicePool = async (appId: number, sender: string, signer: TransactionSigner) => {
+  const { client } = await createDeviceStakingClient(signer, sender, appId)
   return client.resumePool({})
 }
 
 /**
  * Update pool end time (creator only).
  */
-export const updateEndTime = async (appId: number, newEndTime: number, sender: string, signer: TransactionSigner) => {
-  const { client } = await createNftStakingClient(signer, sender, appId)
+export const updateDeviceEndTime = async (appId: number, newEndTime: number, sender: string, signer: TransactionSigner) => {
+  const { client } = await createDeviceStakingClient(signer, sender, appId)
   return client.updateEndTime({ newEndTime: BigInt(newEndTime) })
-}
-
-/**
- * Add NFT ASA to whitelist (creator only).
- */
-export const addToWhitelist = async (appId: number, nftId: number, sender: string, signer: TransactionSigner) => {
-  const { client } = await createNftStakingClient(signer, sender, appId)
-  return client.addToWhitelist(
-    { nftId },
-    { boxes: [{ appIndex: 0, name: new TextEncoder().encode('wl') }] },
-  )
-}
-
-/**
- * Remove NFT ASA from whitelist (creator only).
- */
-export const removeFromWhitelist = async (appId: number, nftId: number, sender: string, signer: TransactionSigner) => {
-  const { client } = await createNftStakingClient(signer, sender, appId)
-  return client.removeFromWhitelist(
-    { nftId },
-    { boxes: [{ appIndex: 0, name: new TextEncoder().encode('wl') }] },
-  )
 }
 
 /**
  * Calculate pending rewards for a user (client-side estimation).
  */
-export const calculatePendingRewards = async (appId: number, sender: string, signer: TransactionSigner) => {
+export const calculateDevicePendingRewards = async (appId: number, sender: string, signer: TransactionSigner) => {
   try {
-    const { client } = await createNftStakingClient(signer, sender, appId)
+    const { client } = await createDeviceStakingClient(signer, sender, appId)
     const globalState: any = await client.getGlobalState()
 
     const rewardModel = globalState?.rewardModel?.asNumber() ?? 0
     const ratePerDay = globalState?.ratePerDay?.asNumber() ?? 0
     const totalRewardPool = globalState?.totalRewardPool?.asNumber() ?? 0
     const totalNftsStaked = globalState?.totalNftsStaked?.asNumber() ?? 0
+    const totalVerifiedHolders = globalState?.totalVerifiedHolders?.asNumber() ?? 0
     const aprRate = globalState?.aprRate?.asNumber() ?? 0
     const valuePerNft = globalState?.valuePerNft?.asNumber() ?? 0
     const rewardTokenId = globalState?.rewardTokenId?.asNumber() ?? 0
+    const stakingMode = globalState?.stakingMode?.asNumber() ?? 0
 
-    // Read user box
+    const totalParticipants = stakingMode === 1 ? totalVerifiedHolders : totalNftsStaked
+
     const algod = getAlgodClient()
     const boxName = algosdk.decodeAddress(sender).publicKey
     let userStakeTime: number
 
     try {
       const boxValue = await algokit.getAppBoxValue(appId, boxName, algod)
-      // Box format: stakeTime(8) + nftCount(8) + totalClaimed(8)
       userStakeTime = Number(algosdk.decodeUint64(boxValue.slice(0, 8), 'mixed'))
     } catch {
       return { reward: 0, rewardTokenId }
@@ -526,22 +607,22 @@ export const calculatePendingRewards = async (appId: number, sender: string, sig
 
     let reward = 0
     switch (rewardModel) {
-      case 0: // Fixed rate
+      case 0:
         reward = ratePerDay * stakeDays
         break
-      case 1: // Proportional
-        if (totalNftsStaked > 0) {
-          reward = (totalRewardPool / totalNftsStaked) * stakeDays
+      case 1:
+        if (totalParticipants > 0) {
+          reward = (totalRewardPool / totalParticipants) * stakeDays
         }
         break
-      case 2: // APR
+      case 2:
         reward = (valuePerNft * (aprRate / 10000) * stakeDays) / 360
         break
     }
 
     return { reward: Math.floor(reward), rewardTokenId }
   } catch (e) {
-    console.error('Error calculating pending rewards:', e)
+    console.error('Error calculating device pending rewards:', e)
     return { reward: 0, rewardTokenId: 0 }
   }
 }
@@ -549,9 +630,9 @@ export const calculatePendingRewards = async (appId: number, sender: string, sig
 /**
  * Get global pool state data.
  */
-export const getNftPoolData = async (appId: number, sender: string, signer: TransactionSigner) => {
+export const getDevicePoolData = async (appId: number, sender: string, signer: TransactionSigner) => {
   try {
-    const { client } = await createNftStakingClient(signer, sender, appId)
+    const { client } = await createDeviceStakingClient(signer, sender, appId)
     const globalState: any = await client.getGlobalState()
     return {
       rewardModel: globalState?.rewardModel?.asNumber(),
@@ -566,11 +647,13 @@ export const getNftPoolData = async (appId: number, sender: string, signer: Tran
       lockPeriod: globalState?.lockPeriod?.asNumber(),
       isActive: globalState?.isActive?.asNumber(),
       totalNftsStaked: globalState?.totalNftsStaked?.asNumber(),
+      totalVerifiedHolders: globalState?.totalVerifiedHolders?.asNumber(),
       totalRewardBalance: globalState?.totalRewardBalance?.asNumber(),
       totalRewardsClaimed: globalState?.totalRewardsClaimed?.asNumber(),
+      stakingMode: globalState?.stakingMode?.asNumber(),
     }
   } catch (e) {
-    console.error('getNftPoolData error:', e)
+    console.error('getDevicePoolData error:', e)
     throw e
   }
 }

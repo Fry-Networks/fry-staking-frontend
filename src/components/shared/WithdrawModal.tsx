@@ -3,7 +3,7 @@ import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
 import { toast } from 'react-toastify'
 import { unstakeTokens as unstakeFarmTokens, getAlgodClient } from '../../farming_func'
-import { unstakeTokens as unstakePoolTokens } from '../../staking_func'
+import { unstakeTokens as unstakePoolTokens, checkPoolRewardBalance, estimateStakingReward } from '../../staking_func'
 import { fetchFeeConfig, calculateFeeSimple } from '../../services/FeeService'
 import { useAuth } from '../../hooks/useAuth'
 import { authAxios } from '../../services/apiClient'
@@ -27,6 +27,7 @@ interface WithdrawModalProps {
   isLpFarm: boolean
   stakeTokenBId?: number
   pairName?: string
+  rewardTokenId?: number
 }
 
 type WithdrawStep = 'input' | 'confirm' | 'unstaking' | 'removing-liquidity' | 'success' | 'error'
@@ -42,6 +43,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
   isLpFarm,
   stakeTokenBId,
   pairName,
+  rewardTokenId,
 }) => {
   const { activeAddress, signer, signTransactions } = useWallet()
   const { ensureAuth } = useAuth()
@@ -145,13 +147,27 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
     const withdrawAmountMicro = Math.floor(amount * 1_000_000)
 
     try {
+      // Pre-flight check: verify contract has enough reward tokens for staking pools
+      if (!isLpFarm && rewardTokenId) {
+        try {
+          const rewardBalance = await checkPoolRewardBalance(appId, rewardTokenId)
+          if (rewardBalance <= 0n) {
+            setError('This pool\'s rewards are depleted. Withdrawals are temporarily unavailable — contact the pool creator.')
+            setStep('error')
+            return
+          }
+        } catch (e) {
+          console.warn('Could not check pool reward balance:', e)
+        }
+      }
+
       await ensureAuth()
       const feeType = isLpFarm ? 'farmingWithdraw' : 'stakingWithdraw'
       const feeConfig = await fetchFeeConfig()
       const fee = calculateFeeSimple(feeType, withdrawAmountMicro, feeConfig)
 
       if (isLpFarm) {
-        await unstakeFarmTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient)
+        const farmResult = await unstakeFarmTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient) as any
 
         try {
           await authAxios.post('/farmingwithdraw/add', {
@@ -159,12 +175,15 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
             userWallet: activeAddress,
             poolId: String(appId),
             farmingTokenId: String(appId),
+            feeTxId: farmResult.feeTxId,
+            feeAssetId: farmResult.feeTokenId,
           })
         } catch (e) {
           console.warn('Failed to log withdraw data:', e)
         }
       } else {
-        await unstakePoolTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient)
+        const poolResult = await unstakePoolTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient) as any
+        if (poolResult.tx instanceof Error) throw poolResult.tx
 
         try {
           await authAxios.post('/withdraw/add', {
@@ -172,6 +191,8 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
             wallet: activeAddress,
             poolId: appId,
             appId: appId,
+            feeTxId: poolResult.feeTxId,
+            feeAssetId: poolResult.feeTokenId,
           })
         } catch (e) {
           console.warn('Failed to log withdraw data:', e)
@@ -208,7 +229,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
       const feeConfig = await fetchFeeConfig()
       const fee = calculateFeeSimple('farmingWithdraw', withdrawAmountMicro, feeConfig)
 
-      await unstakeFarmTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient)
+      const zapFarmResult = await unstakeFarmTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient)
 
       try {
         await authAxios.post('/farmingwithdraw/add', {
@@ -216,6 +237,8 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
           userWallet: activeAddress,
           poolId: String(appId),
           farmingTokenId: String(appId),
+          feeTxId: zapFarmResult.feeTxId,
+          feeAssetId: zapFarmResult.feeTokenId,
         })
       } catch (e) {
         console.warn('Failed to log withdraw data:', e)
@@ -450,8 +473,11 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
 
               {/* Withdraw button */}
               <button
-                onClick={isLpFarm && showAdvanced ? handleReverseZapWithdraw : handleSimpleWithdraw}
-                disabled={!canWithdraw || (isLpFarm && showAdvanced && (!pool || !quoteOutput))}
+                onClick={() => {
+                  if (!activeAddress) { window.dispatchEvent(new Event('openConnectWallet')); return }
+                  ;(isLpFarm && showAdvanced ? handleReverseZapWithdraw : handleSimpleWithdraw)()
+                }}
+                disabled={activeAddress ? (!canWithdraw || (isLpFarm && showAdvanced && (!pool || !quoteOutput))) : false}
                 className="w-full py-3 rounded-lg font-bold text-white transition-colors linearGradient disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {!activeAddress ? 'Connect Wallet' : exceedsStake ? 'Exceeds Stake' : 'Withdraw'}

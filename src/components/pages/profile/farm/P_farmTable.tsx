@@ -3,6 +3,7 @@ import { useWallet } from '@txnlab/use-wallet'
 import axios from 'axios'
 import P_FTable from './P_fTable'
 import { tokenServiceInstance } from '../../../../services/TokenService'
+import { getUserStakeForPool } from '../../../../farming_func'
 
 export type FarmStatus = 'active' | 'ending-soon' | 'ended'
 export type FarmFilter = 'all' | 'active' | 'ending-soon' | 'ended'
@@ -27,6 +28,8 @@ export interface ProfileFarmPool {
   appId: number
   rewardTokenId: number
   stakeTokenId: number
+  userStaked: string
+  reward: string
 }
 
 function computeStatus(endTime: number): FarmStatus {
@@ -44,7 +47,7 @@ const FILTER_LABELS: { key: FarmFilter; label: string }[] = [
 ]
 
 const P_FarmTable: React.FC = () => {
-  const { activeAddress } = useWallet()
+  const { activeAddress, signer } = useWallet()
   const [pools, setPools] = useState<ProfileFarmPool[]>([])
   const [loading, setLoading] = useState(false)
   const [activeFilter, setActiveFilter] = useState<FarmFilter>('all')
@@ -97,6 +100,20 @@ const P_FarmTable: React.FC = () => {
         return isCreator || hasParticipated
       })
 
+      // Fetch on-chain stake data for each pool in parallel
+      const onChainDataMap: Record<number, { staked: number; reward: number }> = {}
+      if (signer) {
+        await Promise.allSettled(
+          userFarms.map(async (farm: any) => {
+            try {
+              if (!farm.appId || !activeAddress) return
+              const data = await getUserStakeForPool(farm.appId, activeAddress, signer)
+              if (data) onChainDataMap[farm.appId] = { staked: data.staked, reward: data.reward }
+            } catch {}
+          })
+        )
+      }
+
       const mapped: ProfileFarmPool[] = userFarms.map((farm: any, index: number) => {
         const endTime = farm.farmEndTime || 0
         const endsIn = Math.max(0, endTime - now)
@@ -127,6 +144,12 @@ const P_FarmTable: React.FC = () => {
           appId: farm.appId,
           rewardTokenId: Number(rewardTokenId) || 0,
           stakeTokenId: Number(farm.stakeTokenId || farm.lpToken?.tokenAId) || 0,
+          userStaked: onChainDataMap[farm.appId]?.staked
+            ? `${onChainDataMap[farm.appId].staked.toFixed(6)}`
+            : '0',
+          reward: onChainDataMap[farm.appId]?.reward
+            ? `${onChainDataMap[farm.appId].reward.toFixed(3)}`
+            : '0',
         }
       })
 

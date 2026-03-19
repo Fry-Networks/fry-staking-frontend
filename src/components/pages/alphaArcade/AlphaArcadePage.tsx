@@ -1,16 +1,22 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
-import { Tabs, Spin, Input, Select, Alert, Table } from 'antd'
+import { Tabs, Spin, Input, Select, Alert, Table, Tooltip } from 'antd'
 import MarketCard from './MarketCard'
 import PositionCard from './PositionCard'
 import DepositModal from './DepositModal'
 import WithdrawModal from './WithdrawModal'
+import ClaimModal from './ClaimModal'
 import { getMarkets, getPositionsByWallet, getPools, getStats } from '../../../services/alphaArcadeApi'
 import type { AlphaArcadeMarket, AlphaArcadePosition, AlphaArcadePool, AlphaArcadeStats } from '../../../types/alphaArcade'
+import { usePreferences } from '../../../contexts/PreferencesContext'
+import { friendlyApr } from '../../../utils/grandmaLabels'
+
+const SIMPLE_SORT_KEYS = ['top', 'popular', 'newest']
 
 const AlphaArcadePage: React.FC = () => {
   const { activeAddress } = useWallet()
+  const { isSimpleMode } = usePreferences()
 
   const [markets, setMarkets] = useState<AlphaArcadeMarket[]>([])
   const [positions, setPositions] = useState<AlphaArcadePosition[]>([])
@@ -20,6 +26,8 @@ const AlphaArcadePage: React.FC = () => {
   const [positionsLoading, setPositionsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [sortBy, setSortBy] = useState<string>('volume-desc')
+  const [activeTab, setActiveTab] = useState<string>('markets')
 
   const [depositModal, setDepositModal] = useState<{ visible: boolean; market: AlphaArcadeMarket | null }>({
     visible: false,
@@ -29,6 +37,18 @@ const AlphaArcadePage: React.FC = () => {
     visible: false,
     position: null,
   })
+  const [claimModal, setClaimModal] = useState<{ visible: boolean; position: AlphaArcadePosition | null }>({
+    visible: false,
+    position: null,
+  })
+  const [showHowItWorks, setShowHowItWorks] = useState(false)
+
+  // Reset sort to a valid option when entering simple mode
+  useEffect(() => {
+    if (isSimpleMode && !SIMPLE_SORT_KEYS.includes(sortBy)) {
+      setSortBy('top')
+    }
+  }, [isSimpleMode])
 
   // Fetch markets and pools on mount
   useEffect(() => {
@@ -111,6 +131,47 @@ const AlphaArcadePage: React.FC = () => {
     })
   }, [markets, searchQuery, categoryFilter])
 
+  // Sort filtered markets
+  const sortedMarkets = useMemo(() => {
+    const sorted = [...filteredMarkets]
+    sorted.sort((a, b) => {
+      const poolA = poolMap.get(a.marketAppId)
+      const poolB = poolMap.get(b.marketAppId)
+      switch (sortBy) {
+        case 'apr-desc': {
+          const aprA = (poolA as any)?.aprEstimate?.estimatedApr ?? 0
+          const aprB = (poolB as any)?.aprEstimate?.estimatedApr ?? 0
+          return aprB - aprA
+        }
+        case 'tvl-desc': {
+          const tvlA = poolA?.totalUsdcDeposited ?? 0
+          const tvlB = poolB?.totalUsdcDeposited ?? 0
+          return tvlB - tvlA
+        }
+        case 'volume-desc':
+          return (b.twentyFourHrVolume || 0) - (a.twentyFourHrVolume || 0)
+        case 'resolution-asc': {
+          const endA = a.endTs || Infinity
+          const endB = b.endTs || Infinity
+          return endA - endB
+        }
+        case 'top': {
+          const featA = a.featured ? 1 : 0
+          const featB = b.featured ? 1 : 0
+          if (featB !== featA) return featB - featA
+          return (b.twentyFourHrVolume || 0) - (a.twentyFourHrVolume || 0)
+        }
+        case 'popular':
+          return (b.volume || 0) - (a.volume || 0)
+        case 'newest':
+          return (b.createdAt || 0) - (a.createdAt || 0)
+        default:
+          return 0
+      }
+    })
+    return sorted
+  }, [filteredMarkets, sortBy, poolMap])
+
   const activePositionsCount = useMemo(() => {
     return positions.filter((p) => p.status === 'active' || p.status === 'pending_withdrawal').length
   }, [positions])
@@ -177,6 +238,7 @@ const AlphaArcadePage: React.FC = () => {
         market: pool.marketQuestion || market?.title || `Market #${pool.marketAppId}`,
         tvl: pool.totalUsdcDeposited || 0,
         providers: pool.totalProviders || 0,
+        aprEstimate: (pool as any).aprEstimate?.estimatedApr || 0,
         userPosition: userPos?.usdcDeposited || 0,
         resolutionTime: resTime,
         marketAppId: pool.marketAppId,
@@ -210,20 +272,24 @@ const AlphaArcadePage: React.FC = () => {
               {loading ? '...' : stats?.activePools ?? markets.length}
             </h3>
           </div>
+          {!isSimpleMode && (
+            <div className="flex flex-col items-center gap-[6px]">
+              <p className="text-text_clr tracking-[0.54px] large">Total TVL</p>
+              <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
+                {loading ? '...' : fmtUsd((stats?.tvl ?? 0) / 1_000_000)}
+              </h3>
+            </div>
+          )}
+          {!isSimpleMode && (
+            <div className="flex flex-col items-center gap-[6px]">
+              <p className="text-text_clr tracking-[0.54px] large">Total Providers</p>
+              <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
+                {loading ? '...' : stats?.totalProviders ?? 0}
+              </h3>
+            </div>
+          )}
           <div className="flex flex-col items-center gap-[6px]">
-            <p className="text-text_clr tracking-[0.54px] large">Total TVL</p>
-            <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
-              {loading ? '...' : fmtUsd((stats?.tvl ?? 0) / 1_000_000)}
-            </h3>
-          </div>
-          <div className="flex flex-col items-center gap-[6px]">
-            <p className="text-text_clr tracking-[0.54px] large">Total Providers</p>
-            <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
-              {loading ? '...' : stats?.totalProviders ?? 0}
-            </h3>
-          </div>
-          <div className="flex flex-col items-center gap-[6px]">
-            <p className="text-text_clr tracking-[0.54px] large">Active Positions</p>
+            <p className="text-text_clr tracking-[0.54px] large">{isSimpleMode ? 'People Participating' : 'Active Positions'}</p>
             <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
               {loading ? '...' : stats?.totalPositions ?? 0}
             </h3>
@@ -237,9 +303,43 @@ const AlphaArcadePage: React.FC = () => {
         </div>
       </div>
 
+      {/* How it works */}
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => setShowHowItWorks(!showHowItWorks)}
+          className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        >
+          <Icon icon="mdi:information-outline" width={16} />
+          How Prediction Market LP Works
+          <Icon icon={showHowItWorks ? 'mdi:chevron-up' : 'mdi:chevron-down'} width={16} />
+        </button>
+        {showHowItWorks && (
+          <div className="mt-2 bg-[var(--bg-secondary)] rounded-xl p-4 text-sm text-[var(--text-secondary)] flex flex-col gap-3">
+            <div>
+              <p className="font-medium text-[var(--text-primary)]">How you earn</p>
+              <p>Every trade pays a spread (the difference between buy and sell prices). With a 0.5% spread, a $100 trade earns you $0.50. More trading activity means more earnings.</p>
+            </div>
+            <div>
+              <p className="font-medium text-[var(--text-primary)]">Your risk</p>
+              <p>If the market resolves while you hold an imbalanced position (more YES than NO or vice versa), you may lose capital. Markets near 50/50 are lower risk.</p>
+            </div>
+            <div>
+              <p className="font-medium text-[var(--text-primary)]">When you get paid</p>
+              <p>Spread revenue accumulates in your position. Withdraw anytime before resolution, or your position settles automatically at resolution.</p>
+            </div>
+            <div>
+              <p className="font-medium text-[var(--text-primary)]">Tips</p>
+              <p>Higher spread = more per trade but less volume. More time to resolution = more time to earn. Diversify across markets to reduce directional risk.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Tabs */}
       <Tabs
-        defaultActiveKey="markets"
+        activeKey={activeTab}
+        onChange={setActiveTab}
         items={[
           {
             key: 'markets',
@@ -267,13 +367,31 @@ const AlphaArcadePage: React.FC = () => {
                       className="min-w-[160px]"
                     />
                   )}
+                  <Select
+                    value={sortBy}
+                    onChange={setSortBy}
+                    options={isSimpleMode ? [
+                      { value: 'top', label: 'Recommended' },
+                      { value: 'popular', label: 'Most Popular' },
+                      { value: 'newest', label: 'Newest' },
+                    ] : [
+                      { value: 'top', label: 'Top Markets' },
+                      { value: 'popular', label: 'Most Popular' },
+                      { value: 'volume-desc', label: 'Highest 24h Volume' },
+                      { value: 'apr-desc', label: 'Highest APR' },
+                      { value: 'tvl-desc', label: 'Highest TVL' },
+                      { value: 'resolution-asc', label: 'Soonest Resolution' },
+                      { value: 'newest', label: 'Newest' },
+                    ]}
+                    className="min-w-[180px]"
+                  />
                 </div>
 
                 {loading ? (
                   <div className="flex justify-center py-20">
                     <Spin size="large" />
                   </div>
-                ) : filteredMarkets.length === 0 ? (
+                ) : sortedMarkets.length === 0 ? (
                   <div className="text-center py-20">
                     <Icon icon="mdi:chart-timeline-variant" width={48} className="text-[var(--text-secondary)] opacity-30 mx-auto mb-3" />
                     <p className="text-[var(--text-secondary)]">
@@ -284,13 +402,22 @@ const AlphaArcadePage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {filteredMarkets.map((market) => (
-                      <MarketCard
-                        key={market.marketAppId}
-                        market={market}
-                        onDeposit={(m) => setDepositModal({ visible: true, market: m })}
-                      />
-                    ))}
+                    {sortedMarkets.map((market) => {
+                      const pool = poolMap.get(market.marketAppId)
+                      return (
+                        <MarketCard
+                          key={market.marketAppId}
+                          market={market}
+                          aprEstimate={
+                            (pool as any)?.aprEstimate?.estimatedApr ??
+                            (market.twentyFourHrVolume > 0
+                              ? (market.twentyFourHrVolume / 100) * (50 / 10000) * 365 * 100
+                              : 0.1 * (50 / 10000) * 365 * 100)
+                          }
+                          onDeposit={(m) => setDepositModal({ visible: true, market: m })}
+                        />
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -298,7 +425,7 @@ const AlphaArcadePage: React.FC = () => {
           },
           {
             key: 'pools',
-            label: `Community Positions (${poolsTableData.length})`,
+            label: isSimpleMode ? `All Pools (${poolsTableData.length})` : `Community Positions (${poolsTableData.length})`,
             children: (
               <Table
                 dataSource={poolsTableData}
@@ -306,9 +433,10 @@ const AlphaArcadePage: React.FC = () => {
                 className="web-table"
                 columns={[
                   { title: 'MARKET', dataIndex: 'market', render: (v: string) => <span className="text-[var(--text-primary)] font-medium text-sm">{v}</span> },
-                  { title: 'TVL', dataIndex: 'tvl', sorter: (a: any, b: any) => a.tvl - b.tvl, defaultSortOrder: 'descend' as const, render: (v: number) => `$${(v / 1e6).toFixed(2)}` },
-                  { title: 'PROVIDERS', dataIndex: 'providers', sorter: (a: any, b: any) => a.providers - b.providers, render: (v: number) => v },
-                  { title: 'YOUR POSITION', dataIndex: 'userPosition', render: (v: number) => v > 0 ? `$${(v / 1e6).toFixed(2)}` : '—' },
+                  { title: isSimpleMode ? 'POOL SIZE' : 'TVL', dataIndex: 'tvl', sorter: (a: any, b: any) => a.tvl - b.tvl, defaultSortOrder: 'descend' as const, render: (v: number) => `$${(v / 1e6).toFixed(2)}` },
+                  ...(!isSimpleMode ? [{ title: () => <span className="flex items-center gap-1">EST. APR <Tooltip title="Estimated annual return from spread fees. Based on real 24h trading volume when available, otherwise assumes 10% daily TVL turnover. Actual returns vary with market activity."><Icon icon="mdi:information-outline" width={14} className="cursor-help text-[var(--text-secondary)]" /></Tooltip></span>, dataIndex: 'aprEstimate', sorter: (a: any, b: any) => a.aprEstimate - b.aprEstimate, render: (v: number) => v > 0 ? <span className="text-green-500 font-medium">{v.toFixed(1)}%</span> : <span className="text-[var(--text-secondary)]">N/A</span> }] : []),
+                  ...(!isSimpleMode ? [{ title: 'PROVIDERS', dataIndex: 'providers', sorter: (a: any, b: any) => a.providers - b.providers, render: (v: number) => v }] : []),
+                  { title: isSimpleMode ? 'YOUR INVESTMENT' : 'YOUR POSITION', dataIndex: 'userPosition', render: (v: number) => v > 0 ? `$${(v / 1e6).toFixed(2)}` : '—' },
                   { title: 'RESOLUTION', dataIndex: 'resolutionTime', render: (v: number) => v > 0 ? new Date(v * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' },
                   { title: '', dataIndex: 'marketObj', render: (m: AlphaArcadeMarket | undefined) => m ? <button onClick={() => setDepositModal({ visible: true, market: m })} className="px-3 py-1 rounded-[6px] text-xs font-medium linearGradient text-white">Deposit</button> : null },
                 ]}
@@ -317,7 +445,9 @@ const AlphaArcadePage: React.FC = () => {
           },
           {
             key: 'positions',
-            label: `My Positions${activePositionsCount > 0 ? ` (${activePositionsCount})` : ''}`,
+            label: isSimpleMode
+              ? `My Investments${activePositionsCount > 0 ? ` (${activePositionsCount})` : ''}`
+              : `My Positions${activePositionsCount > 0 ? ` (${activePositionsCount})` : ''}`,
             children: (
               <div>
                 {!activeAddress ? (
@@ -344,6 +474,7 @@ const AlphaArcadePage: React.FC = () => {
                         marketQuestion={getMarketQuestion(pos)}
                         resolutionTime={getResolutionTime(pos)}
                         onWithdraw={(p) => setWithdrawModal({ visible: true, position: p })}
+                        onClaim={(p) => setClaimModal({ visible: true, position: p })}
                       />
                     ))}
                   </div>
@@ -362,6 +493,7 @@ const AlphaArcadePage: React.FC = () => {
         onSuccess={() => {
           setDepositModal({ visible: false, market: null })
           refreshAll()
+          setActiveTab('positions')
         }}
       />
       <WithdrawModal
@@ -371,6 +503,16 @@ const AlphaArcadePage: React.FC = () => {
         onClose={() => setWithdrawModal({ visible: false, position: null })}
         onSuccess={() => {
           setWithdrawModal({ visible: false, position: null })
+          refreshAll()
+        }}
+      />
+      <ClaimModal
+        visible={claimModal.visible}
+        position={claimModal.position}
+        marketQuestion={claimModal.position ? getMarketQuestion(claimModal.position) : undefined}
+        onClose={() => setClaimModal({ visible: false, position: null })}
+        onSuccess={() => {
+          setClaimModal({ visible: false, position: null })
           refreshAll()
         }}
       />

@@ -20,7 +20,7 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
     closeModal()
   }
   return (
-    <Modal open={openModal} onOk={handleOk} onCancel={closeModal} centered={true} width={415} footer={null}>
+    <Modal open={openModal} onOk={handleOk} onCancel={closeModal} centered={true} width={415} footer={null} zIndex={10000}>
       <form method="dialog" className="relative modal-box bg-[var(--modal-bg)] max-w-md px-6 py-5 rounded-3xl">
         <div className="w-full flex flex-col items-center justify-center gap-6 mt-5">
           <h3 className="text-[var(--text-heading)] uppercase text-2xl text-center font-apex walletText">
@@ -70,6 +70,10 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
                     const activeProvider = providers.find((p) => p.isActive)
                     if (activeProvider) {
                       activeProvider.disconnect()
+                      // Clear stale WalletConnect sessions (Pera SDK bug on desktop)
+                      Object.keys(localStorage)
+                        .filter(k => k.startsWith('wc@') || k === 'walletconnect' || k === 'WALLETCONNECT_DEEPLINK_CHOICE')
+                        .forEach(k => localStorage.removeItem(k))
                     } else {
                       // Required for logout/cleanup of inactive providers
                       // For instance, when you login to localnet wallet and switch network

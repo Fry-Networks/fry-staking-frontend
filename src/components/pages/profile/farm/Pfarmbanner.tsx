@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useWallet } from '@txnlab/use-wallet'
 import axios from 'axios'
+import { usePreferences } from '../../../../contexts/PreferencesContext'
 
 const P_Farmbanner = () => {
   const { activeAddress } = useWallet()
+  const { isSimpleMode } = usePreferences()
   const [stats, setStats] = useState({ poolsCreated: 0, totalTvl: 0, myStakes: 0, myRewards: 0 })
   const api_base_url = import.meta.env.VITE_API_BASE_URL
 
@@ -49,7 +51,7 @@ const P_Farmbanner = () => {
         </h3>
       </div>
       <div className="flex flex-col items-center gap-[24px] max-sm:gap-[6px]">
-        <p className="text-[var(--text-secondary)] tracking-[0.54px] large">Farm TVL</p>
+        <p className="text-[var(--text-secondary)] tracking-[0.54px] large">{isSimpleMode ? 'Total Value Farmed' : 'Farm TVL'}</p>
         <h3 className="small text-[var(--text-primary)] font-medium tracking-[1.08px]">
           <span className="text-red">$</span>{fmt(stats.totalTvl)}
         </h3>

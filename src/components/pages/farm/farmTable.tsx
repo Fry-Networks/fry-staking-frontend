@@ -70,6 +70,11 @@ const FarmTable: React.FC = () => {
       // Use database images with fallback to Tinyman
       const databaseImages = Object.keys(images).length > 0 ? images : tokenImages;
 
+      // Build decimal map from token service for accurate LP price calculations
+      const allTokens = await tokenService.fetchAllTokens();
+      const decimalMap: Record<string, number> = {};
+      allTokens.forEach(t => { decimalMap[t.id.toString()] = t.decimals ?? 6; });
+
       // Fetch LP token USD prices for unique pairs
       const pairMap = new Map<string, { tokenAId: number; tokenBId: number }>();
       for (const farm of data) {
@@ -84,7 +89,11 @@ const FarmTable: React.FC = () => {
       const lpPriceResults = await Promise.allSettled(
         [...pairMap.entries()].map(async ([key, pair]) => ({
           key,
-          price: await getLpTokenUsdPrice(pair.tokenAId, pair.tokenBId),
+          price: await getLpTokenUsdPrice(
+            pair.tokenAId, pair.tokenBId,
+            decimalMap[pair.tokenAId.toString()] ?? 6,
+            decimalMap[pair.tokenBId.toString()] ?? 6,
+          ),
         }))
       );
 

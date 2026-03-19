@@ -1,13 +1,17 @@
 import React from 'react'
 import { Icon } from '@iconify/react'
 import type { AlphaArcadeMarket } from '../../../types/alphaArcade'
+import { usePreferences } from '../../../contexts/PreferencesContext'
+import { friendlyApr, friendlyVolume, friendlyProbability } from '../../../utils/grandmaLabels'
 
 interface MarketCardProps {
   market: AlphaArcadeMarket
   onDeposit: (market: AlphaArcadeMarket) => void
+  aprEstimate?: number
 }
 
-const MarketCard: React.FC<MarketCardProps> = ({ market, onDeposit }) => {
+const MarketCard: React.FC<MarketCardProps> = ({ market, onDeposit, aprEstimate }) => {
+  const { isSimpleMode } = usePreferences()
   const yesPercent = Math.round(market.yesProb ?? 50)
   const noPercent = 100 - yesPercent
   const isResolved = market.endTs > 0 && market.endTs * 1000 < Date.now()
@@ -99,8 +103,14 @@ const MarketCard: React.FC<MarketCardProps> = ({ market, onDeposit }) => {
         {/* Probability bar */}
         <div>
           <div className="flex justify-between text-xs mb-1">
-            <span className="text-green-500 font-medium">Yes {yesPercent}%</span>
-            <span className="text-red-500 font-medium">No {noPercent}%</span>
+            {isSimpleMode ? (
+              <span className="text-[var(--text-primary)] font-medium w-full text-center">{friendlyProbability(yesPercent)}</span>
+            ) : (
+              <>
+                <span className="text-green-500 font-medium">Yes {yesPercent}%</span>
+                <span className="text-red-500 font-medium">No {noPercent}%</span>
+              </>
+            )}
           </div>
           <div className="h-2 rounded-full overflow-hidden flex bg-[var(--bg-secondary)]">
             <div
@@ -115,10 +125,22 @@ const MarketCard: React.FC<MarketCardProps> = ({ market, onDeposit }) => {
         </div>
 
         {/* Stats */}
-        <div className="flex justify-between text-xs text-[var(--text-secondary)]">
-          <span>24h: {formatVolume(market.twentyFourHrVolume)}</span>
-          <span>Vol: {formatVolume(market.volume)}</span>
-        </div>
+        {isSimpleMode ? (
+          <div className="text-xs text-[var(--text-secondary)]">
+            <span>{friendlyVolume(market.twentyFourHrVolume)}</span>
+          </div>
+        ) : (
+          <div className="flex justify-between text-xs text-[var(--text-secondary)]">
+            <span>24h: {formatVolume(market.twentyFourHrVolume)}</span>
+            <span>Vol: {formatVolume(market.volume)}</span>
+          </div>
+        )}
+
+        {aprEstimate != null && aprEstimate > 0 && (
+          <p className="text-xs font-medium text-green-500">
+            {isSimpleMode ? friendlyApr(aprEstimate) : `Est. APR: ${aprEstimate.toFixed(1)}%`}
+          </p>
+        )}
 
         {/* Resolution date */}
         {resolutionDate && (

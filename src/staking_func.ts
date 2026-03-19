@@ -6,7 +6,6 @@ import { FryStakingClient } from './contracts/FryStaking'
 import { APP_SPEC as V2_APP_SPEC } from './contracts/FryStakingV2'
 import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryStakingV2Compiled'
 import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
-import { authFetch } from './services/apiClient'
 
 export const getAlgodClient = async (): Promise<algosdk.Algodv2> => {
   const algodConfig = getAlgodConfigFromViteEnvironment()
@@ -277,40 +276,35 @@ export const stakeTokens = async (stakingId: number, stakeAmount: number, sender
       return tx
     }
 
+    // Wait for on-chain confirmation before returning — ensures box state is readable
+    try {
+      const algod = await getAlgodClient()
+      const txId = tx.txIds?.[0] || tx.transaction?.txID()
+      if (txId) {
+        await algosdk.waitForConfirmation(algod, txId, 4)
+      }
+    } catch (confirmErr) {
+      console.warn('waitForConfirmation warning (tx may still succeed):', confirmErr)
+    }
+
     // Send fee in the transacted token AFTER successful contract call
+    let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        await algorandClient.send.assetTransfer({
+        const feeResult = await algorandClient.send.assetTransfer({
           sender,
           signer,
           receiver: feeRecipient,
           amount: BigInt(feeAmount),
           assetId: BigInt(feeTokenId),
         });
-
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            appId: stakingId,
-            userId: sender,
-            gasAmount: feeAmount,
-            gasType: 'stakingStake',
-            feeType: 'percentage',
-          }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success) console.log('Fee logged:', data);
-            else console.warn('Fee log response:', data.message);
-          })
-          .catch((err) => console.error('Error logging fee:', err));
+        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful stake:', feeErr);
       }
     }
 
-    return tx
+    return { tx, feeTxId, feeTokenId }
   } catch (e) {
     console.error('Error in stakeTokens:', e)
     return e
@@ -358,40 +352,34 @@ export const unstakeTokens = async (
 
     if (tx instanceof Error) return tx
 
+    // Wait for on-chain confirmation before returning
+    try {
+      const txId = tx.txIds?.[0] || tx.transaction?.txID()
+      if (txId) {
+        await algosdk.waitForConfirmation(algodClient, txId, 4)
+      }
+    } catch (confirmErr) {
+      console.warn('waitForConfirmation warning (tx may still succeed):', confirmErr)
+    }
+
     // Send fee in the transacted token AFTER successful contract call
+    let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        await algorandClient.send.assetTransfer({
+        const feeResult = await algorandClient.send.assetTransfer({
           sender,
           signer,
           receiver: feeRecipient,
           amount: BigInt(feeAmount),
           assetId: BigInt(feeTokenId),
         });
-
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            appId: stakingId,
-            userId: sender,
-            gasAmount: feeAmount,
-            gasType: 'stakingWithdraw',
-            feeType: 'percentage',
-          }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success) console.log('Fee logged:', data);
-            else console.warn('Fee log response:', data.message);
-          })
-          .catch((err) => console.error('Error logging fee:', err));
+        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful unstake:', feeErr);
       }
     }
 
-    return tx
+    return { tx, feeTxId, feeTokenId }
   } catch (e) {
     console.error('Error in unstakeTokens:', e)
     return e
@@ -439,34 +427,29 @@ export const claimTokens = async (
       return { error: tx }
     }
 
+    // Wait for on-chain confirmation before returning
+    try {
+      const algod = await getAlgodClient()
+      const txId = tx.txIds?.[0] || tx.transaction?.txID()
+      if (txId) {
+        await algosdk.waitForConfirmation(algod, txId, 4)
+      }
+    } catch (confirmErr) {
+      console.warn('waitForConfirmation warning (tx may still succeed):', confirmErr)
+    }
+
     // Send fee in the reward token AFTER successful contract call
+    let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        await algorandClient.send.assetTransfer({
+        const feeResult = await algorandClient.send.assetTransfer({
           sender,
           signer,
           receiver: feeRecipient,
           amount: BigInt(feeAmount),
           assetId: BigInt(feeTokenId),
         });
-
-        authFetch(`${import.meta.env.VITE_API_BASE_URL}/gasfee/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            appId: stakingId,
-            userId: sender,
-            gasAmount: feeAmount,
-            gasType: 'stakingClaim',
-            feeType: 'percentage',
-          }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success) console.log('Fee logged:', data);
-            else console.warn('Fee log response:', data.message);
-          })
-          .catch((err) => console.error('Error logging fee:', err));
+        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful claim:', feeErr);
       }
@@ -475,6 +458,8 @@ export const claimTokens = async (
     // Return useful data
     return {
       tx,
+      feeTxId,
+      feeTokenId,
       updatedApr: Math.floor(updatedApr * 100),
       rewardClaimed: Number((reward / 1_000_000).toFixed(3)),
       stakedAmount,
@@ -504,6 +489,65 @@ export const estimateStakingReward = async (stakingId: number, sender: string, s
   } catch {
     return { reward: 0, rewardTokenId: globalState?.rewardToken?.asNumber() || FRY_ASSET_ID }
   }
+}
+
+export const checkPoolRewardBalance = async (appId: number, rewardTokenId: number) => {
+  const algod = await getAlgodClient()
+  const appAddress = algosdk.getApplicationAddress(appId)
+  try {
+    const info = await algod.accountAssetInformation(appAddress, rewardTokenId).do()
+    return BigInt(info['asset-holding']?.amount ?? 0)
+  } catch {
+    return 0n
+  }
+}
+
+export const getPoolRewardDeficit = async (appId: number, rewardTokenId: number, signer: TransactionSigner, sender: string) => {
+  const decimals = 6
+
+  const balanceMicro = await checkPoolRewardBalance(appId, rewardTokenId)
+
+  const { stakingClient } = await createFryStakingClient(signer, sender, appId)
+  const globalState: any = await stakingClient.getGlobalState()
+  const totalConfiguredMicro = BigInt(globalState.rewardTokenAmount?.asNumber() ?? 0)
+  const totalDistributedMicro = BigInt(globalState.rewardsDistributed?.asNumber() ?? 0)
+
+  const unclaimedMicro = totalConfiguredMicro - totalDistributedMicro
+  const deficitMicro = unclaimedMicro > balanceMicro ? unclaimedMicro - balanceMicro : 0n
+  const divisor = 10 ** decimals
+
+  return {
+    currentBalance: Number(balanceMicro) / divisor,
+    totalConfigured: Number(totalConfiguredMicro) / divisor,
+    totalDistributed: Number(totalDistributedMicro) / divisor,
+    unclaimed: Number(unclaimedMicro) / divisor,
+    deficit: Number(deficitMicro) / divisor,
+    decimals,
+  }
+}
+
+export const topUpRewards = async (
+  appId: number,
+  rewardTokenId: number,
+  amount: number,
+  sender: string,
+  signer: TransactionSigner,
+) => {
+  const { stakingClient, algorandClient } = await createFryStakingClient(signer, sender, appId)
+
+  const rewardTx = await algorandClient.transactions.assetTransfer({
+    assetId: BigInt(rewardTokenId),
+    amount: BigInt(amount),
+    receiver: algosdk.getApplicationAddress(appId),
+    signer,
+    sender,
+  })
+
+  await stakingClient.assetReceive({
+    rewardTokenTransfer: rewardTx,
+  })
+
+  return { success: true, amount }
 }
 
 /**

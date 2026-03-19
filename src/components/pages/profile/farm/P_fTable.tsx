@@ -6,12 +6,14 @@ import { useNavigate } from 'react-router-dom'
 import { useWallet } from '@txnlab/use-wallet'
 import { toast } from 'react-toastify'
 import type { ProfileFarmPool, FarmFilter } from './P_farmTable'
-import { claimRewards, unstakeTokens, getUserStakeForPool } from '../../../../farming_func'
+import { claimRewards, unstakeTokens, getUserStakeForPool, estimateFarmingReward } from '../../../../farming_func'
 import { useAuth } from '../../../../hooks/useAuth'
 import { fetchFeeConfig, calculateFeeSimple } from '../../../../services/FeeService'
 import type { FeeCalculation } from '../../../../services/FeeService'
 import FeeConfirmation from '../../../shared/FeeConfirmation'
 import { authAxios } from '../../../../services/apiClient'
+import { usePreferences } from '../../../../contexts/PreferencesContext'
+import { friendlyApr, friendlyPoolSize } from '../../../../utils/grandmaLabels'
 
 const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 
@@ -20,6 +22,8 @@ interface DataType {
   pool: React.ReactNode
   tvl: string
   apr: string
+  staked: string
+  reward: string
   status: React.ReactNode
   ends: React.ReactNode
 }
@@ -64,6 +68,7 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
   const navigate = useNavigate()
   const { activeAddress, signer } = useWallet()
   const { ensureAuth } = useAuth()
+  const { isSimpleMode } = usePreferences()
 
   const [isClaimingId, setIsClaimingId] = useState<string | null>(null)
   const [estimatedRewards, setEstimatedRewards] = useState<Record<string, number>>({})
@@ -90,8 +95,8 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
       if (farm?.appId) {
         const k = String(key)
         setRewardLoading(prev => ({ ...prev, [k]: true }))
-        getUserStakeForPool(farm.appId, activeAddress, signer)
-          .then(est => setEstimatedRewards(prev => ({ ...prev, [k]: est?.reward || 0 })))
+        estimateFarmingReward(farm.appId, activeAddress, signer)
+          .then(est => setEstimatedRewards(prev => ({ ...prev, [k]: est.reward / 1e6 })))
           .catch(() => {})
           .finally(() => setRewardLoading(prev => ({ ...prev, [k]: false })))
       }
@@ -166,8 +171,12 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
 
   const executeClaim = async (args: any) => {
     try {
+      let claimFeeTxId: string | undefined
+      let claimFeeTokenId: number | undefined
       try {
-        await claimRewards(args.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        const claimResult = await claimRewards(args.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        claimFeeTxId = claimResult.feeTxId
+        claimFeeTokenId = claimResult.feeTokenId
       } catch (error: any) {
         const msg = error?.message || ''
         if (msg.includes('Farming not active') || msg.includes('assert') || msg.includes('logic eval error')) {
@@ -184,6 +193,7 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
         stakeStartTime: Math.floor(Date.now() / 1000),
         claimTime: Math.floor(Date.now() / 1000),
         rewardClaimed: 0,
+        feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
       })
 
       toast.success('Rewards claimed successfully!')
@@ -221,8 +231,12 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
   const executeClaimAndWithdraw = async (args: any) => {
     try {
       // Step 1: Claim rewards
+      let claimFeeTxId: string | undefined
+      let claimFeeTokenId: number | undefined
       try {
-        await claimRewards(args.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        const claimResult = await claimRewards(args.appId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient)
+        claimFeeTxId = claimResult.feeTxId
+        claimFeeTokenId = claimResult.feeTokenId
       } catch (error: any) {
         const msg = error?.message || ''
         if (msg.includes('Farming not active') || msg.includes('assert') || msg.includes('logic eval error')) {
@@ -239,6 +253,7 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
         stakeStartTime: Math.floor(Date.now() / 1000),
         claimTime: Math.floor(Date.now() / 1000),
         rewardClaimed: 0,
+        feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
       })
 
       toast.success('Rewards claimed!')
@@ -252,13 +267,14 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
         const stakeTokenId = args.stakeTokenId || FRY_ASSET_ID
         const withdrawFee = calculateFeeSimple('farmingWithdraw', stakedAmount, config)
 
-        await unstakeTokens(args.appId, stakedAmount, activeAddress!, signer, withdrawFee.feeAmount, stakeTokenId, withdrawFee.feeRecipient)
+        const withdrawResult = await unstakeTokens(args.appId, stakedAmount, activeAddress!, signer, withdrawFee.feeAmount, stakeTokenId, withdrawFee.feeRecipient)
 
         await authAxios.post('/farmingwithdraw/add', {
           amount: stakedAmount / 1_000_000,
           userWallet: activeAddress!,
           poolId: String(args.appId),
           farmingTokenId: String(args.appId),
+          feeTxId: withdrawResult.feeTxId, feeAssetId: withdrawResult.feeTokenId,
         })
 
         toast.success('Tokens withdrawn!')
@@ -277,15 +293,17 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
     {
       title: (
         <div className="flex items-center gap-[2px]">
-          TVL
+          {isSimpleMode ? 'Pool Size' : 'TVL'}
           <Icon icon="solar:arrow-down-outline" width={18} height={21} color="var(--text-primary)" />
         </div>
       ),
       dataIndex: 'tvl',
       key: 'tvl',
-      render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{value}</p>,
+      render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{isSimpleMode ? friendlyPoolSize(parseFloat(String(value).replace(/[$,\s]/g, '')) || 0) : value}</p>,
     },
-    { title: 'APR', dataIndex: 'apr', key: 'apr', render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{value}</p> },
+    { title: isSimpleMode ? 'Earnings' : 'APR', dataIndex: 'apr', key: 'apr', render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{isSimpleMode ? friendlyApr(parseFloat(value) || 0) : value}</p> },
+    { title: 'MY STAKE', dataIndex: 'staked', key: 'staked', render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{value}</p> },
+    { title: 'REWARD', dataIndex: 'reward', key: 'reward', render: (value) => <p className="text-[var(--text-secondary)] font-medium medium">{value}</p> },
     { title: 'STATUS', dataIndex: 'status', key: 'status' },
     {
       title: 'ENDS',
@@ -349,6 +367,8 @@ const P_FTable: React.FC<P_FTableProps> = ({ data, loading, activeFilter, onRefr
     ),
     tvl: farm.tvl,
     apr: farm.apr,
+    staked: farm.userStaked,
+    reward: farm.reward,
     status: <StatusBadge status={farm.status} />,
     ends: (
       <p className="text-[var(--text-secondary)] small font-medium">{farm.endsIn}</p>

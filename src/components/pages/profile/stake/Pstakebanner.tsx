@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useWallet } from '@txnlab/use-wallet'
 import axios from 'axios'
+import { usePreferences } from '../../../../contexts/PreferencesContext'
 
 const PStakebanner = () => {
   const { activeAddress } = useWallet()
+  const { isSimpleMode } = usePreferences()
   const [stats, setStats] = useState({ poolsCreated: 0, totalTvl: 0, myStakes: 0, myRewards: 0 })
   const api_base_url = import.meta.env.VITE_API_BASE_URL
 
@@ -22,7 +24,7 @@ const PStakebanner = () => {
       const stakeStats = stakeStatsRes.status === 'fulfilled' && stakeStatsRes.value.data?.success
         ? stakeStatsRes.value.data.data : { totalTVL: 0, myStake: 0, myReward: 0 }
 
-      const poolsCreated = allPools.filter((p: any) => p.creatorId?.toLowerCase() === activeAddress?.toLowerCase()).length
+      const poolsCreated = allPools.length
       const totalTvl = stakeStats.totalTVL
       const myStakes = stakeStats.myStake / 1_000_000
       const myRewards = stakeStats.myReward / 1_000_000
@@ -38,13 +40,13 @@ const PStakebanner = () => {
   return (
     <div className="m-auto flex max-sm:flex-col w-full justify-between gap-[10px] bg-[var(--bg-card)] rounded-[18px] py-[32px] max-sm:gap-[30px] px-[40px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]">
       <div className="flex flex-col items-center gap-[24px] max-sm:gap-[6px]">
-        <p className="text-[var(--text-secondary)] tracking-[0.54px] large">Pools Created</p>
+        <p className="text-[var(--text-secondary)] tracking-[0.54px] large">Total Pools</p>
         <h3 className="small text-[var(--text-primary)] font-medium tracking-[1.08px]">
-          <span className="text-red">{stats.poolsCreated}</span>
+          {stats.poolsCreated}
         </h3>
       </div>
       <div className="flex flex-col items-center gap-[24px] max-sm:gap-[6px]">
-        <p className="text-[var(--text-secondary)] tracking-[0.54px] large">Stake TVL</p>
+        <p className="text-[var(--text-secondary)] tracking-[0.54px] large">{isSimpleMode ? 'Total Value Staked' : 'Stake TVL'}</p>
         <h3 className="small text-[var(--text-primary)] font-medium tracking-[1.08px]">
           {fmt(stats.totalTvl)}
         </h3>

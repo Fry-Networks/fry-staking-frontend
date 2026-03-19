@@ -8,24 +8,37 @@ export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
   const [isAdmin, setIsAdmin] = useState(authService.isAdmin());
 
-  // Sync state from the initial checkAuth (fired in App.tsx)
-  useEffect(() => {
-    authService.checkAuth().then(() => {
-      setIsAuthenticated(authService.isAuthenticated());
-      setIsAdmin(authService.isAdmin());
-    });
-  }, []);
-
-  // Clear auth only when wallet actually changes, not on every mount
+  // Clear auth only on genuine wallet change or disconnect, not on mount/hydration
   const prevAddressRef = useRef(activeAddress);
   useEffect(() => {
     if (prevAddressRef.current !== activeAddress) {
-      authService.clearAuth();
-      setIsAuthenticated(false);
-      setIsAdmin(false);
+      if (prevAddressRef.current !== undefined) {
+        authService.clearAuth();
+        setIsAuthenticated(false);
+        setIsAdmin(false);
+      }
       prevAddressRef.current = activeAddress;
     }
   }, [activeAddress]);
+
+  // Auto-authenticate when wallet connects (address + signer both ready)
+  // First checks if existing session cookie is still valid to avoid unnecessary signature popup
+  useEffect(() => {
+    if (activeAddress && signer && !isAuthenticated) {
+      authService.checkSession(activeAddress)
+        .then(async (session) => {
+          if (session.authenticated) {
+            setIsAuthenticated(true);
+            setIsAdmin(session.isAdmin);
+          } else {
+            await authService.authenticate(activeAddress, signer);
+            setIsAuthenticated(true);
+            setIsAdmin(authService.isAdmin());
+          }
+        })
+        .catch(() => {}); // Silent — user will auth on-demand via ensureAuth
+    }
+  }, [activeAddress, signer, isAuthenticated]);
 
   const ensureAuth = useCallback(async (): Promise<void> => {
     if (!activeAddress) {

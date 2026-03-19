@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'react-toastify'
 import { useAuth } from '../../hooks/useAuth'
 import { getFingerprint } from '../../services/fingerprintService'
+import { usePreferences } from '../../contexts/PreferencesContext'
 import {
   ClaimResult,
   fetchLeaderboard,
@@ -45,6 +46,7 @@ function formatFry(amount: number): string {
 const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) => {
   const { activeAddress } = useWallet()
   const { ensureAuth } = useAuth()
+  const { isSimpleMode } = usePreferences()
 
   const [config, setConfig] = useState<RewardsConfig | null>(null)
   const [status, setStatus] = useState<RewardsStatus | null>(null)
@@ -392,9 +394,11 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
           <span className="text-sm font-medium" style={{ color: tier.color }}>
             {tier.label}
           </span>
-          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            &middot; {status.multiplier}x multiplier
-          </span>
+          {!isSimpleMode && (
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+              &middot; {status.multiplier}x multiplier
+            </span>
+          )}
         </div>
 
         {/* Estimated reward */}
@@ -430,11 +434,17 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
             </button>
             {eligibilityExpanded && (
               <div className="px-3 py-2 flex flex-col gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                <div>Min ALGO balance: {config.minAlgoBalance} ALGO</div>
-                <div>Min FRY balance: {(config.minFryBalance ?? 0).toLocaleString()} FRY</div>
-                <div>Min wallet age: {config.minWalletAgeDays} days</div>
-                <div>Claim cooldown: {config.claimCooldownHours}h</div>
-                <div>Streak resets after: {config.streakResetHours}h</div>
+                {isSimpleMode ? (
+                  <div>Meet basic wallet and balance requirements to claim daily rewards</div>
+                ) : (
+                  <>
+                    <div>Min ALGO balance: {config.minAlgoBalance} ALGO</div>
+                    <div>Min FRY balance: {(config.minFryBalance ?? 0).toLocaleString()} FRY</div>
+                    <div>Min wallet age: {config.minWalletAgeDays} days</div>
+                    <div>Claim cooldown: {config.claimCooldownHours}h</div>
+                    <div>Streak resets after: {config.streakResetHours}h</div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -458,7 +468,7 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
               +{claimResult.actualReward} FRY
             </span>
             <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Day {claimResult.streakDay} &middot; {claimResult.multiplier}x multiplier
+              Day {claimResult.streakDay}{!isSimpleMode && <> &middot; {claimResult.multiplier}x multiplier</>}
             </span>
             <a
               href={`https://allo.info/tx/${claimResult.txId}`}

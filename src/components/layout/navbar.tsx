@@ -28,7 +28,7 @@ const Navbar: React.FC = () => {
   const [hasActiveEvents, setHasActiveEvents] = useState(false)
   const { activeAddress } = useWallet();
   const location = useLocation()
-  const isStakeActive = location.pathname === '/token-stake' || location.pathname === '/nft-stake'
+  const isStakeActive = location.pathname === '/token-stake' || location.pathname === '/nft-stake' || location.pathname === '/depin-stake'
   const isFarmActive = location.pathname === '/farm' || location.pathname === '/prediction-lp'
 
   useEffect(() => {
@@ -48,6 +48,13 @@ const Navbar: React.FC = () => {
     const handler = () => setOpenRewardsModal(true)
     window.addEventListener('openDailyRewards', handler)
     return () => window.removeEventListener('openDailyRewards', handler)
+  }, [])
+
+  // Listen for openConnectWallet event from stake/withdraw modals
+  useEffect(() => {
+    const handler = () => setOpenWalletModal(true)
+    window.addEventListener('openConnectWallet', handler)
+    return () => window.removeEventListener('openConnectWallet', handler)
   }, [])
 
   // Events notification badge
@@ -124,6 +131,11 @@ const Navbar: React.FC = () => {
                   <NavLink to="/nft-stake" className={({ isActive }) =>
                     `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
                   }>NFT Stake</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/depin-stake" className={({ isActive }) =>
+                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
+                  }>DePIN Stake</NavLink>
                 </li>
               </ul>
             </li>
@@ -290,6 +302,15 @@ const Navbar: React.FC = () => {
                 }
               >
                 NFT Stake
+              </NavLink>
+              <NavLink
+                to="/depin-stake"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive ? 'text-secondary' : ''}`
+                }
+              >
+                DePIN Stake
               </NavLink>
             </li>
             <li className="flex flex-col gap-2">
