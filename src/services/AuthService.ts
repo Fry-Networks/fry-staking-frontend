@@ -28,7 +28,7 @@ class AuthService {
     this._authenticated = false;
     this._isAdmin = false;
     this._wallet = null;
-    this.pendingAuth = null;
+    // DO NOT null pendingAuth — let in-flight auth complete
     // Tell backend to clear the HttpOnly cookie (deduplicated)
     if (!this._logoutSent) {
       this._logoutSent = true;
