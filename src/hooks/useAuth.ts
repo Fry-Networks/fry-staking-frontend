@@ -8,18 +8,24 @@ export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
   const [isAdmin, setIsAdmin] = useState(authService.isAdmin());
 
-  // Clear auth only on genuine wallet change or disconnect, not on mount/hydration
+  // Clear auth only on genuine wallet change (same chain), not on chain switch
   const prevAddressRef = useRef(activeAddress);
+  const prevChainRef = useRef(chainId);
   useEffect(() => {
+    const chainChanged = prevChainRef.current !== chainId;
+    prevChainRef.current = chainId;
+
     if (prevAddressRef.current !== activeAddress) {
-      if (prevAddressRef.current !== undefined) {
+      // Only clear auth if address changed on the SAME chain (genuine wallet switch).
+      // When chain switches, activeAddress changes (null↔address) but the session is still valid.
+      if (prevAddressRef.current !== undefined && !chainChanged) {
         authService.clearAuth();
         setIsAuthenticated(false);
         setIsAdmin(false);
       }
       prevAddressRef.current = activeAddress;
     }
-  }, [activeAddress]);
+  }, [activeAddress, chainId]);
 
   // Auto-authenticate when wallet connects (address + signer both ready)
   // First checks if existing session cookie is still valid to avoid unnecessary signature popup

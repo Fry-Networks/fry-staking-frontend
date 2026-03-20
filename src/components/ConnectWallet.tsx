@@ -89,35 +89,29 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
               {/* Voi wallets */}
               {!isAlgorand && !activeAddress && (
                 <>
-                  {isKibisisAvailable ? (
-                    <button
-                      className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[#8B5CF6]"
-                      onClick={handleVoiConnect}
-                    >
-                      <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-                        <circle cx="15" cy="15" r="14" fill="#8B5CF6" />
-                        <text x="15" y="20" textAnchor="middle" fill="white" fontSize="14" fontWeight="bold" fontFamily="sans-serif">K</text>
-                      </svg>
-                      <span className="text-[var(--text-secondary)] font-Roboto">Kibisis</span>
-                    </button>
-                  ) : (
-                    <div className="text-center p-4">
-                      <p className="text-[var(--text-secondary)] mb-3">
-                        Install a Voi wallet to connect
-                      </p>
-                      <a
-                        href="https://kibis.is"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-center items-center gap-3 border-solid border-2 border-[#8B5CF6]"
-                      >
-                        <span className="text-[#8B5CF6] font-Roboto">Get Kibisis Wallet</span>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                          <path d="M6 3L11 8L6 13" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </a>
-                    </div>
-                  )}
+                  <button
+                    className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[#8B5CF6]"
+                    onClick={handleVoiConnect}
+                  >
+                    <svg width="30" height="30" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <rect width="256" height="256" rx="48" fill="#6C3FC5"/>
+                      <path d="M88 56L128 128L88 200H120L160 128L120 56H88Z" fill="white"/>
+                      <path d="M136 56L176 128L136 200H168L208 128L168 56H136Z" fill="white" opacity="0.6"/>
+                    </svg>
+                    <span className="text-[var(--text-secondary)] font-Roboto">Kibisis</span>
+                  </button>
+                  <a
+                    href="https://lute.app"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[#8B5CF6]"
+                  >
+                    <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+                      <rect width="30" height="30" rx="6" fill="#1A1A2E"/>
+                      <text x="15" y="20" textAnchor="middle" fill="#E8A838" fontSize="16" fontWeight="bold" fontFamily="sans-serif">L</text>
+                    </svg>
+                    <span className="text-[var(--text-secondary)] font-Roboto">Lute (Web Wallet)</span>
+                  </a>
                 </>
               )}
             </div>

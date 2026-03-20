@@ -29,11 +29,11 @@ const Navbar: React.FC = () => {
   const [rewardsAvailable, setRewardsAvailable] = useState(false)
   const [hasActiveEvents, setHasActiveEvents] = useState(false)
   const { activeAddress } = useMultiChainWallet();
-  const { chainId: activeChainId } = useChain();
+  const { chainId: activeChainId, hasFeature } = useChain();
   const isAlgorand = activeChainId === 'algorand-mainnet';
   const location = useLocation()
   const isStakeActive = location.pathname === '/token-stake' || location.pathname === '/nft-stake' || location.pathname === '/depin-stake'
-  const isFarmActive = location.pathname === '/farm' || location.pathname === '/prediction-lp'
+  const isFarmActive = location.pathname === '/farm' || (location.pathname === '/prediction-lp' && hasFeature('predictionLp'))
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -156,11 +156,13 @@ const Navbar: React.FC = () => {
                     `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
                   }>LP Farm</NavLink>
                 </li>
+                {hasFeature('predictionLp') && (
                 <li>
                   <NavLink to="/prediction-lp" className={({ isActive }) =>
                     `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
                   }>Prediction LP</NavLink>
                 </li>
+                )}
               </ul>
             </li>
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
@@ -298,6 +300,7 @@ const Navbar: React.FC = () => {
               >
                 LP Farm
               </NavLink>
+              {hasFeature('predictionLp') && (
               <NavLink
                 to="/prediction-lp"
                 onClick={onClose}
@@ -307,6 +310,7 @@ const Navbar: React.FC = () => {
               >
                 Prediction LP
               </NavLink>
+              )}
             </li>
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
