@@ -12,6 +12,8 @@ import DailyRewardsModal from '../../Modals/website/DailyRewardsModal'
 import { fetchRewardsStatus } from '../../services/rewardsApi'
 import { fetchActiveEvents } from '../../services/eventService'
 import BetaBanner from '../shared/BetaBanner'
+import ChainSelector from '../ChainSelector'
+import { useChain } from '../../context/ChainContext'
 
 const Navbar: React.FC = () => {
   const { isDark } = useTheme();
@@ -27,6 +29,8 @@ const Navbar: React.FC = () => {
   const [rewardsAvailable, setRewardsAvailable] = useState(false)
   const [hasActiveEvents, setHasActiveEvents] = useState(false)
   const { activeAddress } = useWallet();
+  const { chainId: activeChainId } = useChain();
+  const isAlgorand = activeChainId === 'algorand-mainnet';
   const location = useLocation()
   const isStakeActive = location.pathname === '/token-stake' || location.pathname === '/nft-stake' || location.pathname === '/depin-stake'
   const isFarmActive = location.pathname === '/farm' || location.pathname === '/prediction-lp'
@@ -185,8 +189,9 @@ const Navbar: React.FC = () => {
           </ul>
 
           <div className="button flex items-center gap-2">
+            <ChainSelector />
             <ThemeToggle />
-            {activeAddress && (
+            {isAlgorand && activeAddress && (
               <div className="relative cursor-pointer" onClick={() => setOpenRewardsModal(true)}>
                 <Icon icon="mdi:gift" width={24} color="#FD0000" />
                 {rewardsAvailable && (
@@ -194,7 +199,13 @@ const Navbar: React.FC = () => {
                 )}
               </div>
             )}
-            {!activeAddress ? (
+            {!isAlgorand ? (
+              <div
+                className="flex items-center justify-center gap-[10px] w-[186px] h-[53px] rounded-[8px] p-[8px] border-solid border-[2px] border-[var(--border-color)] bg-transparent opacity-60 cursor-not-allowed"
+              >
+                <p className="font-medium text-sm text-[var(--text-secondary)]">Wallet Coming Soon</p>
+              </div>
+            ) : !activeAddress ? (
               <Button
                 text="Connect Wallet"
                 className="button btn-primary"
@@ -209,38 +220,7 @@ const Navbar: React.FC = () => {
                   onClick={toggleDropdown}
                 >
                   <p className="font-medium large text-darkRed capitalize">{activeAddress ? activeAddress.slice(0, 6) + "...." + activeAddress.slice(-6) : "Connect Wallet"}</p>
-                  {/* <Icon
-                    icon={isOpen ? 'mdi:chevron-up' : 'mdi:chevron-down'}
-                    width={26}
-                    height={26}
-                    color="#F00"
-                    className="sm-s:h-[22px] sm-s:w-[22px]"
-                  /> */}
                 </div>
-                {/* {isOpen && (
-                  <div className="absolute right-0 mt-2 w-[244px] bg-white rounded-[8px] shadow-lg z-10">
-                    <ul className="py-1">
-                      <p
-                        className="elarge border-solid border-b-2 border-b-[#D9D9D9] font-medium text-text_clr py-[18px] pl-[19px] cursor-pointer"
-                        onClick={() => {
-                          navigate('/transaction-history')
-                        }}
-                      >
-                        Transaction History
-                      </p>
-
-                      <p
-                        className="elarge font-medium text-darkRed py-[18px] pl-[19px] cursor-pointer"
-                        onClick={() => {
-                          setWalletConnected(false)
-                          setIsOpen(false)
-                        }}
-                      >
-                        Disconnect
-                      </p>
-                    </ul>
-                  </div>
-                )} */}
               </div>
             )}
           </div>
@@ -362,8 +342,9 @@ const Navbar: React.FC = () => {
           </ul>
 
           <div className="flex items-center gap-3 mt-[10px] mb-[10px]">
+            <ChainSelector />
             <ThemeToggle />
-            {activeAddress && (
+            {isAlgorand && activeAddress && (
               <div
                 className="relative cursor-pointer"
                 onClick={() => {
@@ -379,7 +360,11 @@ const Navbar: React.FC = () => {
             )}
           </div>
           <div className="button flex items-center mt-[10px]">
-            {!activeAddress ? (
+            {!isAlgorand ? (
+              <div className="flex items-center justify-center gap-[10px] w-[186px] h-[53px] rounded-[8px] p-[8px] border-solid border-[2px] border-[var(--border-color)] bg-transparent opacity-60">
+                <p className="font-medium text-sm text-[var(--text-secondary)]">Wallet Coming Soon</p>
+              </div>
+            ) : !activeAddress ? (
               <Button
                 text="Connect Wallet"
                 className="button btn-primary"
@@ -394,39 +379,7 @@ const Navbar: React.FC = () => {
                   onClick={toggleDropdown}
                 >
                   <p className="font-medium large text-darkRed capitalize">{activeAddress ? activeAddress.slice(0, 6) + "...." + activeAddress.slice(-6) : "Connect Wallet"}</p>
-                  {/* <Icon
-                    icon={isOpen ? 'mdi:chevron-up' : 'mdi:chevron-down'}
-                    width={26}
-                    height={26}
-                    color="#F00"
-                    className="sm-s:h-[22px] sm-s:w-[22px]"
-                  /> */}
                 </div>
-                {/* {isOpen && (
-                  <div className="absolute right-[-35%] mt-2 w-[244px] bg-white rounded-[8px] shadow-lg z-10">
-                    <ul className="py-1">
-                      <p
-                        className="elarge border-solid border-b-2 border-b-[#D9D9D9] font-medium text-text_clr py-[18px] pl-[19px] cursor-pointer"
-                        onClick={() => {
-                          navigate('/transaction-history')
-                          onClose()
-                        }}
-                      >
-                        Transaction History
-                      </p>
-
-                      <p
-                        className="elarge font-medium text-darkRed py-[18px] pl-[19px] cursor-pointer"
-                        onClick={() => {
-                          setWalletConnected(false)
-                          setIsOpen(false)
-                        }}
-                      >
-                        Disconnect
-                      </p>
-                    </ul>
-                  </div>
-                )} */}
               </div>
             )}
           </div>

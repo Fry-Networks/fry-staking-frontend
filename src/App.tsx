@@ -16,6 +16,10 @@ import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { PreferencesProvider } from './contexts/PreferencesContext';
 import { ChainProvider } from './context/ChainContext';
 import { authService } from './services/AuthService';
+import { setupChainIdInterceptor } from './utils/chainApi';
+
+// Add X-Chain-Id header to all axios requests (reads from localStorage)
+setupChainIdInterceptor();
 
 let providersArray: ProvidersArray
 if (import.meta.env.VITE_ALGOD_NETWORK === '') {
