@@ -1,5 +1,4 @@
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
 import { Drawer } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
@@ -14,6 +13,7 @@ import { fetchActiveEvents } from '../../services/eventService'
 import BetaBanner from '../shared/BetaBanner'
 import ChainSelector from '../ChainSelector'
 import { useChain } from '../../context/ChainContext'
+import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
 
 const Navbar: React.FC = () => {
   const { isDark } = useTheme();
@@ -28,7 +28,7 @@ const Navbar: React.FC = () => {
   const [openRewardsModal, setOpenRewardsModal] = useState(false)
   const [rewardsAvailable, setRewardsAvailable] = useState(false)
   const [hasActiveEvents, setHasActiveEvents] = useState(false)
-  const { activeAddress } = useWallet();
+  const { activeAddress } = useMultiChainWallet();
   const { chainId: activeChainId } = useChain();
   const isAlgorand = activeChainId === 'algorand-mainnet';
   const location = useLocation()
@@ -199,13 +199,7 @@ const Navbar: React.FC = () => {
                 )}
               </div>
             )}
-            {!isAlgorand ? (
-              <div
-                className="flex items-center justify-center gap-[10px] w-[186px] h-[53px] rounded-[8px] p-[8px] border-solid border-[2px] border-[var(--border-color)] bg-transparent opacity-60 cursor-not-allowed"
-              >
-                <p className="font-medium text-sm text-[var(--text-secondary)]">Wallet Coming Soon</p>
-              </div>
-            ) : !activeAddress ? (
+            {!activeAddress ? (
               <Button
                 text="Connect Wallet"
                 className="button btn-primary"
@@ -360,11 +354,7 @@ const Navbar: React.FC = () => {
             )}
           </div>
           <div className="button flex items-center mt-[10px]">
-            {!isAlgorand ? (
-              <div className="flex items-center justify-center gap-[10px] w-[186px] h-[53px] rounded-[8px] p-[8px] border-solid border-[2px] border-[var(--border-color)] bg-transparent opacity-60">
-                <p className="font-medium text-sm text-[var(--text-secondary)]">Wallet Coming Soon</p>
-              </div>
-            ) : !activeAddress ? (
+            {!activeAddress ? (
               <Button
                 text="Connect Wallet"
                 className="button btn-primary"

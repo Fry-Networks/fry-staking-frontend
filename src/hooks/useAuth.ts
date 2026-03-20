@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useWallet } from '@txnlab/use-wallet';
 import { toast } from 'react-toastify';
 import { authService } from '../services/AuthService';
+import { useMultiChainWallet } from './useMultiChainWallet';
 
 export function useAuth() {
-  const { activeAddress, signer } = useWallet();
+  const { activeAddress, signer, chainId } = useMultiChainWallet();
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
   const [isAdmin, setIsAdmin] = useState(authService.isAdmin());
 
@@ -31,14 +31,14 @@ export function useAuth() {
             setIsAuthenticated(true);
             setIsAdmin(session.isAdmin);
           } else {
-            await authService.authenticate(activeAddress, signer);
+            await authService.authenticate(activeAddress, signer, chainId);
             setIsAuthenticated(true);
             setIsAdmin(authService.isAdmin());
           }
         })
         .catch(() => {}); // Silent — user will auth on-demand via ensureAuth
     }
-  }, [activeAddress, signer, isAuthenticated]);
+  }, [activeAddress, signer, isAuthenticated, chainId]);
 
   const ensureAuth = useCallback(async (): Promise<void> => {
     if (!activeAddress) {
@@ -46,7 +46,7 @@ export function useAuth() {
     }
 
     try {
-      await authService.authenticate(activeAddress, signer);
+      await authService.authenticate(activeAddress, signer!, chainId);
       setIsAuthenticated(true);
       setIsAdmin(authService.isAdmin());
     } catch (err: any) {
@@ -59,7 +59,7 @@ export function useAuth() {
       toast.error(err.message || 'Authentication failed. Please try again.');
       throw err;
     }
-  }, [activeAddress, signer]);
+  }, [activeAddress, signer, chainId]);
 
   const clearAuth = useCallback(() => {
     authService.clearAuth();

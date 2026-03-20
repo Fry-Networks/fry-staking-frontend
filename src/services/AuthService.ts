@@ -1,5 +1,6 @@
 import algosdk, { TransactionSigner } from 'algosdk';
 import { getAlgodClient } from '../staking_func';
+import { getChainConfig, isAvmChain, ChainId } from '../config/chains';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL as string;
 
@@ -88,6 +89,7 @@ class AuthService {
   async authenticate(
     activeAddress: string,
     signer: TransactionSigner,
+    chainId: ChainId = 'algorand-mainnet',
   ): Promise<void> {
     if (this._authenticated && this._wallet === activeAddress) {
       await this.checkAuth();
@@ -97,7 +99,7 @@ class AuthService {
     // Coalesce concurrent auth attempts
     if (this.pendingAuth) return this.pendingAuth;
 
-    this.pendingAuth = this._doAuth(activeAddress, signer);
+    this.pendingAuth = this._doAuth(activeAddress, signer, chainId);
     try {
       await this.pendingAuth;
     } finally {
@@ -108,6 +110,7 @@ class AuthService {
   private async _doAuth(
     activeAddress: string,
     signer: TransactionSigner,
+    chainId: ChainId = 'algorand-mainnet',
   ): Promise<void> {
     // Step 1: Get nonce from backend
     const nonceRes = await fetch(`${API_BASE}/auth/nonce`, {
@@ -124,8 +127,16 @@ class AuthService {
 
     const { nonce } = await nonceRes.json();
 
-    // Step 2: Build a zero-ALGO self-payment transaction with nonce in note
-    const algodClient = await getAlgodClient();
+    // Step 2: Build a zero self-payment transaction with nonce in note
+    // Use chain-specific algod client for Voi or other AVM chains
+    let algodClient: algosdk.Algodv2;
+    const chainConfig = getChainConfig(chainId);
+    if (chainId !== 'algorand-mainnet' && isAvmChain(chainConfig)) {
+      const { algodServer, algodPort, algodToken } = chainConfig.connection;
+      algodClient = new algosdk.Algodv2(algodToken, algodServer, algodPort);
+    } else {
+      algodClient = await getAlgodClient();
+    }
     const params = await algodClient.getTransactionParams().do();
     const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
       from: activeAddress,

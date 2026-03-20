@@ -15,6 +15,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { PreferencesProvider } from './contexts/PreferencesContext';
 import { ChainProvider } from './context/ChainContext';
+import { VoiWalletProvider } from './context/VoiWalletContext';
 import { authService } from './services/AuthService';
 import { setupChainIdInterceptor } from './utils/chainApi';
 
@@ -73,6 +74,7 @@ function AppInner() {
     <ConfigProvider theme={{ algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm }}>
       <SnackbarProvider maxSnack={3}>
         <WalletProvider value={walletProviders}>
+          <VoiWalletProvider>
           <PoolDataProvider>
             <ToastContainer
               position="top-right"
@@ -90,6 +92,7 @@ function AppInner() {
               <Home />
             </div>
           </PoolDataProvider>
+          </VoiWalletProvider>
         </WalletProvider>
       </SnackbarProvider>
     </ConfigProvider>
