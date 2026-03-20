@@ -14,6 +14,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { PreferencesProvider } from './contexts/PreferencesContext';
+import { ChainProvider } from './context/ChainContext';
 import { authService } from './services/AuthService';
 
 let providersArray: ProvidersArray
@@ -95,7 +96,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <PreferencesProvider>
-        <AppInner />
+        <ChainProvider>
+          <AppInner />
+        </ChainProvider>
       </PreferencesProvider>
     </ThemeProvider>
   )
