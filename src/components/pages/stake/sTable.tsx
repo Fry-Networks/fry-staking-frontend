@@ -92,6 +92,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
   const [userStakes, setUserStakes] = useState<Record<string, number>>({})
   const [userStakeTimes, setUserStakeTimes] = useState<Record<string, number>>({})
   const [isMigrating, setIsMigrating] = useState<string | null>(null)
+  const [withdrawLoading, setWithdrawLoading] = useState<Record<string, boolean>>({})
 
   // Fee confirmation state
   const [feeModalVisible, setFeeModalVisible] = useState(false)
@@ -137,7 +138,21 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
               setUserStakes(prev => ({ ...prev, [k]: Number(data.stakedAmount || 0) / 1_000_000 }))
               setUserStakeTimes(prev => ({ ...prev, [k]: Number(data.stakeTime || 0) }))
             })
-            .catch(() => setUserStakes(prev => ({ ...prev, [k]: 0 })))
+            .catch(async () => {
+              // On-chain box read failed (common for V1 pools) — fallback to backend records
+              try {
+                const res = await axios.get(`${api_base_url}/stakingtoken/wallet/${activeAddress}`)
+                const records = res.data?.data || []
+                const match = records.find((r: any) =>
+                  r.appId === pool.stakingContractId || r.poolId === pool._id
+                )
+                if (match && match.totalStaked > 0) {
+                  setUserStakes(prev => ({ ...prev, [k]: match.totalStaked / 1_000_000 }))
+                  return
+                }
+              } catch { /* ignore backend fallback errors */ }
+              setUserStakes(prev => ({ ...prev, [k]: 0 }))
+            })
           // Estimate reward for grey-out logic
           if (signer) {
             setRewardLoading(prev => ({ ...prev, [k]: true }))
@@ -235,7 +250,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
     { title: isSimpleMode ? 'Earnings' : 'APR', dataIndex: 'apr', key: 'apr', sorter: (a, b) => (parseFloat(a.apr) || 0) - (parseFloat(b.apr) || 0), render: (value) => <p className="text-text_clr font-medium medium">{isSimpleMode ? friendlyApr(parseFloat(value) || 0) : value}</p> },
     { title: 'STAKED', dataIndex: 'staked', key: 'staked', sorter: (a, b) => (a.totalAmountStaked || 0) - (b.totalAmountStaked || 0), render: (value) => <p className="text-text_clr font-medium medium">{value}</p> },
     {
-      title: 'REWARD',
+      title: 'POOL REWARDS',
       dataIndex: 'reward',
       key: 'reward',
       render: (value) => value,
@@ -948,16 +963,41 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
                           />
                         )}
                         <Button
-                          text="Withdraw"
+                          text={withdrawLoading[String(record.key)] ? 'Loading...' : 'Withdraw'}
                           className="button btn-primary"
                           height={45}
                           width={106}
-                          onClick={() => {
+                          disabled={withdrawLoading[String(record.key)]}
+                          onClick={async () => {
+                            const k = String(record.key)
+                            let stake = userStakes[k] || 0
+
+                            // If stake is 0, fetch on-chain (handles race condition + V1 pools)
+                            if (stake === 0 && activeAddress && record.stakingContractId) {
+                              setWithdrawLoading(prev => ({ ...prev, [k]: true }))
+                              try {
+                                const data = await getUserData(record.stakingContractId, activeAddress)
+                                stake = Number(data.stakedAmount || 0) / 1_000_000
+                                setUserStakes(prev => ({ ...prev, [k]: stake }))
+                              } catch {
+                                // On-chain failed — try backend as last resort
+                                try {
+                                  const res = await axios.get(`${api_base_url}/stakingtoken/wallet/${activeAddress}`)
+                                  const match = (res.data?.data || []).find((r: any) =>
+                                    r.appId === record.stakingContractId || r.poolId === record._id
+                                  )
+                                  if (match?.totalStaked > 0) stake = match.totalStaked / 1_000_000
+                                } catch { /* ignore */ }
+                              } finally {
+                                setWithdrawLoading(prev => ({ ...prev, [k]: false }))
+                              }
+                            }
+
                             setModalTarget({
                               appId: record.stakingContractId,
                               stakeTokenId: record.stakeTokenId || FRY_ASSET_ID,
                               stakeTokenName: record.stakeTokenName || 'tokens',
-                              userStake: userStakes[String(record.key)] || 0,
+                              userStake: stake,
                               rewardTokenId: record.rewardTokenId || FRY_ASSET_ID,
                             })
                             setWithdrawModalOpen(true)
@@ -980,16 +1020,36 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
                             />
                             <p className="text-[10px] text-red-500 mt-1">Claim disabled — use Withdraw</p>
                           </div>
-                        ) : (
-                          <Button
-                            text={isClaimingId === record._id ? 'Claiming...' : 'Claim'}
-                            className="button btn-primary"
-                            height={45}
-                            width={106}
-                            onClick={() => handleClaim(record.stakingContractId, record._id)}
-                            disabled={!!isClaimingId}
-                          />
-                        )
+                        ) : (() => {
+                          const k = String(record.key)
+                          const _stakeTime = userStakeTimes[k]
+                          const _lockSecs = record.lockPeriod || 0
+                          const _now = Math.floor(Date.now() / 1000)
+                          const _isLocked = _stakeTime && _lockSecs > 0 && (_stakeTime + _lockSecs) > _now
+                          return _isLocked ? (
+                            <div className="flex flex-col items-center">
+                              <Button
+                                text="Claim"
+                                className="button btn-primary opacity-50"
+                                height={45}
+                                width={106}
+                                disabled={true}
+                              />
+                              <p className="text-[10px] text-yellow-500 mt-1">
+                                Locked until {new Date((_stakeTime + _lockSecs) * 1000).toLocaleDateString()}
+                              </p>
+                            </div>
+                          ) : (
+                            <Button
+                              text={isClaimingId === record._id ? 'Claiming...' : 'Claim'}
+                              className="button btn-primary"
+                              height={45}
+                              width={106}
+                              onClick={() => handleClaim(record.stakingContractId, record._id)}
+                              disabled={!!isClaimingId}
+                            />
+                          )
+                        })()
                       )}
                       {
                         (showExpandable === 'Ended' || showExpandable === 'MyEnded') &&

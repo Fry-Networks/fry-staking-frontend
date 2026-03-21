@@ -403,11 +403,20 @@ export const claimTokens = async (
     const stakedAmount = Number(stakerData?.stakedAmount)
     const stakeTime = Number(stakerData?.stakeTime)
 
+    // Pre-flight lock period check — prevent the contract from silently resetting stake_time
+    const lockPeriod = globalState?.lockPeriod?.asNumber() || 0
+    const now = Math.floor(Date.now() / 1000)
+    const duration = now - stakeTime
+    if (lockPeriod > 0 && duration < lockPeriod) {
+      const unlockDate = new Date((stakeTime + lockPeriod) * 1000)
+      throw new Error(`Cannot claim yet — your stake is locked until ${unlockDate.toLocaleDateString()}. Claiming before the lock period ends would reset your reward timer without paying out.`)
+    }
+
     // Calculate reward
     const reward =
       stakedAmount *
       (globalState?.apr?.asNumber() / 10000) *
-      ((Math.floor(Date.now() / 1000) - stakeTime) / 31104000)
+      ((now - stakeTime) / 31104000)
 
     const updatedApr =
       ((globalState.rewardTokenAmount?.asNumber() - reward) / globalState.totalStaked?.asNumber()) *

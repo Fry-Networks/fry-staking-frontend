@@ -122,13 +122,12 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
                     rel="noopener noreferrer"
                     className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[#8B5CF6]"
                   >
-                    <svg width="30" height="30" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <rect width="256" height="256" rx="40" fill="#2D1B69"/>
-                      <ellipse cx="128" cy="155" rx="45" ry="55" fill="#E8A838"/>
-                      <rect x="118" y="60" width="20" height="100" rx="4" fill="#E8A838"/>
-                      <line x1="108" y1="70" x2="148" y2="70" stroke="#E8A838" strokeWidth="8" strokeLinecap="round"/>
-                      <line x1="108" y1="85" x2="148" y2="85" stroke="#E8A838" strokeWidth="6" strokeLinecap="round"/>
-                    </svg>
+                    <img
+                      src="https://lute.app/favicon.ico"
+                      alt="Lute"
+                      style={{ objectFit: 'contain', width: '30px', height: '30px', borderRadius: '6px' }}
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
                     <span className="text-[var(--text-secondary)] font-Roboto">Lute (Web Wallet)</span>
                   </a>
                 </>
