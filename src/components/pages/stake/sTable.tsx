@@ -19,6 +19,8 @@ import { useAuth } from '../../../hooks/useAuth'
 import { fetchFeeConfig, calculateFeeSimple } from '../../../services/FeeService'
 import type { FeeCalculation } from '../../../services/FeeService'
 import FeeConfirmation from '../../shared/FeeConfirmation'
+import { usesBackendClaim } from '../../../config/stakingPools'
+import { getClaimStatus, claimReward } from '../../../services/stakingClaimApi'
 import StakeModal from '../../shared/StakeModal'
 import WithdrawModal from '../../shared/WithdrawModal'
 import AiAnalysisModal from '../../../Modals/AiAnalysisModal'
@@ -536,12 +538,30 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
       const rewardTokenId = poolData?.rewardTokenId || FRY_ASSET_ID;
       const rewardTokenName = poolData?.rewardTokenName || 'tokens';
 
-      // Estimate reward for fee calculation
-      const est = await estimateStakingReward(stakingContractId, activeAddress!, signer);
-      const rewardMicro = est.reward > 0 ? est.reward : 1_000_000; // fallback to 1 token if 0
-
-      await showFeeConfirmation('stakingClaim', rewardMicro, est.rewardTokenId || rewardTokenId, 6, rewardTokenName,
-        `Claim rewards`, { type: 'claim', args: { stakingContractId, _id } })
+      if (usesBackendClaim(stakingContractId)) {
+        // Backend claim: get status from API
+        const status = await getClaimStatus(Number(stakingContractId), activeAddress!);
+        if (status.isLocked) {
+          const lockDate = status.lockEndsAt ? new Date(status.lockEndsAt * 1000).toLocaleDateString() : 'later';
+          toast.error(`Claim available after ${lockDate}`);
+          setIsClaimingId(null);
+          return;
+        }
+        const rewardMicro = status.pendingReward > 0 ? status.pendingReward : 0;
+        if (rewardMicro <= 0) {
+          toast.error('No rewards to claim');
+          setIsClaimingId(null);
+          return;
+        }
+        await showFeeConfirmation('stakingClaim', rewardMicro, status.rewardToken || rewardTokenId, 6, rewardTokenName,
+          `Claim rewards`, { type: 'claim', args: { stakingContractId, _id, useBackend: true } });
+      } else {
+        // On-chain claim: existing flow
+        const est = await estimateStakingReward(stakingContractId, activeAddress!, signer);
+        const rewardMicro = est.reward > 0 ? est.reward : 1_000_000;
+        await showFeeConfirmation('stakingClaim', rewardMicro, est.rewardTokenId || rewardTokenId, 6, rewardTokenName,
+          `Claim rewards`, { type: 'claim', args: { stakingContractId, _id, useBackend: false } });
+      }
     } catch (error: any) {
       console.error('Error during claim:', error);
       const msg = error?.response?.data?.message || error?.message || 'Error during claim.';
@@ -552,52 +572,47 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
 
   const executeClaim = async (args: any) => {
     try {
-      const claimToken = await claimTokens(args.stakingContractId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
-      console.log('claimToken:', claimToken);
-
-      if (claimToken.error) {
-        toast.error('Claim failed. Please try again.');
-        return;
-      }
-
-      const { rewardClaimed, stakedAmount, updatedApr, tx, stakedTime, feeTxId: claimFeeTxId, feeTokenId: claimFeeTokenId } = claimToken;
-
-      const stakerData = {
-        walletId: activeAddress,
-        stakedAmount,
-        stakeTime: stakedTime,
-        poolId: args._id,
-        rewardClaimed,
-        feeTxId: claimFeeTxId,
-        feeAssetId: claimFeeTokenId,
-      };
-
-      const claimData = {
-        walletId: activeAddress,
-        stakedAmount,
-        stakedTime,
-        poolId: args._id,
-        rewardClaimed,
-        feeTxId: claimFeeTxId,
-        feeAssetId: claimFeeTokenId,
-      };
-
-      const stakerRes = await authAxios.post('/stakerData/add', stakerData, {
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      const claimResponse = await authAxios.post('/claimreward/add', claimData, {
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (claimResponse.status === 201) {
-        toast.success('Rewards claimed successfully');
+      if (args.useBackend) {
+        // Backend claim: treasury sends rewards directly
+        const result = await claimReward(Number(args.stakingContractId), activeAddress!);
+        if (!result.success) {
+          toast.error(result.message || 'Claim failed');
+          return;
+        }
+        toast.success(`Claimed ${result.amountDisplay.toFixed(2)} FRY`);
+        // Log to existing backend endpoints for consistency
+        await authAxios.post('/claimreward/add', {
+          walletId: activeAddress,
+          poolId: args._id,
+          rewardClaimed: result.amountDisplay,
+          feeTxId: result.txId,
+          feeAssetId: result.rewardToken,
+        }, { headers: { 'Content-Type': 'application/json' } }).catch(() => {});
         setClaimedPools((prev) => [...prev, args._id]);
         await new Promise(r => setTimeout(r, 500));
         await fetchData();
         fetchBalance();
       } else {
-        toast.error('Reward claim logged, but backend response was not OK.');
+        // On-chain claim: existing contract flow
+        const claimToken = await claimTokens(args.stakingContractId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
+        if (claimToken.error) {
+          toast.error('Claim failed. Please try again.');
+          return;
+        }
+        const { rewardClaimed, stakedAmount, stakedTime, feeTxId: claimFeeTxId, feeTokenId: claimFeeTokenId } = claimToken;
+        await authAxios.post('/stakerData/add', {
+          walletId: activeAddress, stakedAmount, stakeTime: stakedTime,
+          poolId: args._id, rewardClaimed, feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
+        }, { headers: { 'Content-Type': 'application/json' } });
+        await authAxios.post('/claimreward/add', {
+          walletId: activeAddress, stakedAmount, stakedTime,
+          poolId: args._id, rewardClaimed, feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
+        }, { headers: { 'Content-Type': 'application/json' } });
+        toast.success('Rewards claimed successfully');
+        setClaimedPools((prev) => [...prev, args._id]);
+        await new Promise(r => setTimeout(r, 500));
+        await fetchData();
+        fetchBalance();
       }
     } catch (error: any) {
       console.error('Error during claim:', error);
@@ -615,12 +630,19 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
       const poolData = stacks.find(s => s._id === _id);
       const rewardTokenId = poolData?.rewardTokenId || FRY_ASSET_ID;
       const rewardTokenName = poolData?.rewardTokenName || 'tokens';
+      const useBackend = usesBackendClaim(stakingContractId);
 
-      const est = await estimateStakingReward(stakingContractId, activeAddress!, signer);
-      const rewardMicro = est.reward > 0 ? est.reward : 1_000_000;
-
-      await showFeeConfirmation('stakingClaim', rewardMicro, est.rewardTokenId || rewardTokenId, 6, rewardTokenName,
-        'Claim & Withdraw', { type: 'claimAndWithdraw', args: { stakingContractId, _id } });
+      if (useBackend) {
+        const status = await getClaimStatus(Number(stakingContractId), activeAddress!);
+        const rewardMicro = status.pendingReward > 0 ? status.pendingReward : 0;
+        await showFeeConfirmation('stakingClaim', rewardMicro, status.rewardToken || rewardTokenId, 6, rewardTokenName,
+          'Claim & Withdraw', { type: 'claimAndWithdraw', args: { stakingContractId, _id, useBackend: true } });
+      } else {
+        const est = await estimateStakingReward(stakingContractId, activeAddress!, signer);
+        const rewardMicro = est.reward > 0 ? est.reward : 1_000_000;
+        await showFeeConfirmation('stakingClaim', rewardMicro, est.rewardTokenId || rewardTokenId, 6, rewardTokenName,
+          'Claim & Withdraw', { type: 'claimAndWithdraw', args: { stakingContractId, _id, useBackend: false } });
+      }
     } catch (error: any) {
       console.error('Error during claim & withdraw:', error);
       toast.error(error?.message || 'Error during claim & withdraw');
@@ -630,31 +652,47 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
 
   const executeClaimAndWithdraw = async (args: any) => {
     try {
+      let rewardClaimed = 0;
+      let stakedAmount = 0;
+
       // Step 1: Claim rewards
-      const claimResult = await claimTokens(args.stakingContractId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
-
-      if (claimResult.error) {
-        toast.error('Claim failed. Withdrawal not attempted.');
-        return;
+      if (args.useBackend) {
+        // Backend claim: treasury sends rewards
+        const result = await claimReward(Number(args.stakingContractId), activeAddress!);
+        if (!result.success) {
+          toast.error(result.message || 'Claim failed. Withdrawal not attempted.');
+          return;
+        }
+        rewardClaimed = result.amountDisplay;
+        await authAxios.post('/claimreward/add', {
+          walletId: activeAddress, poolId: args._id, rewardClaimed,
+          feeTxId: result.txId, feeAssetId: result.rewardToken,
+        }, { headers: { 'Content-Type': 'application/json' } }).catch(() => {});
+        // Read staked amount from on-chain for unstake
+        try {
+          const userData = await getUserData(Number(args.stakingContractId), activeAddress!);
+          stakedAmount = Number(userData.stakedAmount);
+        } catch { stakedAmount = 0; }
+      } else {
+        // On-chain claim: existing contract flow
+        const claimResult = await claimTokens(args.stakingContractId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
+        if (claimResult.error) {
+          toast.error('Claim failed. Withdrawal not attempted.');
+          return;
+        }
+        rewardClaimed = claimResult.rewardClaimed || 0;
+        stakedAmount = claimResult.stakedAmount || 0;
+        const stakedTime = claimResult.stakedTime || 0;
+        const { feeTxId: cwClaimFeeTxId, feeTokenId: cwClaimFeeTokenId } = claimResult;
+        await authAxios.post('/stakerData/add', {
+          walletId: activeAddress, stakedAmount, stakeTime: stakedTime,
+          poolId: args._id, rewardClaimed, feeTxId: cwClaimFeeTxId, feeAssetId: cwClaimFeeTokenId,
+        }, { headers: { 'Content-Type': 'application/json' } });
+        await authAxios.post('/claimreward/add', {
+          walletId: activeAddress, stakedAmount, stakedTime,
+          poolId: args._id, rewardClaimed, feeTxId: cwClaimFeeTxId, feeAssetId: cwClaimFeeTokenId,
+        }, { headers: { 'Content-Type': 'application/json' } });
       }
-
-      const rewardClaimed = claimResult.rewardClaimed || 0;
-      const stakedAmount = claimResult.stakedAmount || 0;
-      const stakedTime = claimResult.stakedTime || 0;
-      const { feeTxId: cwClaimFeeTxId, feeTokenId: cwClaimFeeTokenId } = claimResult;
-
-      // Log claim to backend
-      await authAxios.post('/stakerData/add', {
-        walletId: activeAddress, stakedAmount, stakeTime: stakedTime,
-        poolId: args._id, rewardClaimed,
-        feeTxId: cwClaimFeeTxId, feeAssetId: cwClaimFeeTokenId,
-      }, { headers: { 'Content-Type': 'application/json' } });
-
-      await authAxios.post('/claimreward/add', {
-        walletId: activeAddress, stakedAmount, stakedTime,
-        poolId: args._id, rewardClaimed,
-        feeTxId: cwClaimFeeTxId, feeAssetId: cwClaimFeeTokenId,
-      }, { headers: { 'Content-Type': 'application/json' } });
 
       // Step 2: Withdraw full staked amount (if any)
       if (stakedAmount > 0) {
