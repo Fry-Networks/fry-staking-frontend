@@ -2,11 +2,14 @@ import { AVMWebClient, ARC0027MethodEnum } from '@agoralabs-sh/avm-web-provider'
 import algosdk, { TransactionSigner } from 'algosdk';
 
 /**
- * Lightweight Kibisis wallet service for Voi network.
+ * Kibisis wallet service for AVM chains (Algorand + Voi).
  * Uses ARC-0027 protocol via @agoralabs-sh/avm-web-provider.
  */
 
-const VOI_GENESIS_HASH = 'IXnoWtviVVJW5LGivNFc0Dq14V3kqaXuK2u5OQrdVZo=';
+const GENESIS_HASHES: Record<string, string> = {
+  'algorand-mainnet': 'wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=',
+  'voi-mainnet': 'IXnoWtviVVJW5LGivNFc0Dq14V3kqaXuK2u5OQrdVZo=',
+};
 
 export class VoiWalletService {
   private client: ReturnType<typeof AVMWebClient.init> | null = null;
@@ -20,10 +23,15 @@ export class VoiWalletService {
   }
 
   /**
-   * Connect to Kibisis wallet extension.
-   * Returns the connected address.
+   * Connect to Kibisis wallet extension for a specific AVM chain.
+   * @param chainId - Chain to connect to (determines genesis hash)
    */
-  async connect(): Promise<string> {
+  async connect(chainId: string = 'voi-mainnet'): Promise<string> {
+    const genesisHash = GENESIS_HASHES[chainId];
+    if (!genesisHash) {
+      throw new Error(`No genesis hash configured for chain: ${chainId}`);
+    }
+
     return new Promise((resolve, reject) => {
       const client = this.getClient();
 
@@ -40,7 +48,7 @@ export class VoiWalletService {
         }
       });
 
-      client.enable({ genesisHash: VOI_GENESIS_HASH });
+      client.enable({ genesisHash });
     });
   }
 

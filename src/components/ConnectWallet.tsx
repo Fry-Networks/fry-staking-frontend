@@ -23,11 +23,11 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
     closeModal()
   }
 
-  const handleVoiConnect = async () => {
+  const handleKibisisConnect = async () => {
     try {
       await connectVoi()
     } catch (err: any) {
-      console.error('Voi wallet connection failed:', err.message)
+      console.error('Kibisis connection failed:', err.message)
     }
   }
 
@@ -67,31 +67,47 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
             )}
             <div className="innerContent flex flex-col items-center gap-4 mt-4">
               {/* Algorand wallets */}
-              {isAlgorand && !activeAddress &&
-                providers?.map((provider) => (
-                  <button
-                    data-test-id={`${provider.metadata.id}-connect`}
-                    className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[red]"
-                    key={`provider-${provider.metadata.id}`}
-                    onClick={() => provider.connect()}
-                  >
-                    {!isKmd(provider) && (
-                      <img
-                        alt={`wallet_icon_${provider.metadata.id}`}
-                        src={provider.metadata.icon}
-                        style={{ objectFit: 'contain', width: '30px', height: 'auto' }}
-                      />
-                    )}
-                    <span className="text-[var(--text-secondary)] font-Roboto">{isKmd(provider) ? 'LocalNet Wallet' : provider.metadata.name}</span>
-                  </button>
-                ))}
+              {isAlgorand && !activeAddress && (
+                <>
+                  {providers?.map((provider) => (
+                    <button
+                      data-test-id={`${provider.metadata.id}-connect`}
+                      className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[red]"
+                      key={`provider-${provider.metadata.id}`}
+                      onClick={() => provider.connect()}
+                    >
+                      {!isKmd(provider) && (
+                        <img
+                          alt={`wallet_icon_${provider.metadata.id}`}
+                          src={provider.metadata.icon}
+                          style={{ objectFit: 'contain', width: '30px', height: 'auto' }}
+                        />
+                      )}
+                      <span className="text-[var(--text-secondary)] font-Roboto">{isKmd(provider) ? 'LocalNet Wallet' : provider.metadata.name}</span>
+                    </button>
+                  ))}
+                  {isKibisisAvailable && (
+                    <button
+                      className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[red]"
+                      onClick={handleKibisisConnect}
+                    >
+                      <svg width="30" height="30" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="256" height="256" rx="48" fill="#6C3FC5"/>
+                        <path d="M88 56L128 128L88 200H120L160 128L120 56H88Z" fill="white"/>
+                        <path d="M136 56L176 128L136 200H168L208 128L168 56H136Z" fill="white" opacity="0.6"/>
+                      </svg>
+                      <span className="text-[var(--text-secondary)] font-Roboto">Kibisis</span>
+                    </button>
+                  )}
+                </>
+              )}
 
               {/* Voi wallets */}
               {!isAlgorand && !activeAddress && (
                 <>
                   <button
                     className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[#8B5CF6]"
-                    onClick={handleVoiConnect}
+                    onClick={handleKibisisConnect}
                   >
                     <svg width="30" height="30" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <rect width="256" height="256" rx="48" fill="#6C3FC5"/>
@@ -106,9 +122,12 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
                     rel="noopener noreferrer"
                     className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[#8B5CF6]"
                   >
-                    <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-                      <rect width="30" height="30" rx="6" fill="#1A1A2E"/>
-                      <text x="15" y="20" textAnchor="middle" fill="#E8A838" fontSize="16" fontWeight="bold" fontFamily="sans-serif">L</text>
+                    <svg width="30" height="30" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <rect width="256" height="256" rx="40" fill="#2D1B69"/>
+                      <ellipse cx="128" cy="155" rx="45" ry="55" fill="#E8A838"/>
+                      <rect x="118" y="60" width="20" height="100" rx="4" fill="#E8A838"/>
+                      <line x1="108" y1="70" x2="148" y2="70" stroke="#E8A838" strokeWidth="8" strokeLinecap="round"/>
+                      <line x1="108" y1="85" x2="148" y2="85" stroke="#E8A838" strokeWidth="6" strokeLinecap="round"/>
                     </svg>
                     <span className="text-[var(--text-secondary)] font-Roboto">Lute (Web Wallet)</span>
                   </a>

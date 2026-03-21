@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { TransactionSigner } from 'algosdk';
 import { voiWalletService, VoiWalletService } from '../services/VoiWalletService';
+import { useChain } from './ChainContext';
 
 interface VoiWalletContextValue {
   address: string | null;
@@ -16,11 +17,12 @@ const VoiWalletContext = createContext<VoiWalletContextValue | undefined>(undefi
 
 export const VoiWalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [address, setAddress] = useState<string | null>(null);
+  const { chainId } = useChain();
 
   const connect = useCallback(async () => {
-    const addr = await voiWalletService.connect();
+    const addr = await voiWalletService.connect(chainId);
     setAddress(addr);
-  }, []);
+  }, [chainId]);
 
   const disconnect = useCallback(() => {
     voiWalletService.disconnect();

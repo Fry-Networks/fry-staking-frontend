@@ -16,7 +16,7 @@ export const algorandMainnet: ChainConfig = {
   feeRecipient: import.meta.env.VITE_FEE_RECIPIENT || 'E2F2LT2INE75DBOYHQXTCTOP2PAP5MHAXQRXTTCCXFKHQTVG36DJONBQZE',
   explorerBaseUrl: 'https://explorer.perawallet.app',
   availableDexProviders: ['folks-router', 'vestige', 'tinyman'],
-  supportedWallets: ['pera', 'defly', 'daffi', 'exodus', 'lute'],
+  supportedWallets: ['pera', 'defly', 'daffi', 'exodus', 'lute', 'kibisis'],
   connection: {
     algodServer: import.meta.env.VITE_ALGOD_SERVER || 'https://mainnet-api.algonode.cloud',
     algodPort: Number(import.meta.env.VITE_ALGOD_PORT) || 443,
