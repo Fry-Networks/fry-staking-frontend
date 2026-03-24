@@ -7,17 +7,23 @@ const CHAIN_COLORS: Record<ChainId, string> = {
 };
 
 export const AlgorandIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
-    <circle cx="8" cy="8" r="7" fill="#00C2FF" />
-    <text x="8" y="11.5" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold" fontFamily="sans-serif">A</text>
-  </svg>
+  <img
+    src="/assets/icons/algo.png"
+    alt="Algorand"
+    width={size}
+    height={size}
+    className="rounded-full"
+  />
 );
 
 export const VoiIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
-    <circle cx="8" cy="8" r="7" fill="#8B5CF6" />
-    <text x="8" y="11.5" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold" fontFamily="sans-serif">V</text>
-  </svg>
+  <img
+    src="/assets/icons/voi.png"
+    alt="Voi"
+    width={size}
+    height={size}
+    className="rounded-full"
+  />
 );
 
 export function getChainIcon(chainId: ChainId, size = 16): React.ReactNode {
