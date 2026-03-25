@@ -134,7 +134,7 @@ const P_FarmTable: React.FC = () => {
           tokenAImage: imageMap[tokenAId] || `https://asa-list.tinyman.org/assets/${tokenAId}/icon.png`,
           tokenBImage: imageMap[tokenBId] || `https://asa-list.tinyman.org/assets/${tokenBId}/icon.png`,
           rewardTokenImage: imageMap[rewardTokenId] || `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`,
-          tvl: `$${farm.totalStaked || 0}`,
+          tvl: `$${((farm.totalStaked || 0) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
           apr: `${farm.aprRate || 0}%`,
           endsIn: endsInDays > 0 ? `${endsInDays} ${endsInDays === 1 ? 'day' : 'days'}` : 'Ended',
           dexProvider: farm.dexProvider || '',

@@ -27,7 +27,7 @@ const P_Farmbanner = () => {
       const userFarms = allFarms.filter(
         (f: any) => f.creatorId?.toLowerCase() === activeAddress?.toLowerCase()
       )
-      const totalTvl = userFarms.reduce((sum: number, f: any) => sum + (f.totalStaked || 0), 0)
+      const totalTvl = userFarms.reduce((sum: number, f: any) => sum + ((f.totalStaked || 0) / 1_000_000), 0)
 
       setStats({
         poolsCreated: userFarms.length,
