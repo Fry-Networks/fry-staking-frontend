@@ -3,8 +3,11 @@ import { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/type
 import { AppDetails } from '@algorandfoundation/algokit-utils/types/app-client'
 import algosdk, { TransactionSigner } from 'algosdk'
 import { FryStakingClient } from './contracts/FryStaking'
+import { FryStakingClient as FryStakingV3Client } from './contracts/FryStakingV3'
 import { APP_SPEC as V2_APP_SPEC } from './contracts/FryStakingV2'
+import { APP_SPEC as V3_APP_SPEC } from './contracts/FryStakingV3'
 import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryStakingV2Compiled'
+import { COMPILED_APPROVAL as V3_COMPILED_APPROVAL, COMPILED_CLEAR as V3_COMPILED_CLEAR } from './contracts/FryStakingV3Compiled'
 import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 
 export const getAlgodClient = async (): Promise<algosdk.Algodv2> => {
@@ -29,10 +32,18 @@ const getIndexerClient = async (): Promise<algosdk.Indexer> => {
   return indexer
 }
 
-const createFryStakingClient = async (signer: TransactionSigner, activeAddress: string, appId: number) => {
+export interface AlgodConfigOverride {
+  server: string;
+  port: string | number;
+  token: string;
+}
+
+const createFryStakingClient = async (signer: TransactionSigner, activeAddress: string, appId: number, algodConfigOverride?: AlgodConfigOverride) => {
   algokit.Config.configure({ populateAppCallResources: true })
 
-  const algodConfig = getAlgodConfigFromViteEnvironment()
+  const algodConfig = algodConfigOverride
+    ? { ...algodConfigOverride, network: '' }
+    : getAlgodConfigFromViteEnvironment()
   const algorandClient: algokit.AlgorandClient = algokit.AlgorandClient.fromConfig({ algodConfig })
   algorandClient.setDefaultSigner(signer)
 
@@ -54,6 +65,33 @@ const createFryStakingClient = async (signer: TransactionSigner, activeAddress: 
   return { stakingClient, algorandClient, algodClient }
 }
 
+const createFryStakingV3Client = async (signer: TransactionSigner, activeAddress: string, appId: number, algodConfigOverride?: AlgodConfigOverride) => {
+  algokit.Config.configure({ populateAppCallResources: true })
+
+  const algodConfig = algodConfigOverride
+    ? { ...algodConfigOverride, network: '' }
+    : getAlgodConfigFromViteEnvironment()
+  const algorandClient: algokit.AlgorandClient = algokit.AlgorandClient.fromConfig({ algodConfig })
+  algorandClient.setDefaultSigner(signer)
+
+  const algodClient = algokit.getAlgoClient({
+    server: algodConfig.server,
+    port: algodConfig.port,
+    token: algodConfig.token,
+  })
+
+  const stakingClient = new FryStakingV3Client(
+    {
+      resolveBy: 'id',
+      id: appId,
+      sender: { addr: activeAddress!, signer },
+    },
+    algorandClient.client.algod,
+  )
+
+  return { stakingClient, algorandClient, algodClient }
+}
+
 export const initStaking = async (
   stakeTokenId: number,
   rewardTokenId: number,
@@ -63,26 +101,25 @@ export const initStaking = async (
   lockPeriod: number,
   sender: string,
   signer: TransactionSigner,
+  algodConfigOverride?: AlgodConfigOverride,
 ) => {
   try {
-    // Validate that reward token is not ALGO (tokenId 0) as it requires payment, not asset transfer
-    if (rewardTokenId === 0) {
-      throw new Error('ALGO cannot be used as a reward token. Please select a different token.')
-    }
-
-    if (!stakeTokenId || stakeTokenId === 0) {
-      throw new Error('Invalid stake token ID: token ID cannot be zero')
-    }
-
     // Validate reward token amount
     if (rewardTokenAmount <= 0) {
       throw new Error('Reward token amount must be greater than 0')
     }
-    
-    const algodClient = await getAlgodClient()
 
-    // Deploy V2 contract using pre-compiled bytecode (no runtime TEAL compilation)
-    const abiContract = new algosdk.ABIContract(V2_APP_SPEC.contract as any)
+    const algodConfig = algodConfigOverride
+      ? { ...algodConfigOverride, network: '' }
+      : getAlgodConfigFromViteEnvironment()
+    const algodClient = algokit.getAlgoClient({
+      server: algodConfig.server,
+      port: algodConfig.port,
+      token: algodConfig.token,
+    })
+
+    // Deploy V3 contract using pre-compiled bytecode
+    const abiContract = new algosdk.ABIContract(V3_APP_SPEC.contract as any)
     const initMethod = abiContract.getMethodByName('init_staking')
 
     const suggestedParams = await algodClient.getTransactionParams().do()
@@ -93,16 +130,16 @@ export const initStaking = async (
       method: initMethod,
       methodArgs: [
         sender,                           // _authority: address
-        stakeTokenId,                     // _stake_token: uint64
-        rewardTokenId,                    // _reward_token: uint64
+        stakeTokenId,                     // _stake_token: uint64 (0 = native)
+        rewardTokenId,                    // _reward_token: uint64 (0 = native)
         rewardTokenAmount,                // _reward_token_amount: uint64
         BigInt(startDate),                // _stake_start_time: uint64
         BigInt(startDate + poolTime),     // _stake_end_time: uint64
         lockPeriod,                       // _lock_period: uint64
         poolTime,                         // _pool_time: uint64
       ],
-      approvalProgram: COMPILED_APPROVAL,
-      clearProgram: COMPILED_CLEAR,
+      approvalProgram: V3_COMPILED_APPROVAL,
+      clearProgram: V3_COMPILED_CLEAR,
       numGlobalInts: 12,
       numGlobalByteSlices: 1,
       numLocalInts: 0,
@@ -121,82 +158,100 @@ export const initStaking = async (
 
     const initStake = { appId: BigInt(createdAppId) }
 
-    const { stakingClient, algorandClient } = await createFryStakingClient(signer, sender, Number(initStake.appId))
+    const { stakingClient, algorandClient } = await createFryStakingV3Client(signer, sender, Number(initStake.appId), algodConfigOverride)
 
-    // Send initial payment to cover minimum balance requirement (MBR)
-    // Contract needs: 0.1 ALGO (base) + 0.1 ALGO per unique asset + 0.1 ALGO buffer
-    // For same-token pools (stake == reward), only 1 unique asset opt-in is needed
-    const uniqueAssets = stakeTokenId === rewardTokenId ? 1 : 2;
-    const mbrAmount = 0.1 + (uniqueAssets * 0.1) + 0.1; // base + per-asset + buffer
+    // Count unique ASA assets that need opt-in (native tokens don't need opt-in)
+    const asaTokens = new Set<number>()
+    if (stakeTokenId > 0) asaTokens.add(stakeTokenId)
+    if (rewardTokenId > 0) asaTokens.add(rewardTokenId)
+    const uniqueAssets = asaTokens.size
+
+    // MBR: 0.1 ALGO (base) + 0.1 ALGO per unique ASA + 0.1 ALGO buffer
+    const mbrAmount = 0.1 + (uniqueAssets * 0.1) + 0.1;
     await algorandClient.send.payment({
       sender,
       receiver: algosdk.getApplicationAddress(initStake.appId),
       amount: algokit.algos(mbrAmount),
       extraFee: algokit.algos(0.001),
     })
-    
-    // Wait a moment to ensure the payment is confirmed before proceeding
+
     await new Promise((resolve) => setTimeout(resolve, 500))
-    
+
     if (initStake?.appId) {
-      // MBR payment for asset opt-in (0.1 ALGO per asset)
-      // This payment is included in the optInAsset transaction group
-      // Note: The initial payment of 0.5 ALGO should be sufficient, but this MBR payment
-      // is still required as part of the opt-in transaction structure
-      const mbrPay = await algorandClient.transactions.payment({
-        sender,
-        receiver: algosdk.getApplicationAddress(initStake?.appId),
-        amount: algokit.algos(0.1),
-        extraFee: algokit.algos(0.002),
-        signer,
-      })
-
-      const rewardtx = await algorandClient.transactions.assetTransfer({
-        assetId: BigInt(rewardTokenId),
-        amount: BigInt(rewardTokenAmount),
-        receiver: algosdk.getApplicationAddress(initStake?.appId),
-        signer,
-        sender,
-      })
-
-      const isSameToken = stakeTokenId === rewardTokenId
-      await stakingClient
-        .optInAsset(
-          {
-            assetOne: rewardTokenId,
-            assetTwo: stakeTokenId,
-            mbrPay: mbrPay,
-          },
-          isSameToken
-            ? {
-                assets: [stakeTokenId],
-                sendParams: {
-                  populateAppCallResources: false,
-                  fee: algokit.algos(0.003),
-                },
-              }
-            : {},
-        )
-        .then((res) => res)
-
-      await stakingClient
-        .assetReceive({
-          rewardTokenTransfer: rewardtx,
+      // Opt-in to ASA tokens (skip for native tokens)
+      if (uniqueAssets > 0) {
+        const mbrPay = await algorandClient.transactions.payment({
+          sender,
+          receiver: algosdk.getApplicationAddress(initStake?.appId),
+          amount: algokit.algos(0.1),
+          extraFee: algokit.algos(0.002),
+          signer,
         })
-        .then((res) => res)
 
-      await algorandClient.send.assetTransfer({
-        sender,
-        signer,
-        receiver: algosdk.getApplicationAddress(initStake?.appId),
-        amount: 1_000_000n, // 1 FRY assuming 6 decimals
-        assetId: BigInt(rewardTokenId),
-      })
+        await stakingClient
+          .optInAsset(
+            {
+              assetOne: rewardTokenId,    // V3 accepts uint64; 0 = skip opt-in
+              assetTwo: stakeTokenId,     // V3 accepts uint64; 0 = skip opt-in
+              mbrPay: mbrPay,
+            },
+            uniqueAssets === 1
+              ? {
+                  assets: [...asaTokens],
+                  sendParams: {
+                    populateAppCallResources: false,
+                    fee: algokit.algos(0.003),
+                  },
+                }
+              : {},
+          )
+          .then((res) => res)
+      }
+
+      // Fund reward tokens
+      if (rewardTokenId > 0) {
+        // ASA rewards: use assetReceive
+        const rewardtx = await algorandClient.transactions.assetTransfer({
+          assetId: BigInt(rewardTokenId),
+          amount: BigInt(rewardTokenAmount),
+          receiver: algosdk.getApplicationAddress(initStake?.appId),
+          signer,
+          sender,
+        })
+
+        await stakingClient
+          .assetReceive({
+            rewardTokenTransfer: rewardtx,
+          })
+          .then((res) => res)
+
+        await algorandClient.send.assetTransfer({
+          sender,
+          signer,
+          receiver: algosdk.getApplicationAddress(initStake?.appId),
+          amount: 1_000_000n, // 1 token assuming 6 decimals
+          assetId: BigInt(rewardTokenId),
+        })
+      } else {
+        // Native rewards: use nativeReceive
+        const rewardPay = await algorandClient.transactions.payment({
+          sender,
+          receiver: algosdk.getApplicationAddress(initStake?.appId),
+          amount: algokit.microAlgos(rewardTokenAmount),
+          signer,
+        })
+
+        await stakingClient
+          .nativeReceive({
+            rewardPayment: rewardPay,
+          })
+          .then((res) => res)
+      }
     }
     if (!initStake?.appId) {
       throw new Error('Failed to create staking pool. Please try again.')
     }
-    
+
     return initStake?.appId
   } catch (e) {
     console.error('Error in initStaking:', e)
@@ -243,62 +298,132 @@ export const initStaking = async (
 
 //!Marketplace functions
 const BOX_PRICE = 2500 + 400 * 64
-export const stakeTokens = async (stakingId: number, stakeAmount: number, sender: string, signer: TransactionSigner, feeAmount: number, feeTokenId: number, feeRecipient: string) => {
+export const stakeTokens = async (stakingId: number, stakeAmount: number, sender: string, signer: TransactionSigner, feeAmount: number, feeTokenId: number, feeRecipient: string, algodConfig?: AlgodConfigOverride, contractVersion?: number) => {
   try {
-    const { stakingClient, algorandClient } = await createFryStakingClient(signer, sender, stakingId)
-    let globalState: any = await stakingClient.getGlobalState()
+    const appAddress = algosdk.getApplicationAddress(stakingId)
+    const isV3 = contractVersion !== undefined && contractVersion >= 3
+
+    // Use appropriate client based on contract version
+    const v2Result = !isV3 ? await createFryStakingClient(signer, sender, stakingId, algodConfig) : null
+    const v3Result = isV3 ? await createFryStakingV3Client(signer, sender, stakingId, algodConfig) : null
+    const algorandClient = (v3Result || v2Result)!.algorandClient
+    const algodClient = (v3Result || v2Result)!.algodClient
+
+    const globalState: any = isV3
+      ? await v3Result!.stakingClient.getGlobalState()
+      : await v2Result!.stakingClient.getGlobalState()
 
     const boxTx = await algorandClient.transactions.payment({
-      receiver: algosdk.getApplicationAddress(stakingId),
+      receiver: appAddress,
       sender,
       amount: algokit.microAlgos(BOX_PRICE),
     })
 
-    const netAmount = stakeAmount - feeAmount
-    const assetTransfer = await algorandClient.transactions.assetTransfer({
-      receiver: algosdk.getApplicationAddress(stakingId),
-      sender,
-      amount: BigInt(netAmount),
-      assetId: globalState?.stakeToken?.asNumber(),
-    })
+    const stakeTokenAsaId = globalState?.stakeToken?.asNumber()
+    const netAmount = feeTokenId === stakeTokenAsaId ? stakeAmount - feeAmount : stakeAmount
 
     let updatedApr =
       (globalState.rewardTokenAmount?.asNumber() / (globalState.totalStaked?.asNumber() + netAmount)) *
       100 *
       ((86400 * 360) / globalState.poolTime.asNumber())
-    const tx = await stakingClient
-      .stakeTokens({ stakeAmount: netAmount, boxTx, updatedApr: Math.floor(updatedApr * 100), stakeAxfer: assetTransfer })
-      .then((res) => res)
-      .catch((e) => e)
+    if (!isFinite(updatedApr)) {
+      updatedApr = 0
+    }
 
-    // Only send fee if contract call succeeded
-    if (tx instanceof Error) {
-      return tx
+    let tx: any
+    if (isV3) {
+      // V3: dual pay+axfer pattern
+      let stakePay, stakeAxfer
+      if (stakeTokenAsaId === 0) {
+        // Native token: real pay, dummy axfer
+        stakePay = await algorandClient.transactions.payment({
+          sender,
+          receiver: appAddress,
+          amount: algokit.microAlgos(Number(netAmount)),
+          signer,
+        })
+        // Use the reward token as dummy axfer asset (contract is opted into it, chain-specific)
+        // If reward token is also native (0), fall back to chain's FRY token from env
+        const rewardTokenAsaId = globalState?.rewardToken?.asNumber()
+        const dummyAssetId = BigInt(rewardTokenAsaId ?? Number(import.meta.env.VITE_FRY_TOKEN_ID) ?? 2485314946)
+        stakeAxfer = await algorandClient.transactions.assetTransfer({
+          sender,
+          receiver: appAddress,
+          amount: 0n,
+          assetId: dummyAssetId,
+          signer,
+        })
+      } else {
+        // ASA: dummy pay, real axfer
+        stakePay = await algorandClient.transactions.payment({
+          sender,
+          receiver: appAddress,
+          amount: algokit.microAlgos(1000),
+          signer,
+        })
+        stakeAxfer = await algorandClient.transactions.assetTransfer({
+          sender,
+          receiver: appAddress,
+          amount: BigInt(netAmount),
+          assetId: BigInt(stakeTokenAsaId),
+          signer,
+        })
+      }
+      tx = await v3Result!.stakingClient.stakeTokens({
+        stakeAmount: netAmount,
+        updatedApr: Math.floor(updatedApr * 100),
+        stakePay: stakePay,
+        stakeAxfer: stakeAxfer,
+        boxTx: boxTx,
+      })
+    } else {
+      // V2: axfer only
+      const assetTransfer = await algorandClient.transactions.assetTransfer({
+        receiver: appAddress,
+        sender,
+        amount: BigInt(netAmount),
+        assetId: stakeTokenAsaId,
+      })
+      tx = await v2Result!.stakingClient.stakeTokens({
+        stakeAmount: netAmount,
+        boxTx,
+        updatedApr: Math.floor(updatedApr * 100),
+        stakeAxfer: assetTransfer,
+      })
     }
 
     // Wait for on-chain confirmation before returning — ensures box state is readable
     try {
-      const algod = await getAlgodClient()
-      const txId = tx.txIds?.[0] || tx.transaction?.txID()
+      const txId = tx.transaction.txID()
       if (txId) {
-        await algosdk.waitForConfirmation(algod, txId, 4)
+        await algosdk.waitForConfirmation(algodClient, txId, 4)
       }
     } catch (confirmErr) {
       console.warn('waitForConfirmation warning (tx may still succeed):', confirmErr)
     }
 
-    // Send fee in the transacted token AFTER successful contract call
+    // Send fee AFTER successful contract call
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        const feeResult = await algorandClient.send.assetTransfer({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: BigInt(feeAmount),
-          assetId: BigInt(feeTokenId),
-        });
-        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        let feeResult
+        if (feeTokenId === 0) {
+          feeResult = await algorandClient.send.payment({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: algokit.microAlgos(feeAmount),
+          })
+        } else {
+          feeResult = await algorandClient.send.assetTransfer({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: BigInt(feeAmount),
+            assetId: BigInt(feeTokenId),
+          })
+        }
+        feeTxId = (feeResult as any).transaction?.txID?.()
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful stake:', feeErr);
       }
@@ -307,7 +432,7 @@ export const stakeTokens = async (stakingId: number, stakeAmount: number, sender
     return { tx, feeTxId, feeTokenId }
   } catch (e) {
     console.error('Error in stakeTokens:', e)
-    return e
+    throw e
   }
 }
 
@@ -319,12 +444,17 @@ export const unstakeTokens = async (
   signer: TransactionSigner,
   feeAmount: number,
   feeTokenId: number,
-  feeRecipient: string
+  feeRecipient: string,
+  algodConfig?: AlgodConfigOverride,
+  contractVersion?: number,
 ) => {
   try {
-    const { stakingClient, algorandClient, algodClient } = await createFryStakingClient(signer, sender, stakingId)
+    const isV3 = contractVersion !== undefined && contractVersion >= 3
+    const { stakingClient, algorandClient, algodClient } = isV3
+      ? await createFryStakingV3Client(signer, sender, stakingId, algodConfig) as any
+      : await createFryStakingClient(signer, sender, stakingId, algodConfig)
     const globalState: any = await stakingClient.getGlobalState()
-    const stakerData = await getUserData(stakingId, sender)
+    const stakerData = await getUserData(stakingId, sender, algodClient)
 
     // APR calculation
     const reward =
@@ -347,14 +477,10 @@ export const unstakeTokens = async (
         { unstakeAmount, updatedApr: Math.floor(updatedApr * 100) },
         { sendParams: { fee: algokit.algos(0.003) } }
       )
-      .then((res) => res)
-      .catch((e) => e)
-
-    if (tx instanceof Error) return tx
 
     // Wait for on-chain confirmation before returning
     try {
-      const txId = tx.txIds?.[0] || tx.transaction?.txID()
+      const txId = tx.transaction.txID()
       if (txId) {
         await algosdk.waitForConfirmation(algodClient, txId, 4)
       }
@@ -362,18 +488,28 @@ export const unstakeTokens = async (
       console.warn('waitForConfirmation warning (tx may still succeed):', confirmErr)
     }
 
-    // Send fee in the transacted token AFTER successful contract call
+    // Send fee AFTER successful contract call
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        const feeResult = await algorandClient.send.assetTransfer({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: BigInt(feeAmount),
-          assetId: BigInt(feeTokenId),
-        });
-        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        let feeResult
+        if (feeTokenId === 0) {
+          feeResult = await algorandClient.send.payment({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: algokit.microAlgos(feeAmount),
+          })
+        } else {
+          feeResult = await algorandClient.send.assetTransfer({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: BigInt(feeAmount),
+            assetId: BigInt(feeTokenId),
+          })
+        }
+        feeTxId = (feeResult as any).transaction?.txID?.()
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful unstake:', feeErr);
       }
@@ -382,7 +518,7 @@ export const unstakeTokens = async (
     return { tx, feeTxId, feeTokenId }
   } catch (e) {
     console.error('Error in unstakeTokens:', e)
-    return e
+    throw e
   }
 }
 
@@ -393,12 +529,17 @@ export const claimTokens = async (
   signer: TransactionSigner,
   feeAmount: number,
   feeTokenId: number,
-  feeRecipient: string
+  feeRecipient: string,
+  algodConfig?: AlgodConfigOverride,
+  contractVersion?: number,
 ) => {
   try {
-    const { stakingClient, algorandClient } = await createFryStakingClient(signer, sender, stakingId)
+    const isV3 = contractVersion !== undefined && contractVersion >= 3
+    const { stakingClient, algorandClient, algodClient } = isV3
+      ? await createFryStakingV3Client(signer, sender, stakingId, algodConfig) as any
+      : await createFryStakingClient(signer, sender, stakingId, algodConfig)
     const globalState: any = await stakingClient.getGlobalState()
-    const stakerData = await getUserData(stakingId, sender)
+    const stakerData = await getUserData(stakingId, sender, algodClient)
 
     const stakedAmount = Number(stakerData?.stakedAmount)
     const stakeTime = Number(stakerData?.stakeTime)
@@ -418,47 +559,57 @@ export const claimTokens = async (
       (globalState?.apr?.asNumber() / 10000) *
       ((now - stakeTime) / 31104000)
 
-    const updatedApr =
+    let updatedApr =
       ((globalState.rewardTokenAmount?.asNumber() - reward) / globalState.totalStaked?.asNumber()) *
       100 *
       ((86400 * 360) / globalState.poolTime.asNumber())
+    if (!isFinite(updatedApr)) {
+      updatedApr = 0
+    }
 
     // Call contract method
-    const tx = await stakingClient
-      .claimTokens(
+    let tx: any
+    try {
+      tx = await stakingClient.claimTokens(
         { updatedApr: Math.floor(updatedApr * 100) },
         { sendParams: { fee: algokit.algos(0.002) } }
       )
-      .then((res) => res)
-      .catch((e) => e)
-
-    if (tx instanceof Error) {
-      return { error: tx }
+    } catch (e: any) {
+      return { error: e instanceof Error ? e : new Error(String(e)) }
     }
 
     // Wait for on-chain confirmation before returning
     try {
-      const algod = await getAlgodClient()
       const txId = tx.txIds?.[0] || tx.transaction?.txID()
       if (txId) {
-        await algosdk.waitForConfirmation(algod, txId, 4)
+        await algosdk.waitForConfirmation(algodClient, txId, 4)
       }
     } catch (confirmErr) {
       console.warn('waitForConfirmation warning (tx may still succeed):', confirmErr)
     }
 
-    // Send fee in the reward token AFTER successful contract call
+    // Send fee AFTER successful contract call
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        const feeResult = await algorandClient.send.assetTransfer({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: BigInt(feeAmount),
-          assetId: BigInt(feeTokenId),
-        });
-        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        let feeResult
+        if (feeTokenId === 0) {
+          feeResult = await algorandClient.send.payment({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: algokit.microAlgos(feeAmount),
+          })
+        } else {
+          feeResult = await algorandClient.send.assetTransfer({
+            sender,
+            signer,
+            receiver: feeRecipient,
+            amount: BigInt(feeAmount),
+            assetId: BigInt(feeTokenId),
+          })
+        }
+        feeTxId = (feeResult as any).transaction?.txID?.()
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful claim:', feeErr);
       }
@@ -481,13 +632,16 @@ export const claimTokens = async (
 }
 
 
-export const estimateStakingReward = async (stakingId: number, sender: string, signer: TransactionSigner) => {
-  const { stakingClient } = await createFryStakingClient(signer, sender, stakingId)
+export const estimateStakingReward = async (stakingId: number, sender: string, signer: TransactionSigner, algodConfig?: AlgodConfigOverride, contractVersion?: number) => {
+  const isV3 = contractVersion !== undefined && contractVersion >= 3
+  const { stakingClient, algodClient } = isV3
+    ? await createFryStakingV3Client(signer, sender, stakingId, algodConfig)
+    : await createFryStakingClient(signer, sender, stakingId, algodConfig)
   const globalState: any = await stakingClient.getGlobalState()
   const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946
 
   try {
-    const stakerData = await getUserData(stakingId, sender)
+    const stakerData = await getUserData(stakingId, sender, algodClient)
     const stakedAmount = Number(stakerData.stakedAmount)
     const stakeTime = Number(stakerData.stakeTime)
     const reward = stakedAmount *
@@ -495,15 +649,28 @@ export const estimateStakingReward = async (stakingId: number, sender: string, s
       ((Math.floor(Date.now() / 1000) - stakeTime) / 31104000)
     const rewardTokenId = globalState?.rewardToken?.asNumber() || FRY_ASSET_ID
     return { reward: Math.floor(reward), rewardTokenId }
-  } catch {
+  } catch (err) {
+    console.warn(`estimateStakingReward(${stakingId}): failed`, err)
     return { reward: 0, rewardTokenId: globalState?.rewardToken?.asNumber() || FRY_ASSET_ID }
   }
 }
 
-export const checkPoolRewardBalance = async (appId: number, rewardTokenId: number) => {
-  const algod = await getAlgodClient()
+export const checkPoolRewardBalance = async (appId: number, rewardTokenId: number, algodConfigOverride?: AlgodConfigOverride) => {
+  const algodConfig = algodConfigOverride
+    ? { ...algodConfigOverride, network: '' }
+    : getAlgodConfigFromViteEnvironment()
+  const algod = algokit.getAlgoClient({
+    server: algodConfig.server,
+    port: algodConfig.port,
+    token: algodConfig.token,
+  })
   const appAddress = algosdk.getApplicationAddress(appId)
   try {
+    if (rewardTokenId === 0) {
+      // Native token: check ALGO balance
+      const info = await algod.accountInformation(appAddress).do()
+      return BigInt(info.amount || 0)
+    }
     const info = await algod.accountAssetInformation(appAddress, rewardTokenId).do()
     return BigInt(info['asset-holding']?.amount ?? 0)
   } catch {
@@ -511,12 +678,15 @@ export const checkPoolRewardBalance = async (appId: number, rewardTokenId: numbe
   }
 }
 
-export const getPoolRewardDeficit = async (appId: number, rewardTokenId: number, signer: TransactionSigner, sender: string) => {
-  const decimals = 6
+export const getPoolRewardDeficit = async (appId: number, rewardTokenId: number, signer: TransactionSigner, sender: string, algodConfig?: AlgodConfigOverride, contractVersion?: number, tokenDecimals?: number) => {
+  const decimals = tokenDecimals ?? 6
 
-  const balanceMicro = await checkPoolRewardBalance(appId, rewardTokenId)
+  const balanceMicro = await checkPoolRewardBalance(appId, rewardTokenId, algodConfig)
 
-  const { stakingClient } = await createFryStakingClient(signer, sender, appId)
+  const isV3 = contractVersion !== undefined && contractVersion >= 3
+  const { stakingClient } = isV3
+    ? await createFryStakingV3Client(signer, sender, appId, algodConfig)
+    : await createFryStakingClient(signer, sender, appId, algodConfig)
   const globalState: any = await stakingClient.getGlobalState()
   const totalConfiguredMicro = BigInt(globalState.rewardTokenAmount?.asNumber() ?? 0)
   const totalDistributedMicro = BigInt(globalState.rewardsDistributed?.asNumber() ?? 0)
@@ -541,22 +711,46 @@ export const topUpRewards = async (
   amount: number,
   sender: string,
   signer: TransactionSigner,
+  contractVersion?: number,
 ) => {
-  const { stakingClient, algorandClient } = await createFryStakingClient(signer, sender, appId)
+  const isV3 = contractVersion !== undefined && contractVersion >= 3
 
-  const rewardTx = await algorandClient.transactions.assetTransfer({
-    assetId: BigInt(rewardTokenId),
-    amount: BigInt(amount),
-    receiver: algosdk.getApplicationAddress(appId),
-    signer,
-    sender,
-  })
+  if (isV3 && rewardTokenId === 0) {
+    // V3 native reward top-up
+    const { stakingClient, algorandClient } = await createFryStakingV3Client(signer, sender, appId)
 
-  await stakingClient.assetReceive({
-    rewardTokenTransfer: rewardTx,
-  })
+    const rewardPay = await algorandClient.transactions.payment({
+      sender,
+      receiver: algosdk.getApplicationAddress(appId),
+      amount: algokit.microAlgos(amount),
+      signer,
+    })
 
-  return { success: true, amount }
+    await stakingClient.nativeReceive({
+      rewardPayment: rewardPay,
+    })
+
+    return { success: true, amount }
+  } else {
+    // ASA reward top-up (V2 or V3 with ASA rewards)
+    const { stakingClient, algorandClient } = isV3
+      ? await createFryStakingV3Client(signer, sender, appId)
+      : await createFryStakingClient(signer, sender, appId)
+
+    const rewardTx = await algorandClient.transactions.assetTransfer({
+      assetId: BigInt(rewardTokenId),
+      amount: BigInt(amount),
+      receiver: algosdk.getApplicationAddress(appId),
+      signer,
+      sender,
+    })
+
+    await stakingClient.assetReceive({
+      rewardTokenTransfer: rewardTx,
+    })
+
+    return { success: true, amount }
+  }
 }
 
 /**
@@ -572,8 +766,8 @@ export const takeOutAsset_BROKEN = async (_stakingID: number, _sender: string, _
   )
 }
 
-export const getUsersStakeData = async (stakingId: number) => {
-  const algod = await getAlgodClient()
+export const getUsersStakeData = async (stakingId: number, algodOverride?: algosdk.Algodv2) => {
+  const algod = algodOverride || await getAlgodClient()
   const stakings: any[] = []
   const boxes = await algokit.getAppBoxNames(stakingId, algod)
   await Promise.all(
@@ -597,8 +791,8 @@ export const getUsersStakeData = async (stakingId: number) => {
   return stakings
 }
 
-export const getUserData = async (stakingId: number, staker: string) => {
-  const algod = await getAlgodClient()
+export const getUserData = async (stakingId: number, staker: string, algodOverride?: algosdk.Algodv2) => {
+  const algod = algodOverride || await getAlgodClient()
   const boxes = await algokit.getAppBoxNames(stakingId, algod)
   let stakerData: any = boxes?.filter((item) => algosdk.encodeAddress(item.nameRaw) === staker)[0]
   if (!stakerData) {
@@ -620,9 +814,12 @@ export const getUserData = async (stakingId: number, staker: string) => {
   return stakingData
 }
 
-export const getStakingData = async (stakingId: number, sender: string, signer: TransactionSigner) => {
+export const getStakingData = async (stakingId: number, sender: string, signer: TransactionSigner, algodConfig?: AlgodConfigOverride, contractVersion?: number) => {
   try {
-    const { stakingClient } = await createFryStakingClient(signer, sender, stakingId)
+    const isV3 = contractVersion !== undefined && contractVersion >= 3
+    const { stakingClient } = isV3
+      ? await createFryStakingV3Client(signer, sender, stakingId, algodConfig) as any
+      : await createFryStakingClient(signer, sender, stakingId, algodConfig)
     let globalState = await stakingClient.getGlobalState()
     return {
       apr: globalState.apr?.asNumber(),

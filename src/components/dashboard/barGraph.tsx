@@ -48,6 +48,8 @@ const BarGraph: React.FC<BarGraphProps> = ({ appId }) => {
   }
 
   useEffect(() => {
+    setSeries([{ name: 'Fees', data: [0, 0, 0, 0] }])
+
     const fetchWeeklyFees = async () => {
       try {
         const res = await axios.get(

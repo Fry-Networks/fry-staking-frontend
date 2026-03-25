@@ -138,7 +138,11 @@ export async function getAssetBalance(
   try {
     if (assetId === 0) {
       const info = await algod.accountInformation(userAddress).do()
-      return BigInt(info.amount ?? 0)
+      const total = BigInt(info.amount ?? 0)
+      const minBal = BigInt(info['min-balance'] ?? 0)
+      const buffer = 1_000_000n // 1 ALGO/VOI safety buffer for fees
+      const available = total - minBal - buffer
+      return available > 0n ? available : 0n
     }
     const info = await algod.accountAssetInformation(userAddress, assetId).do()
     return BigInt(info['asset-holding']?.amount ?? 0)

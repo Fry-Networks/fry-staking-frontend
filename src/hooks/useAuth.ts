@@ -8,6 +8,9 @@ export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(authService.isAuthenticated());
   const [isAdmin, setIsAdmin] = useState(authService.isAdmin());
 
+  // Guard against concurrent/rapid auth attempts (e.g. signer ref instability)
+  const authInFlightRef = useRef(false);
+
   // Clear auth only on genuine wallet change (same chain), not on chain switch
   const prevAddressRef = useRef(activeAddress);
   const prevChainRef = useRef(chainId);
@@ -31,6 +34,8 @@ export function useAuth() {
   // First checks if existing session cookie is still valid to avoid unnecessary signature popup
   useEffect(() => {
     if (activeAddress && signer && !isAuthenticated) {
+      if (authInFlightRef.current) return;
+      authInFlightRef.current = true;
       authService.checkSession(activeAddress)
         .then(async (session) => {
           if (session.authenticated) {
@@ -42,7 +47,8 @@ export function useAuth() {
             setIsAdmin(authService.isAdmin());
           }
         })
-        .catch(() => {}); // Silent — user will auth on-demand via ensureAuth
+        .catch(() => {}) // Silent — user will auth on-demand via ensureAuth
+        .finally(() => { authInFlightRef.current = false; });
     }
   }, [activeAddress, signer, isAuthenticated, chainId]);
 

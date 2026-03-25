@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '@iconify/react';
 import { useChain } from '../context/ChainContext';
 import { getChainIcon, getChainColor } from './ChainIcons';
@@ -7,17 +8,53 @@ import { ChainId } from '../config/chains';
 const ChainSelector: React.FC = () => {
   const { activeChain, chainId, availableChains, switchChain } = useChain();
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const close = useCallback(() => setIsOpen(false), []);
+
+  // Close on click outside (check both button and portal dropdown)
   useEffect(() => {
+    if (!isOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+      const target = event.target as Node;
+      if (
+        (!dropdownRef.current || !dropdownRef.current.contains(target)) &&
+        (!buttonRef.current || !buttonRef.current.contains(target))
+      ) {
+        close();
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isOpen, close]);
+
+  // Close on scroll or resize
+  useEffect(() => {
+    if (!isOpen) return;
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [isOpen, close]);
+
+  const handleToggle = () => {
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const DROPDOWN_W = 192; // w-48
+      const MARGIN = 8;
+      let left = rect.right - DROPDOWN_W; // right-align to button
+      if (left < MARGIN) left = MARGIN;
+      if (left + DROPDOWN_W > window.innerWidth - MARGIN) {
+        left = window.innerWidth - DROPDOWN_W - MARGIN;
+      }
+      setDropdownPos({ top: rect.bottom + 8, left });
+    }
+    setIsOpen(!isOpen);
+  };
 
   const handleSelect = (newChainId: ChainId) => {
     switchChain(newChainId);
@@ -25,10 +62,11 @@ const ChainSelector: React.FC = () => {
   };
 
   return (
-    <div ref={dropdownRef} className="relative inline-block">
+    <div className="inline-block shrink-0">
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors cursor-pointer"
+        ref={buttonRef}
+        onClick={handleToggle}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors cursor-pointer shrink-0 whitespace-nowrap"
         style={{
           backgroundColor: 'var(--bg-card)',
           borderColor: 'var(--border-color)',
@@ -45,10 +83,15 @@ const ChainSelector: React.FC = () => {
         />
       </button>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div
-          className="absolute right-0 mt-2 w-48 rounded-lg shadow-lg z-50 overflow-hidden"
+          ref={dropdownRef}
+          className="w-48 rounded-lg shadow-lg overflow-hidden"
           style={{
+            position: 'fixed',
+            top: dropdownPos.top,
+            left: dropdownPos.left,
+            zIndex: 9999,
             backgroundColor: 'var(--bg-card)',
             border: '1px solid var(--border-color)',
           }}
@@ -95,7 +138,8 @@ const ChainSelector: React.FC = () => {
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

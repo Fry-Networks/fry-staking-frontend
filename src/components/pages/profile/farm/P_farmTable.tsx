@@ -3,6 +3,7 @@ import { useWallet } from '@txnlab/use-wallet'
 import axios from 'axios'
 import P_FTable from './P_fTable'
 import { tokenServiceInstance } from '../../../../services/TokenService'
+import { getLpTokenUsdPrice, fetchPriceMap } from '../../../../services/PriceService'
 import { getUserStakeForPool } from '../../../../farming_func'
 
 export type FarmStatus = 'active' | 'ending-soon' | 'ended'
@@ -93,6 +94,46 @@ const P_FarmTable: React.FC = () => {
 
       const now = Math.floor(Date.now() / 1000)
 
+      // Fetch LP prices and reward token prices for price-adjusted APR
+      const allTokens = await tokenServiceInstance.fetchAllTokens()
+      const decimalMap: Record<string, number> = {}
+      allTokens.forEach(t => { decimalMap[t.id.toString()] = t.decimals ?? 6 })
+
+      const pairMap = new Map<string, { tokenAId: number; tokenBId: number }>()
+      for (const farm of allFarms) {
+        const aId = Number(farm.lpToken?.tokenAId || farm.lpToken?.tokenA || 0)
+        const bId = Number(farm.lpToken?.tokenBId || farm.lpToken?.tokenB || 0)
+        if (aId > 0 && bId > 0 && aId !== bId) {
+          const key = [aId, bId].sort((a: number, b: number) => a - b).join('-')
+          if (!pairMap.has(key)) pairMap.set(key, { tokenAId: aId, tokenBId: bId })
+        }
+      }
+
+      const rewardTokenIds = Array.from(new Set(
+        allFarms.map((f: any) => Number(f.rewardToken?.id || 0)).filter((id: number) => id > 0)
+      )) as number[]
+
+      const [lpPriceResults, rewardPrices] = await Promise.all([
+        Promise.allSettled(
+          [...pairMap.entries()].map(async ([key, pair]) => ({
+            key,
+            price: await getLpTokenUsdPrice(
+              pair.tokenAId, pair.tokenBId,
+              decimalMap[pair.tokenAId.toString()] ?? 6,
+              decimalMap[pair.tokenBId.toString()] ?? 6,
+            ),
+          }))
+        ),
+        fetchPriceMap(rewardTokenIds),
+      ])
+
+      const lpPrices: Record<string, number> = {}
+      for (const r of lpPriceResults) {
+        if (r.status === 'fulfilled' && r.value.price > 0) {
+          lpPrices[r.value.key] = r.value.price
+        }
+      }
+
       // Filter: user created them OR user has participated (staked or claimed)
       const userFarms = allFarms.filter((farm: any) => {
         const isCreator = farm.creatorId?.toLowerCase() === activeAddress.toLowerCase()
@@ -134,8 +175,30 @@ const P_FarmTable: React.FC = () => {
           tokenAImage: imageMap[tokenAId] || `https://asa-list.tinyman.org/assets/${tokenAId}/icon.png`,
           tokenBImage: imageMap[tokenBId] || `https://asa-list.tinyman.org/assets/${tokenBId}/icon.png`,
           rewardTokenImage: imageMap[rewardTokenId] || `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`,
-          tvl: `$${((farm.totalStaked || 0) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
-          apr: `${farm.aprRate || 0}%`,
+          tvl: (() => {
+            const lpHuman = (farm.totalStaked || 0) / 1_000_000
+            const aId2 = Number(farm.lpToken?.tokenAId || farm.lpToken?.tokenA || 0)
+            const bId2 = Number(farm.lpToken?.tokenBId || farm.lpToken?.tokenB || 0)
+            const pk = [aId2, bId2].sort((a: number, b: number) => a - b).join('-')
+            const lp = lpPrices[pk] ?? 0
+            const tvlVal = lpHuman * lp
+            return tvlVal > 0
+              ? `$ ${tvlVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : `$${lpHuman.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+          })(),
+          apr: (() => {
+            const aId2 = Number(farm.lpToken?.tokenAId || farm.lpToken?.tokenA || 0)
+            const bId2 = Number(farm.lpToken?.tokenBId || farm.lpToken?.tokenB || 0)
+            const pk = [aId2, bId2].sort((a: number, b: number) => a - b).join('-')
+            const lp = lpPrices[pk] ?? 0
+            const rwdId = Number(farm.rewardToken?.id || 0)
+            const rwdPrice = rewardPrices[rwdId.toString()] ?? 0
+            if (lp > 0 && rwdPrice > 0) {
+              const adjApr = (farm.aprRate || 0) * (rwdPrice / lp)
+              return `${adjApr.toFixed(2)}%`
+            }
+            return 'N/A'
+          })(),
           endsIn: endsInDays > 0 ? `${endsInDays} ${endsInDays === 1 ? 'day' : 'days'}` : 'Ended',
           dexProvider: farm.dexProvider || '',
           endTime,

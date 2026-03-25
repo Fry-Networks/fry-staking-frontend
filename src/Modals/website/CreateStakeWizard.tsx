@@ -3,15 +3,15 @@ import { Modal, Steps, DatePicker } from 'antd';
 import { Icon } from '@iconify/react';
 import { toast } from 'react-toastify';
 import dayjs from 'dayjs';
-import { useWallet } from '@txnlab/use-wallet';
+import { useMultiChainWallet } from '../../hooks/useMultiChainWallet';
+import { useChain } from '../../context/ChainContext';
 import { initStaking } from '../../staking_func';
 import { authAxios } from '../../services/apiClient';
 import { logFee } from '../../utils/logFee';
 import { useAuth } from '../../hooks/useAuth';
-import { fetchFeeConfig, calculateFeeSimple, FEE_RECIPIENT } from '../../services/FeeService';
+import { fetchFeeConfig, calculateFeeSimple } from '../../services/FeeService';
 import * as algokit from '@algorandfoundation/algokit-utils';
 import algosdk from 'algosdk';
-import { getAlgodConfigFromViteEnvironment } from '../../utils/network/getAlgoClientConfigs';
 import TokenSelector from '../../components/shared/TokenSelector';
 import TokenImage from '../../components/shared/TokenImage';
 import type { DiscoveredToken } from '../../services/TokenDiscoveryService';
@@ -58,8 +58,15 @@ const CreateStakeWizard: React.FC<CreateStakeWizardProps> = ({
   setIsOpen,
   fetchData,
 }) => {
-  const { signer, activeAddress } = useWallet();
+  const { signer: multiSigner, activeAddress } = useMultiChainWallet();
+  const signer = multiSigner!;
   const { ensureAuth } = useAuth();
+  const { activeChain } = useChain();
+
+  // Build chain-aware algod config
+  const chainAlgodConfig = 'algodServer' in (activeChain?.connection as any || {})
+    ? { server: (activeChain.connection as any).algodServer, port: (activeChain.connection as any).algodPort, token: (activeChain.connection as any).algodToken }
+    : undefined;
   const isWalletConnected = !!activeAddress && !!signer;
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -197,10 +204,12 @@ const CreateStakeWizard: React.FC<CreateStakeWizardProps> = ({
 
       // Pool creation fee: 0.5% of reward tokens
       const feeConfig = await fetchFeeConfig();
-      const feeCalc = calculateFeeSimple('poolCreation', rewardAmountMicro, feeConfig);
+      const feeCalc = calculateFeeSimple('poolCreation', rewardAmountMicro, feeConfig, activeChain?.feeRecipient);
 
       if (feeCalc.feeAmount > 0) {
-        const algodConfig = getAlgodConfigFromViteEnvironment();
+        const algodConfig = chainAlgodConfig
+          ? { ...chainAlgodConfig, network: '' }
+          : { server: import.meta.env.VITE_ALGOD_SERVER, port: import.meta.env.VITE_ALGOD_PORT, token: import.meta.env.VITE_ALGOD_TOKEN, network: '' };
         const algorandClient = algokit.AlgorandClient.fromConfig({ algodConfig });
         algorandClient.setDefaultSigner(signer);
 
@@ -208,14 +217,14 @@ const CreateStakeWizard: React.FC<CreateStakeWizardProps> = ({
           await algorandClient.send.payment({
             sender: activeAddress,
             signer,
-            receiver: FEE_RECIPIENT,
+            receiver: feeCalc.feeRecipient,
             amount: algokit.microAlgos(feeCalc.feeAmount),
           });
         } else {
           await algorandClient.send.assetTransfer({
             sender: activeAddress,
             signer,
-            receiver: FEE_RECIPIENT,
+            receiver: feeCalc.feeRecipient,
             amount: BigInt(feeCalc.feeAmount),
             assetId: BigInt(rewardToken.id),
           });
@@ -241,6 +250,7 @@ const CreateStakeWizard: React.FC<CreateStakeWizardProps> = ({
         lockPeriodSeconds,
         activeAddress,
         signer,
+        chainAlgodConfig,
       );
 
       if (!appId) throw new Error('App ID not returned from contract.');
@@ -258,7 +268,7 @@ const CreateStakeWizard: React.FC<CreateStakeWizardProps> = ({
         lockPeriod: lockPeriodSeconds,
         isGated,
         gateConfig: isGated ? gateConfig : {},
-        contractVersion: 2,
+        contractVersion: 3,
       };
 
       const response = await authAxios.post('/staking/add', payload);

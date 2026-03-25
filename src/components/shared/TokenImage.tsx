@@ -34,7 +34,10 @@ const TokenImage: React.FC<TokenImageProps> = ({ tokenId, src, symbol, size = 40
 
   const sources: string[] = [];
   if (src) sources.push(src);
-  sources.push(tinymanUrl);
+  // Only try Tinyman CDN if we have a real src — avoids broken image flash for Voi tokens
+  if (src) {
+    sources.push(tinymanUrl);
+  }
   const currentSrc = fallbackStage < sources.length ? sources[fallbackStage] : null;
 
   if (!currentSrc) {

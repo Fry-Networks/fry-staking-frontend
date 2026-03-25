@@ -11,3 +11,5 @@ export * from "./FolksRouterClient";
 export * from "./VestigeLabsClient";
 export * from "./DeflexClient";
 export * from "./SwapService";
+export * from "./nomadex";
+export * from "./VoiSwapService";

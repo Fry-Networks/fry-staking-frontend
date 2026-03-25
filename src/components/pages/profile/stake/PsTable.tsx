@@ -3,11 +3,13 @@ import type { TableColumnsType } from 'antd'
 import { Table } from 'antd'
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../../../hooks/useMultiChainWallet'
 import { toast } from 'react-toastify'
 import type { ProfileStakePool, PoolFilter } from './PstakeTable'
 import { claimTokens, unstakeTokens, estimateStakingReward } from '../../../../staking_func'
 import { useAuth } from '../../../../hooks/useAuth'
+import { usesBackendClaim } from '../../../../config/stakingPools'
+import { getClaimStatus, claimReward } from '../../../../services/stakingClaimApi'
 import { fetchFeeConfig, calculateFeeSimple } from '../../../../services/FeeService'
 import type { FeeCalculation } from '../../../../services/FeeService'
 import FeeConfirmation from '../../../shared/FeeConfirmation'
@@ -66,7 +68,8 @@ function StatusBadge({ status }: { status: string }) {
 const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefresh }) => {
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
   const navigate = useNavigate()
-  const { activeAddress, signer } = useWallet()
+  const { activeAddress, signer: multiSigner } = useMultiChainWallet()
+  const signer = multiSigner!
   const { ensureAuth } = useAuth()
   const { isSimpleMode } = usePreferences()
 
@@ -95,7 +98,7 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
       if (pool?.stakingContractId) {
         const k = String(key)
         setRewardLoading(prev => ({ ...prev, [k]: true }))
-        estimateStakingReward(pool.stakingContractId, activeAddress, signer)
+        estimateStakingReward(pool.stakingContractId, activeAddress, signer, undefined, pool.contractVersion)
           .then(est => setEstimatedRewards(prev => ({ ...prev, [k]: est.reward })))
           .catch(() => {})
           .finally(() => setRewardLoading(prev => ({ ...prev, [k]: false })))
@@ -150,47 +153,83 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
     try {
       await ensureAuth();
       setIsClaimingId(pool._id);
-      const rewardTokenId = pool.rewardTokenId || FRY_ASSET_ID;
+      const rewardTokenId = pool.rewardTokenId ?? FRY_ASSET_ID;
       const rewardTokenName = pool.rewardTokenName || 'tokens';
 
-      const est = await estimateStakingReward(pool.stakingContractId, activeAddress!, signer);
-      const rewardMicro = est.reward > 0 ? est.reward : 1_000_000;
-
-      await showFeeConfirmation('stakingClaim', rewardMicro, est.rewardTokenId || rewardTokenId, 6, rewardTokenName,
-        'Claim rewards', { type: 'claim', args: { stakingContractId: pool.stakingContractId, _id: pool._id } });
+      if (usesBackendClaim(pool.stakingContractId)) {
+        const status = await getClaimStatus(Number(pool.stakingContractId), activeAddress!);
+        if (status.isLocked) {
+          const lockDate = status.lockEndsAt ? new Date(status.lockEndsAt * 1000).toLocaleDateString() : 'later';
+          toast.error(`Claim available after ${lockDate}`);
+          setIsClaimingId(null);
+          return;
+        }
+        const rewardMicro = status.pendingReward > 0 ? status.pendingReward : 0;
+        if (rewardMicro <= 0) {
+          toast.error('No rewards to claim');
+          setIsClaimingId(null);
+          return;
+        }
+        await showFeeConfirmation('stakingClaim', rewardMicro, status.rewardToken || rewardTokenId, 6, rewardTokenName,
+          'Claim rewards', { type: 'claim', args: { stakingContractId: pool.stakingContractId, _id: pool._id, useBackend: true, contractVersion: pool.contractVersion } });
+      } else {
+        const est = await estimateStakingReward(pool.stakingContractId, activeAddress!, signer, undefined, pool.contractVersion);
+        const rewardMicro = est.reward > 0 ? est.reward : 1_000_000;
+        await showFeeConfirmation('stakingClaim', rewardMicro, est.rewardTokenId || rewardTokenId, 6, rewardTokenName,
+          'Claim rewards', { type: 'claim', args: { stakingContractId: pool.stakingContractId, _id: pool._id, useBackend: false, contractVersion: pool.contractVersion } });
+      }
     } catch (error: any) {
-      toast.error(error?.message || 'Error during claim');
+      const msg = error?.response?.data?.message || error?.message || 'Error during claim';
+      toast.error(msg);
       setIsClaimingId(null);
     }
   };
 
   const executeClaim = async (args: any) => {
     try {
-      const claimResult = await claimTokens(args.stakingContractId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
-      if (claimResult.error) {
-        toast.error('Claim failed.');
-        return;
+      if (args.useBackend) {
+        const result = await claimReward(Number(args.stakingContractId), activeAddress!);
+        if (!result.success) {
+          toast.error(result.message || 'Claim failed');
+          return;
+        }
+        toast.success(`Claimed ${result.amountDisplay.toFixed(2)} tokens`);
+        await authAxios.post('/claimreward/add', {
+          walletId: activeAddress,
+          poolId: args._id,
+          rewardClaimed: result.amountDisplay,
+          feeTxId: result.txId,
+          feeAssetId: result.rewardToken,
+        }, { headers: { 'Content-Type': 'application/json' } }).catch(() => {});
+        if (onRefresh) await onRefresh();
+      } else {
+        const claimResult = await claimTokens(args.stakingContractId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient, undefined, args.contractVersion);
+        if (claimResult.error) {
+          toast.error('Claim failed.');
+          return;
+        }
+
+        const { feeTxId, feeTokenId } = claimResult;
+        const rewardClaimed = claimResult.rewardClaimed || 0;
+        const stakedAmount = claimResult.stakedAmount || 0;
+        const stakedTime = claimResult.stakedTime || 0;
+
+        await authAxios.post('/stakerData/add', {
+          walletId: activeAddress, stakedAmount, stakeTime: stakedTime,
+          poolId: args._id, rewardClaimed, feeTxId, feeAssetId: feeTokenId,
+        }, { headers: { 'Content-Type': 'application/json' } });
+
+        await authAxios.post('/claimreward/add', {
+          walletId: activeAddress, stakedAmount, stakedTime,
+          poolId: args._id, rewardClaimed, feeTxId, feeAssetId: feeTokenId,
+        }, { headers: { 'Content-Type': 'application/json' } });
+
+        toast.success('Rewards claimed successfully!');
+        if (onRefresh) await onRefresh();
       }
-
-      const { feeTxId, feeTokenId } = claimResult;
-      const rewardClaimed = claimResult.rewardClaimed || 0;
-      const stakedAmount = claimResult.stakedAmount || 0;
-      const stakedTime = claimResult.stakedTime || 0;
-
-      await authAxios.post('/stakerData/add', {
-        walletId: activeAddress, stakedAmount, stakeTime: stakedTime,
-        poolId: args._id, rewardClaimed, feeTxId, feeAssetId: feeTokenId,
-      }, { headers: { 'Content-Type': 'application/json' } });
-
-      await authAxios.post('/claimreward/add', {
-        walletId: activeAddress, stakedAmount, stakedTime,
-        poolId: args._id, rewardClaimed, feeTxId, feeAssetId: feeTokenId,
-      }, { headers: { 'Content-Type': 'application/json' } });
-
-      toast.success('Rewards claimed successfully!');
-      if (onRefresh) await onRefresh();
     } catch (error: any) {
-      toast.error(error?.message || 'Error during claim');
+      const msg = error?.response?.data?.message || error?.message || 'Error during claim';
+      toast.error(msg);
     } finally {
       setIsClaimingId(null);
     }
@@ -200,53 +239,84 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
     try {
       await ensureAuth();
       setIsClaimingId(pool._id);
-      const rewardTokenId = pool.rewardTokenId || FRY_ASSET_ID;
+      const rewardTokenId = pool.rewardTokenId ?? FRY_ASSET_ID;
       const rewardTokenName = pool.rewardTokenName || 'tokens';
+      const useBackend = usesBackendClaim(pool.stakingContractId);
 
-      const est = await estimateStakingReward(pool.stakingContractId, activeAddress!, signer);
-      const rewardMicro = est.reward > 0 ? est.reward : 1_000_000;
-
-      await showFeeConfirmation('stakingClaim', rewardMicro, est.rewardTokenId || rewardTokenId, 6, rewardTokenName,
-        'Claim & Withdraw', { type: 'claimAndWithdraw', args: { stakingContractId: pool.stakingContractId, _id: pool._id, stakeTokenId: pool.stakeTokenId } });
+      if (useBackend) {
+        const status = await getClaimStatus(Number(pool.stakingContractId), activeAddress!);
+        const rewardMicro = status.pendingReward > 0 ? status.pendingReward : 0;
+        await showFeeConfirmation('stakingClaim', rewardMicro, status.rewardToken || rewardTokenId, 6, rewardTokenName,
+          'Claim & Withdraw', { type: 'claimAndWithdraw', args: { stakingContractId: pool.stakingContractId, _id: pool._id, stakeTokenId: pool.stakeTokenId, useBackend: true, contractVersion: pool.contractVersion } });
+      } else {
+        const est = await estimateStakingReward(pool.stakingContractId, activeAddress!, signer, undefined, pool.contractVersion);
+        const rewardMicro = est.reward > 0 ? est.reward : 1_000_000;
+        await showFeeConfirmation('stakingClaim', rewardMicro, est.rewardTokenId || rewardTokenId, 6, rewardTokenName,
+          'Claim & Withdraw', { type: 'claimAndWithdraw', args: { stakingContractId: pool.stakingContractId, _id: pool._id, stakeTokenId: pool.stakeTokenId, useBackend: false, contractVersion: pool.contractVersion } });
+      }
     } catch (error: any) {
-      toast.error(error?.message || 'Error during claim & withdraw');
+      const msg = error?.response?.data?.message || error?.message || 'Error during claim & withdraw';
+      toast.error(msg);
       setIsClaimingId(null);
     }
   };
 
   const executeClaimAndWithdraw = async (args: any) => {
     try {
-      // Step 1: Claim rewards
-      const claimResult = await claimTokens(args.stakingContractId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient);
-      if (claimResult.error) {
-        toast.error('Claim failed. Withdrawal not attempted.');
-        return;
+      let stakedAmount = 0;
+
+      if (args.useBackend) {
+        // Backend claim
+        const result = await claimReward(Number(args.stakingContractId), activeAddress!);
+        if (!result.success) {
+          toast.error(result.message || 'Claim failed. Withdrawal not attempted.');
+          return;
+        }
+        toast.success(`Claimed ${result.amountDisplay.toFixed(2)} tokens`);
+        await authAxios.post('/claimreward/add', {
+          walletId: activeAddress,
+          poolId: args._id,
+          rewardClaimed: result.amountDisplay,
+          feeTxId: result.txId,
+          feeAssetId: result.rewardToken,
+        }, { headers: { 'Content-Type': 'application/json' } }).catch(() => {});
+
+        // For withdrawal after backend claim, estimate staked amount from the pool data
+        const pool = data.find(p => p._id === args._id);
+        stakedAmount = pool ? parseFloat(pool.userStaked) * 1_000_000 : 0;
+      } else {
+        // On-chain claim
+        const claimResult = await claimTokens(args.stakingContractId, activeAddress!, signer, args.feeAmount, args.feeTokenId, args.feeRecipient, undefined, args.contractVersion);
+        if (claimResult.error) {
+          toast.error('Claim failed. Withdrawal not attempted.');
+          return;
+        }
+
+        const { feeTxId: claimFeeTxId, feeTokenId: claimFeeTokenId } = claimResult;
+        const rewardClaimed = claimResult.rewardClaimed || 0;
+        stakedAmount = claimResult.stakedAmount || 0;
+        const stakedTime = claimResult.stakedTime || 0;
+
+        await authAxios.post('/stakerData/add', {
+          walletId: activeAddress, stakedAmount, stakeTime: stakedTime,
+          poolId: args._id, rewardClaimed, feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
+        }, { headers: { 'Content-Type': 'application/json' } });
+
+        await authAxios.post('/claimreward/add', {
+          walletId: activeAddress, stakedAmount, stakedTime,
+          poolId: args._id, rewardClaimed, feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
+        }, { headers: { 'Content-Type': 'application/json' } });
       }
-
-      const { feeTxId: claimFeeTxId, feeTokenId: claimFeeTokenId } = claimResult;
-      const rewardClaimed = claimResult.rewardClaimed || 0;
-      const stakedAmount = claimResult.stakedAmount || 0;
-      const stakedTime = claimResult.stakedTime || 0;
-
-      await authAxios.post('/stakerData/add', {
-        walletId: activeAddress, stakedAmount, stakeTime: stakedTime,
-        poolId: args._id, rewardClaimed, feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
-      }, { headers: { 'Content-Type': 'application/json' } });
-
-      await authAxios.post('/claimreward/add', {
-        walletId: activeAddress, stakedAmount, stakedTime,
-        poolId: args._id, rewardClaimed, feeTxId: claimFeeTxId, feeAssetId: claimFeeTokenId,
-      }, { headers: { 'Content-Type': 'application/json' } });
 
       // Step 2: Withdraw full staked amount
       if (stakedAmount > 0) {
         const config = await fetchFeeConfig();
-        const stakeTokenId = args.stakeTokenId || FRY_ASSET_ID;
+        const stakeTokenId = args.stakeTokenId ?? FRY_ASSET_ID;
         const withdrawFee = calculateFeeSimple('stakingWithdraw', stakedAmount, config);
 
         const withdrawResult = await unstakeTokens(
           args.stakingContractId, stakedAmount, activeAddress!, signer,
-          withdrawFee.feeAmount, stakeTokenId, withdrawFee.feeRecipient
+          withdrawFee.feeAmount, stakeTokenId, withdrawFee.feeRecipient, undefined, args.contractVersion
         );
 
         if (withdrawResult instanceof Error) {
@@ -266,7 +336,8 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
 
       if (onRefresh) await onRefresh();
     } catch (error: any) {
-      toast.error(error?.message || 'Error during claim & withdraw');
+      const msg = error?.response?.data?.message || error?.message || 'Error during claim & withdraw';
+      toast.error(msg);
     } finally {
       setIsClaimingId(null);
     }
@@ -394,20 +465,46 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
                   )}
                 </div>
                 <div className="flex gap-[10px]">
-                  {pool && activeAddress && (
-                    isClaimingId === pool._id ? (
-                      <p className="text-blue-500 font-medium">Processing...</p>
-                    ) : (!pool.contractVersion || pool.contractVersion === 1) ? (
-                      <div className="flex flex-col items-center">
-                        <button
-                          className="button btn-primary rounded-[10px] px-[16px] py-[10px] text-white opacity-40 cursor-not-allowed linearGradient"
-                          disabled={true}
-                        >
-                          {isEnded ? 'Claim & Withdraw' : 'Claim'}
-                        </button>
-                        <p className="text-[10px] text-red-500 mt-1">Claim disabled — use Withdraw on Stake page</p>
-                      </div>
-                    ) : (
+                  {pool && activeAddress && (() => {
+                    if (isClaimingId === pool._id) {
+                      return <p className="text-blue-500 font-medium">Processing...</p>
+                    }
+                    if (!pool.contractVersion || pool.contractVersion === 1) {
+                      return (
+                        <div className="flex flex-col items-center">
+                          <button
+                            className="button btn-primary rounded-[10px] px-[16px] py-[10px] text-white opacity-40 cursor-not-allowed linearGradient"
+                            disabled={true}
+                          >
+                            {isEnded ? 'Claim & Withdraw' : 'Claim'}
+                          </button>
+                          <p className="text-[10px] text-red-500 mt-1">Claim disabled — use Withdraw on Stake page</p>
+                        </div>
+                      )
+                    }
+                    // Lock period check for V2 pools
+                    const stakeTime = pool.userStakeTime
+                    const lockSecs = pool.lockPeriodSecs
+                    const now = Math.floor(Date.now() / 1000)
+                    const isPoolLocked = stakeTime && lockSecs > 0 && (stakeTime + lockSecs) > now
+
+                    if (isPoolLocked) {
+                      return (
+                        <div className="flex flex-col items-center">
+                          <button
+                            className="button btn-primary rounded-[10px] px-[16px] py-[10px] text-white opacity-40 cursor-not-allowed linearGradient"
+                            disabled={true}
+                          >
+                            {isEnded ? 'Claim & Withdraw' : 'Claim'}
+                          </button>
+                          <p className="text-[10px] text-yellow-500 mt-1">
+                            Locked until {new Date((stakeTime + lockSecs) * 1000).toLocaleDateString()}
+                          </p>
+                        </div>
+                      )
+                    }
+
+                    return (
                       <button
                         className="button btn-primary rounded-[10px] px-[16px] py-[10px] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed linearGradient"
                         onClick={() => isEnded ? handleClaimAndWithdraw(pool) : handleClaim(pool)}
@@ -416,7 +513,7 @@ const P_STable: React.FC<P_STableProps> = ({ data, loading, activeFilter, onRefr
                         {isLoading ? 'Checking...' : isEnded ? 'Claim & Withdraw' : 'Claim'}
                       </button>
                     )
-                  )}
+                  })()}
                   <button
                     className="button btn-red-border rounded-[10px] px-[16px] py-[10px] text-[var(--text-primary)] cursor-pointer"
                     onClick={() => navigate('/token-stake')}

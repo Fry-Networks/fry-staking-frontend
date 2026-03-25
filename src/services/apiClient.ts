@@ -9,6 +9,22 @@ export const authAxios = axios.create({
   withCredentials: true,
 });
 
+// Request interceptor: add chain headers (authAxios doesn't inherit global axios interceptors)
+authAxios.interceptors.request.use((config) => {
+  try {
+    const chainId = localStorage.getItem('fry-farm-chain-id') || 'algorand-mainnet';
+    config.headers['X-Chain-Id'] = chainId;
+    if (chainId === 'voi-mainnet') {
+      const voiConn = localStorage.getItem('voi-wallet-connection');
+      if (voiConn) {
+        const { address } = JSON.parse(voiConn);
+        if (address) config.headers['X-Wallet-Address'] = address;
+      }
+    }
+  } catch { /* ignore */ }
+  return config;
+});
+
 // Response interceptor: clear stale auth on 401
 authAxios.interceptors.response.use(
   (response) => response,

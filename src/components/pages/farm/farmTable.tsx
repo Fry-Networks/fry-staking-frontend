@@ -8,7 +8,7 @@ import Farmbanner from './farmbanner';
 import CreateFarmWizard from '../../../Modals/website/CreateFarmWizard';
 import { useWallet } from '@txnlab/use-wallet';
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService';
-import { getLpTokenUsdPrice } from '../../../services/PriceService';
+import { getLpTokenUsdPrice, fetchPriceMap } from '../../../services/PriceService';
 
 
 // Helper function to validate image URL (outside component to avoid recreation)
@@ -86,16 +86,25 @@ const FarmTable: React.FC = () => {
         }
       }
 
-      const lpPriceResults = await Promise.allSettled(
-        [...pairMap.entries()].map(async ([key, pair]) => ({
-          key,
-          price: await getLpTokenUsdPrice(
-            pair.tokenAId, pair.tokenBId,
-            decimalMap[pair.tokenAId.toString()] ?? 6,
-            decimalMap[pair.tokenBId.toString()] ?? 6,
-          ),
-        }))
-      );
+      // Collect unique reward token IDs for price-adjusted APR
+      const rewardTokenIds = Array.from(new Set(
+        data.map((f: any) => Number(f.rewardToken?.id || 0)).filter((id: number) => id > 0)
+      )) as number[];
+
+      // Fetch LP prices and reward token prices in parallel
+      const [lpPriceResults, rewardPrices] = await Promise.all([
+        Promise.allSettled(
+          [...pairMap.entries()].map(async ([key, pair]) => ({
+            key,
+            price: await getLpTokenUsdPrice(
+              pair.tokenAId, pair.tokenBId,
+              decimalMap[pair.tokenAId.toString()] ?? 6,
+              decimalMap[pair.tokenBId.toString()] ?? 6,
+            ),
+          }))
+        ),
+        fetchPriceMap(rewardTokenIds),
+      ]);
 
       const lpPrices: Record<string, number> = {};
       for (const r of lpPriceResults) {
@@ -116,6 +125,15 @@ const FarmTable: React.FC = () => {
           const pairKey = [aId, bId].sort((a, b) => a - b).join('-');
           const lpPrice = lpPrices[pairKey] ?? 0;
           const tvlUsd = lpHuman * lpPrice;
+
+          // Price-adjusted APR: on-chain APR assumes 1:1 token value, correct for actual prices
+          const rwdId = Number(farm.rewardToken?.id || 0);
+          const rewardPrice = rewardPrices[rwdId.toString()] ?? 0;
+          const rawApr = farm.aprRate || 0;
+          let displayApr: number | null = null;
+          if (lpPrice > 0 && rewardPrice > 0) {
+            displayApr = rawApr * (rewardPrice / lpPrice);
+          }
           const tvl = poolData > 0
             ? (tvlUsd > 0 ? `$ ${tvlUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${lpHuman.toLocaleString()} LP`)
             : '0 LP';
@@ -235,7 +253,7 @@ const FarmTable: React.FC = () => {
               </div>
             ),
             tvl: tvl, // TVL value is displayed here
-            apr: `${farm.aprRate}%`,
+            apr: displayApr !== null ? `${displayApr.toFixed(2)}%` : 'N/A',
             staked: tvlUsd > 0
               ? `$ ${tvlUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
               : `${lpHuman.toLocaleString()} LP`,

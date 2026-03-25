@@ -115,7 +115,7 @@ class AuthService {
     // Step 1: Get nonce from backend
     const nonceRes = await fetch(`${API_BASE}/auth/nonce`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Chain-Id': chainId || 'algorand-mainnet' },
       body: JSON.stringify({ wallet: activeAddress }),
       credentials: 'include',
     });
@@ -165,7 +165,7 @@ class AuthService {
     // Step 5: Verify signed transaction with backend — JWT set as HttpOnly cookie
     const verifyRes = await fetch(`${API_BASE}/auth/verify`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Chain-Id': chainId || 'algorand-mainnet' },
       body: JSON.stringify({
         wallet: activeAddress,
         signedTxn: signedTxnBase64,

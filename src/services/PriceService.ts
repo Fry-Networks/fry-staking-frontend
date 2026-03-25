@@ -220,3 +220,34 @@ export async function fetchPriceMap(asaIds: number[]): Promise<Record<string, nu
   })
   return priceMap
 }
+
+// ─── Chain-Aware Facades ──────────────────────────────────────────
+
+import type { ChainId } from '../config/chains/types'
+import { fetchVoiUsd, getVoiTokenUsdPrice, fetchVoiPriceMap } from '../contracts/nomadex/NomadexPriceService'
+
+/** Chain-aware token price fetch — delegates to Algorand or Voi backend */
+export async function getTokenUsdPrice(
+  tokenId: number,
+  chainId: ChainId = 'algorand-mainnet'
+): Promise<number> {
+  if (chainId === 'voi-mainnet') return getVoiTokenUsdPrice(tokenId)
+  return getAsaUsdPrice(tokenId)
+}
+
+/** Chain-aware native asset price fetch (ALGO or VOI) */
+export async function fetchNativeUsd(
+  chainId: ChainId = 'algorand-mainnet'
+): Promise<number> {
+  if (chainId === 'voi-mainnet') return fetchVoiUsd()
+  return fetchAlgoUsd()
+}
+
+/** Chain-aware batch price fetch */
+export async function fetchChainPriceMap(
+  tokenIds: number[],
+  chainId: ChainId = 'algorand-mainnet'
+): Promise<Record<string, number>> {
+  if (chainId === 'voi-mainnet') return fetchVoiPriceMap(tokenIds)
+  return fetchPriceMap(tokenIds)
+}

@@ -15,8 +15,10 @@ interface MultiChainWalletValue {
   algorandProviders: ReturnType<typeof useWallet>['providers'];
   /** Voi-specific: is Kibisis extension available */
   isKibisisAvailable: boolean;
-  /** Connect Voi wallet */
+  /** Connect Voi wallet (Kibisis) */
   connectVoi: () => Promise<void>;
+  /** Connect Voi wallet (Lute) */
+  connectLute: () => Promise<void>;
   /** Disconnect Voi wallet */
   disconnectVoi: () => void;
 }
@@ -44,11 +46,12 @@ export function useMultiChainWallet(): MultiChainWalletValue {
     algorandProviders: algorandWallet.providers,
     isKibisisAvailable: voiWallet.isKibisisAvailable,
     connectVoi: voiWallet.connect,
+    connectLute: voiWallet.connectLute,
     disconnectVoi: voiWallet.disconnect,
   }), [
     isAlgorand, chainId,
     algorandWallet.activeAddress, algorandWallet.signTransactions, algorandWallet.signer, algorandWallet.providers,
     voiWallet.address, voiWallet.isConnected, voiWallet.signTransactions, voiWallet.signer,
-    voiWallet.isKibisisAvailable, voiWallet.connect, voiWallet.disconnect,
+    voiWallet.isKibisisAvailable, voiWallet.connect, voiWallet.connectLute, voiWallet.disconnect,
   ]);
 }

@@ -12,7 +12,7 @@ interface ConnectWalletInterface {
 
 const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
   const { providers } = useWallet()
-  const { activeAddress, isKibisisAvailable, connectVoi, disconnectVoi } = useMultiChainWallet()
+  const { activeAddress, isKibisisAvailable, connectVoi, connectLute, disconnectVoi } = useMultiChainWallet()
   const { clearAuth } = useAuth()
   const { chainId, activeChain } = useChain()
   const isAlgorand = chainId === 'algorand-mainnet'
@@ -116,11 +116,9 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
                     </svg>
                     <span className="text-[var(--text-secondary)] font-Roboto">Kibisis</span>
                   </button>
-                  <a
-                    href="https://lute.app"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
                     className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[#8B5CF6]"
+                    onClick={() => connectLute().catch((err: any) => console.error('Lute connection failed:', err.message))}
                   >
                     <img
                       src="https://lute.app/favicon.ico"
@@ -128,8 +126,8 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
                       style={{ objectFit: 'contain', width: '30px', height: '30px', borderRadius: '6px' }}
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                     />
-                    <span className="text-[var(--text-secondary)] font-Roboto">Lute (Web Wallet)</span>
-                  </a>
+                    <span className="text-[var(--text-secondary)] font-Roboto">Lute</span>
+                  </button>
                 </>
               )}
             </div>

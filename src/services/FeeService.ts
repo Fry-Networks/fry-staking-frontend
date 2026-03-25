@@ -1,4 +1,4 @@
-import axios from 'axios'
+import { authAxios } from './apiClient'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL
 const FEE_RECIPIENT = import.meta.env.VITE_FEE_RECIPIENT
@@ -45,7 +45,7 @@ export async function fetchFeeConfig(): Promise<FeeConfig> {
   if (cachedConfig && now - cacheTimestamp < CACHE_TTL_MS) {
     return cachedConfig
   }
-  const res = await axios.get(`${API_BASE}/feeconfig`)
+  const res = await authAxios.get('/feeconfig')
   cachedConfig = res.data.data as FeeConfig
   cacheTimestamp = now
   return cachedConfig
@@ -54,7 +54,8 @@ export async function fetchFeeConfig(): Promise<FeeConfig> {
 export function calculateFeeSimple(
   actionType: string,
   baseAmountMicro: number,
-  feeConfig: FeeConfig
+  feeConfig: FeeConfig,
+  feeRecipientOverride?: string | null
 ): FeeCalculation {
   const configKey = ACTION_TYPE_MAP[actionType]
   if (!configKey) throw new Error(`Unknown action type: ${actionType}`)
@@ -68,7 +69,7 @@ export function calculateFeeSimple(
     baseAmount: baseAmountMicro,
     feeAmount,
     netAmount,
-    feeRecipient: FEE_RECIPIENT,
+    feeRecipient: feeRecipientOverride || FEE_RECIPIENT,
   }
 }
 

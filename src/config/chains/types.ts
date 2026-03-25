@@ -94,6 +94,12 @@ export interface ChainConfig {
   connection: AvmChainConfig | EvmChainConfig;
   /** Features available on this chain */
   features: ChainFeatures;
+  /** Flat native-token fees when staking token has no LP */
+  flatFeeNative?: {
+    stake: number;
+    unstake: number;
+    claim: number;
+  };
 }
 
 /** Type guard for AVM chains */

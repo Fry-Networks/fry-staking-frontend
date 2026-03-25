@@ -15,9 +15,9 @@ export const voiMainnet: ChainConfig = {
     decimals: 6,
     id: 0,
   },
-  fryTokenId: null,
-  usdcEquivalent: null,
-  feeRecipient: null,
+  fryTokenId: 48968653, // vFRY ASA on Voi
+  usdcEquivalent: { id: 395614, symbol: 'aUSDC', decimals: 6 },
+  feeRecipient: 'NQA76E235VCMZB4KZQSV6IU64IWF2GGCXK4Y3QA7N7ZMI7MVHUQVV5BUD4',
   explorerBaseUrl: 'https://explorer.voi.network',
   availableDexProviders: ['nomadex'],
   supportedWallets: ['kibisis', 'lute'],
@@ -29,12 +29,17 @@ export const voiMainnet: ChainConfig = {
     indexerPort: Number(import.meta.env.VITE_VOI_INDEXER_PORT) || 443,
     indexerToken: import.meta.env.VITE_VOI_INDEXER_TOKEN || '',
   },
+  flatFeeNative: {
+    stake: 100000,    // 0.1 VOI
+    unstake: 50000,   // 0.05 VOI
+    claim: 200000,    // 0.2 VOI
+  },
   features: {
-    staking: false,
+    staking: true,
     farming: false,
     nftStaking: false,
     deviceStaking: false,
-    swap: false,
+    swap: true,
     predictionLp: false,
     communityEvents: false,
     zap: false,

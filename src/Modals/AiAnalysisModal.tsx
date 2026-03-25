@@ -5,6 +5,7 @@ import useAiPayment from '../hooks/useAiPayment'
 import { getAiPrices, analyzePool, analyzePortfolio, analyzeSwap } from '../services/aiService'
 import type { AiPrices } from '../services/aiService'
 import { useAuth } from '../hooks/useAuth'
+import { fetchVoiUsd } from '../contracts/nomadex/NomadexPriceService'
 
 type Step = 'confirm' | 'paying' | 'analyzing' | 'result' | 'error'
 
@@ -48,20 +49,34 @@ const AiAnalysisModal: React.FC<AiAnalysisModalProps> = ({
   swapData,
 }) => {
   const { ensureAuth } = useAuth()
-  const { payForAnalysis, isProcessing } = useAiPayment()
+  const { payForAnalysis, isProcessing, chainId } = useAiPayment()
+  const isVoi = chainId === 'voi-mainnet'
   const [step, setStep] = useState<Step>('confirm')
   const [analysis, setAnalysis] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [prices, setPrices] = useState<AiPrices | null>(null)
+  const [voiCost, setVoiCost] = useState<number | null>(null)
 
   useEffect(() => {
     if (isOpen) {
       setStep('confirm')
       setAnalysis('')
       setErrorMsg('')
-      getAiPrices().then(setPrices).catch(() => {})
+      setVoiCost(null)
+      getAiPrices().then(async (p) => {
+        setPrices(p)
+        if (isVoi && p.fryPriceUsd) {
+          try {
+            const voiUsd = await fetchVoiUsd()
+            if (voiUsd > 0) {
+              // Store VOI/USD rate; actual cost computed in getCostVoi()
+              setVoiCost(voiUsd)
+            }
+          } catch { /* fallback: show FRY cost */ }
+        }
+      }).catch(() => {})
     }
-  }, [isOpen])
+  }, [isOpen, isVoi])
 
   const getCost = (): number => {
     if (!prices) return 0
@@ -91,7 +106,7 @@ const AiAnalysisModal: React.FC<AiAnalysisModalProps> = ({
 
     setStep('paying')
 
-    const txId = await payForAnalysis(getCost())
+    const txId = await payForAnalysis(getCost(), prices?.fryPriceUsd)
     if (!txId) {
       setErrorMsg('Payment cancelled or failed')
       setStep('error')
@@ -151,12 +166,23 @@ const AiAnalysisModal: React.FC<AiAnalysisModalProps> = ({
             <div className="flex justify-between text-[14px]">
               <span className="text-[var(--text-secondary)]">Cost</span>
               <span className="text-[var(--text-primary)] font-medium">
-                {getCost().toLocaleString()} FRY
-                {prices?.fryPriceUsd ? (
-                  <span className="text-[var(--text-secondary)] font-normal ml-[6px]">
-                    (~${(getCost() * prices.fryPriceUsd).toFixed(4)})
-                  </span>
-                ) : null}
+                {isVoi && voiCost !== null && prices?.fryPriceUsd ? (
+                  <>{((getCost() * prices.fryPriceUsd) / voiCost).toFixed(2)} VOI
+                    {prices?.fryPriceUsd ? (
+                      <span className="text-[var(--text-secondary)] font-normal ml-[6px]">
+                        (~${(getCost() * prices.fryPriceUsd).toFixed(4)})
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <>{getCost().toLocaleString()} FRY
+                    {prices?.fryPriceUsd ? (
+                      <span className="text-[var(--text-secondary)] font-normal ml-[6px]">
+                        (~${(getCost() * prices.fryPriceUsd).toFixed(4)})
+                      </span>
+                    ) : null}
+                  </>
+                )}
               </span>
             </div>
             <div className="flex gap-[12px] mt-[8px]">

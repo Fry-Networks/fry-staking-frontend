@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
 import { toast } from 'react-toastify'
 import { unstakeTokens as unstakeFarmTokens, getAlgodClient, getUserData as getFarmUserData } from '../../farming_func'
 import { unstakeTokens as unstakePoolTokens, checkPoolRewardBalance, estimateStakingReward, getUserData as getPoolUserData } from '../../staking_func'
 import { fetchFeeConfig, calculateFeeSimple } from '../../services/FeeService'
 import { useAuth } from '../../hooks/useAuth'
+import { useChain } from '../../context/ChainContext'
 import { authAxios } from '../../services/apiClient'
 import {
   getPool,
@@ -28,6 +29,7 @@ interface WithdrawModalProps {
   stakeTokenBId?: number
   pairName?: string
   rewardTokenId?: number
+  contractVersion?: number
 }
 
 type WithdrawStep = 'input' | 'confirm' | 'unstaking' | 'removing-liquidity' | 'success' | 'error'
@@ -44,9 +46,18 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
   stakeTokenBId,
   pairName,
   rewardTokenId,
+  contractVersion,
 }) => {
-  const { activeAddress, signer, signTransactions } = useWallet()
+  const { activeAddress, signer: multiSigner, signTransactions: multiSignTxns } = useMultiChainWallet()
+  const signer = multiSigner!
+  const signTransactions = multiSignTxns!
   const { ensureAuth } = useAuth()
+  const { activeChain } = useChain()
+
+  // Build chain-aware algod config (same pattern as StakeModal)
+  const chainAlgodConfig = 'algodServer' in (activeChain?.connection as any || {})
+    ? { server: (activeChain.connection as any).algodServer, port: (activeChain.connection as any).algodPort, token: (activeChain.connection as any).algodToken }
+    : undefined
 
   const [step, setStep] = useState<WithdrawStep>('input')
   const [inputAmount, setInputAmount] = useState('')
@@ -180,7 +191,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
       // Pre-flight check: verify contract has enough reward tokens for staking pools
       if (!isLpFarm && rewardTokenId) {
         try {
-          const rewardBalance = await checkPoolRewardBalance(appId, rewardTokenId)
+          const rewardBalance = await checkPoolRewardBalance(appId, rewardTokenId, chainAlgodConfig)
           if (rewardBalance <= 0n) {
             setError('This pool\'s rewards are depleted. Withdrawals are temporarily unavailable — contact the pool creator.')
             setStep('error')
@@ -194,7 +205,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
       await ensureAuth()
       const feeType = isLpFarm ? 'farmingWithdraw' : 'stakingWithdraw'
       const feeConfig = await fetchFeeConfig()
-      const fee = calculateFeeSimple(feeType, withdrawAmountMicro, feeConfig)
+      const fee = calculateFeeSimple(feeType, withdrawAmountMicro, feeConfig, activeChain?.feeRecipient)
 
       if (isLpFarm) {
         const farmResult = await unstakeFarmTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient) as any
@@ -212,8 +223,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
           console.warn('Failed to log withdraw data:', e)
         }
       } else {
-        const poolResult = await unstakePoolTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient) as any
-        if (poolResult.tx instanceof Error) throw poolResult.tx
+        const poolResult = await unstakePoolTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient, chainAlgodConfig, contractVersion) as any
 
         try {
           await authAxios.post('/withdraw/add', {
@@ -257,7 +267,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
       // Step 1: Unstake LP from farm
       setStep('unstaking')
       const feeConfig = await fetchFeeConfig()
-      const fee = calculateFeeSimple('farmingWithdraw', withdrawAmountMicro, feeConfig)
+      const fee = calculateFeeSimple('farmingWithdraw', withdrawAmountMicro, feeConfig, activeChain?.feeRecipient)
 
       const zapFarmResult = await unstakeFarmTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient)
 
