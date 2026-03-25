@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
-import { fetchPriceMap } from '../../../services/PriceService'
+import { fetchChainPriceMap } from '../../../services/PriceService'
 import { usePreferences } from '../../../contexts/PreferencesContext'
+import { useChain } from '../../../context/ChainContext'
 
 interface StakeStats {
   tvlUsd: number
@@ -15,6 +16,7 @@ interface StakeBannerProps {
 
 const Stakebanner: React.FC<StakeBannerProps> = ({ wallet }) => {
   const { isSimpleMode } = usePreferences()
+  const { chainId } = useChain()
   const [stats, setStats] = useState<StakeStats>({
     tvlUsd: 0,
     myStakeUsd: 0,
@@ -50,7 +52,7 @@ const Stakebanner: React.FC<StakeBannerProps> = ({ wallet }) => {
         const allIds = [...new Set([...stakeTokenIds, ...rewardTokenIds])]
 
         // Fetch prices
-        const prices = allIds.length > 0 ? await fetchPriceMap(allIds) : {}
+        const prices = allIds.length > 0 ? await fetchChainPriceMap(allIds, chainId) : {}
 
         // Compute TVL in USD (sum per-pool)
         let tvlUsd = 0
@@ -85,7 +87,7 @@ const Stakebanner: React.FC<StakeBannerProps> = ({ wallet }) => {
     }
 
     fetchStats()
-  }, [wallet])
+  }, [wallet, chainId])
 
   const fmt = (v: number) =>
     `$ ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

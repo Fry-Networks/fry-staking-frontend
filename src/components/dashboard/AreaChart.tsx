@@ -74,6 +74,8 @@ const AreaChart: React.FC<AreaChartProps> = ({ showYAxisTitle, appId }) => {
   ])
 
   useEffect(() => {
+    setSeries([{ name: 'FRY Fee', data: Array(12).fill(0) }])
+
     const fetchMonthlyGasFees = async () => {
       try {
         const res = await axios.get(

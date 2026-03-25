@@ -22,6 +22,8 @@ import '../../../styles/shared/scrollbar.css'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
 import { usePreferences } from '../../../contexts/PreferencesContext'
 import { friendlySlippage, friendlyPriceImpact } from '../../../utils/grandmaLabels'
+import { useAuth } from '../../../hooks/useAuth'
+import { authAxios } from '../../../services/apiClient'
 
 // ...existing code...
 interface Currency {
@@ -165,6 +167,7 @@ const SwapMain = () => {
 
   const location = useLocation()
   const { activeAddress, providers, signTransactions: walletSignTransactions } = useWallet()
+  const { ensureAuth } = useAuth()
 
   const [selectedRewards, setSelectedRewards] = useState<Currency | undefined>(undefined);
   const [selectedAlgoRewards, setSelectedAlgoRewards] = useState<Currency | undefined>(undefined);
@@ -546,6 +549,8 @@ const SwapMain = () => {
 
     setIsSwapping(true);
     try {
+      await ensureAuth()
+
       // Validate selected tokens have valid IDs
       if (!selectedRewards?.id && selectedRewards?.id !== 0) {
         toast.error("Invalid source token selected")
@@ -635,6 +640,20 @@ const SwapMain = () => {
       if (result.success) {
         const providerName = { folksrouter: 'FolksRouter', vestige: 'Vestige Labs', deflex: 'Deflex' }[result.provider] || result.provider;
         toast.success(`Swap submitted via ${providerName}! TXID: ${result.txId}`)
+
+        // Record swap for event points tracking (fire-and-forget)
+        try {
+          await authAxios.post('/swaphistory/add', {
+            userId: activeAddress,
+            amount: parseFloat(swapAmount),
+            token1: { id: String(selectedRewards.id), name: selectedRewards.code },
+            token2: { id: String(selectedAlgoRewards.id), name: selectedAlgoRewards.code },
+            liquidityPoolId: result.provider || 'unknown',
+            fee: 0,
+          })
+        } catch (e) {
+          console.warn('Failed to log swap history:', e)
+        }
       } else {
         toast.error(`Swap failed: ${result.error || 'All providers failed'}`)
       }

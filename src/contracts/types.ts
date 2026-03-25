@@ -29,13 +29,16 @@ interface SwapQuote {
 
 type SwapTransactions = string[];
 
+type VoiSwapProvider = 'nomadex';
+
 // export { ReferrerGroupTransaction, Network, SwapMode, SwapParams, SwapQuote, SwapTransactions };
 
 export type {
   ReferrerGroupTransaction,
   SwapParams,
   SwapQuote,
-  SwapTransactions
+  SwapTransactions,
+  VoiSwapProvider,
 };
 
 export {

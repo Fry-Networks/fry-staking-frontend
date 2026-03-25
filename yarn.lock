@@ -2,6 +2,13 @@
 # yarn lockfile v1
 
 
+"@agoralabs-sh/avm-web-provider@^1.7.0":
+  version "1.7.0"
+  resolved "https://registry.npmjs.org/@agoralabs-sh/avm-web-provider/-/avm-web-provider-1.7.0.tgz"
+  integrity sha512-AfMdBdFS3EW1RunzHVEwNFucS6UIALs661d+zL6AHFDdxOTvUgahRC4l163VoGWA0UEpnayT1jGObci8nitZeA==
+  dependencies:
+    uuid "^9.0.1"
+
 "@algorandfoundation/algokit-client-generator@^3.0.6":
   version "3.0.6"
   resolved "https://registry.npmjs.org/@algorandfoundation/algokit-client-generator/-/algokit-client-generator-3.0.6.tgz"
@@ -7139,6 +7146,11 @@ uuid@^10.0.0:
   version "10.0.0"
   resolved "https://registry.npmjs.org/uuid/-/uuid-10.0.0.tgz"
   integrity sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==
+
+uuid@^9.0.1:
+  version "9.0.1"
+  resolved "https://registry.npmjs.org/uuid/-/uuid-9.0.1.tgz"
+  integrity sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==
 
 v8-compile-cache-lib@^3.0.1:
   version "3.0.1"

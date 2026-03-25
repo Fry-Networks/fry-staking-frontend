@@ -1,6 +1,6 @@
 import axios from 'axios'
 import React, { useEffect, useState } from 'react'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../../../hooks/useMultiChainWallet'
 import P_STable from './PsTable'
 import { tokenServiceInstance } from '../../../../services/TokenService'
 import { fetchPriceMap } from '../../../../services/PriceService'
@@ -30,6 +30,8 @@ export interface ProfileStakePool {
   endTime: number
   status: PoolStatus
   contractVersion: number
+  lockPeriodSecs: number
+  userStakeTime: number
 }
 
 const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
@@ -49,7 +51,7 @@ const FILTER_LABELS: { key: PoolFilter; label: string }[] = [
 ]
 
 const PstakeTable: React.FC = () => {
-  const { activeAddress } = useWallet()
+  const { activeAddress } = useMultiChainWallet()
   const [pools, setPools] = useState<ProfileStakePool[]>([])
   const [loading, setLoading] = useState(false)
   const [activeFilter, setActiveFilter] = useState<PoolFilter>('all')
@@ -191,12 +193,14 @@ const PstakeTable: React.FC = () => {
           endsIn: daysLeft >= 0 ? `${Math.max(daysLeft, 1)} ${Math.max(daysLeft, 1) === 1 ? 'day' : 'days'}` : 'Ended',
           lockDays: Math.floor((pool.lockPeriod || 0) / 86400),
           stakingContractId: Number(pool.stakingContractId),
-          stakeTokenId: Number(stakeTokenId) || FRY_ASSET_ID,
-          rewardTokenId: Number(rewardTokenId) || FRY_ASSET_ID,
+          stakeTokenId: Number(stakeTokenId) ?? FRY_ASSET_ID,
+          rewardTokenId: Number(rewardTokenId) ?? FRY_ASSET_ID,
           isCreator,
           endTime,
           status: computeStatus(endTime),
           contractVersion: pool.contractVersion || 1,
+          lockPeriodSecs: pool.lockPeriod || 0,
+          userStakeTime: onChainData?.stakeTime || 0,
         }
       })
 

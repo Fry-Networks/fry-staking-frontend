@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
 import { toast } from 'react-toastify'
 import Button from './button'
-import { stakeTokens as stakeFarmTokens, getAlgodClient } from '../../farming_func'
+import { stakeTokens as stakeFarmTokens } from '../../farming_func'
+import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
+import { useChain } from '../../context/ChainContext'
 import { stakeTokens as stakePoolTokens } from '../../staking_func'
 import { fetchFeeConfig, calculateFeeSimple } from '../../services/FeeService'
+import { loadMarketData, findPool } from '../../contracts/nomadex/api'
 import { useAuth } from '../../hooks/useAuth'
 import { authAxios } from '../../services/apiClient'
 import {
@@ -31,6 +33,7 @@ interface StakeModalProps {
   isLpFarm: boolean
   stakeTokenBId?: number
   pairName?: string
+  contractVersion?: number
 }
 
 type StakeStep = 'input' | 'confirm' | 'adding-liquidity' | 'staking' | 'success' | 'error'
@@ -45,9 +48,16 @@ const StakeModal: React.FC<StakeModalProps> = ({
   isLpFarm,
   stakeTokenBId,
   pairName,
+  contractVersion,
 }) => {
-  const { activeAddress, signer, signTransactions } = useWallet()
+  const { activeAddress, signer, signTransactions } = useMultiChainWallet()
+  const { getAlgodClient, activeChain, chainId } = useChain()
   const { ensureAuth } = useAuth()
+
+  // Build algod config for chain-aware staking functions
+  const chainAlgodConfig = 'algodServer' in (activeChain.connection as any)
+    ? { server: (activeChain.connection as any).algodServer, port: (activeChain.connection as any).algodPort, token: (activeChain.connection as any).algodToken }
+    : undefined
 
   const [step, setStep] = useState<StakeStep>('input')
   const [selectedSide, setSelectedSide] = useState<'A' | 'B'>('B')
@@ -226,27 +236,39 @@ const StakeModal: React.FC<StakeModalProps> = ({
       await ensureAuth()
       const feeType = isLpFarm ? 'farmingDeposit' : 'stakingDeposit'
       const feeConfig = await fetchFeeConfig()
-      const fee = calculateFeeSimple(feeType, stakeAmountMicro, feeConfig)
+      const fee = calculateFeeSimple(feeType, stakeAmountMicro, feeConfig, activeChain.feeRecipient)
 
       const tokenId = isAdvancedLp ? pool!.poolTokenID! : stakeTokenId
+
+      // Determine fee mode: percentage in staking token (LP exists) or flat VOI (no LP)
+      let actualFeeAmount = fee.feeAmount
+      let actualFeeTokenId = tokenId
+      if (chainId === 'voi-mainnet' && activeChain.flatFeeNative) {
+        await loadMarketData()
+        const hasLP = findPool(tokenId, 0) || findPool(tokenId, 395614)
+        if (!hasLP) {
+          actualFeeAmount = activeChain.flatFeeNative.stake
+          actualFeeTokenId = 0
+        }
+      }
 
       let feeTxId: string | undefined
       let feeTokenId: number | undefined
 
       if (isLpFarm) {
-        const farmResult = await stakeFarmTokens(appId, stakeAmountMicro, activeAddress, signer, fee.feeAmount, tokenId, fee.feeRecipient) as any
+        const farmResult = await stakeFarmTokens(appId, stakeAmountMicro, activeAddress, signer, actualFeeAmount, actualFeeTokenId, fee.feeRecipient) as any
         feeTxId = farmResult.feeTxId
         feeTokenId = farmResult.feeTokenId
       } else {
-        const poolResult = await stakePoolTokens(appId, stakeAmountMicro, activeAddress, signer, fee.feeAmount, tokenId, fee.feeRecipient) as any
-        if (poolResult.tx instanceof Error) throw poolResult.tx
+        const poolResult = await stakePoolTokens(appId, stakeAmountMicro, activeAddress, signer, actualFeeAmount, actualFeeTokenId, fee.feeRecipient, chainAlgodConfig, contractVersion) as any
         feeTxId = poolResult.feeTxId
         feeTokenId = poolResult.feeTokenId
       }
 
       // Log staking to backend (record net amount after fee deduction)
-      const netAmount = amount - (fee.feeAmount / 1_000_000)
-      const netAmountMicro = stakeAmountMicro - fee.feeAmount
+      const feeDeducted = actualFeeTokenId === 0 ? 0 : actualFeeAmount
+      const netAmount = amount - (feeDeducted / 1_000_000)
+      const netAmountMicro = stakeAmountMicro - feeDeducted
       try {
         if (isLpFarm) {
           await authAxios.post('/stakingfarmingtoken/add', {
@@ -265,6 +287,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
             stakeTokens: stakeTokenId,
             totalStaked: netAmountMicro,
             appId: appId,
+            poolId: String(appId),
             wallet: activeAddress,
             feeTxId,
             feeAssetId: feeTokenId,
@@ -339,15 +362,27 @@ const StakeModal: React.FC<StakeModalProps> = ({
       setStep('staking')
 
       const feeConfig = await fetchFeeConfig()
-      const fee = calculateFeeSimple('farmingDeposit', lpDeltaNum, feeConfig)
+      const fee = calculateFeeSimple('farmingDeposit', lpDeltaNum, feeConfig, activeChain.feeRecipient)
+
+      // Determine fee mode for ZAP
+      let zapFeeAmount = fee.feeAmount
+      let zapFeeTokenId: number = quote.poolTokenId
+      if (chainId === 'voi-mainnet' && activeChain.flatFeeNative) {
+        await loadMarketData()
+        const hasLP = findPool(quote.poolTokenId, 0) || findPool(quote.poolTokenId, 395614)
+        if (!hasLP) {
+          zapFeeAmount = activeChain.flatFeeNative.stake
+          zapFeeTokenId = 0
+        }
+      }
 
       const zapFarmResult = await stakeFarmTokens(
         appId,
         lpDeltaNum,
         activeAddress,
         signer,
-        fee.feeAmount,
-        quote.poolTokenId,
+        zapFeeAmount,
+        zapFeeTokenId,
         fee.feeRecipient,
       ) as any
 

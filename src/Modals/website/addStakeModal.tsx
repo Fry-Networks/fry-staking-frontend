@@ -1,5 +1,6 @@
 import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
 import { DatePicker, Modal } from 'antd'
 import dayjs from 'dayjs';
 import React, { useEffect, useRef, useState } from 'react'
@@ -49,7 +50,9 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
     rewards: false,
     algoRewards: false,
   })
-  const { providers, activeAddress, signer } = useWallet()
+  const { providers } = useWallet()
+  const { activeAddress, signer: multiSigner } = useMultiChainWallet()
+  const signer = multiSigner!
   const { ensureAuth } = useAuth()
   const [searchQuery, setSearchQuery] = useState<{ [key: string]: string }>({
     stakingToken: '',
@@ -165,19 +168,13 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
         setAllTokens(sortedTokens);
         
         // Set default selections from default tokens
-        // For rewards, exclude ALGO (tokenId 0)
-        const nonAlgoDefault = defaultCurrencies.find(t => t.tokenId !== 0) || defaultCurrencies[0];
-        const nonAlgoSorted = sortedTokens.find(t => t.tokenId !== 0) || sortedTokens[0];
         setSelectedStakingToken(defaultCurrencies[0] || sortedTokens[0] || null);
-        setSelectedRewards(nonAlgoDefault || nonAlgoSorted || null);
+        setSelectedRewards(defaultCurrencies[0] || sortedTokens[0] || null);
         setSelectedAlgoRewards(defaultCurrencies.find(t => t.tokenId === 0) || sortedTokens.find(t => t.tokenId === 0) || sortedTokens[1] || null);
       } else {
         setAllTokens(currencies);
-        // For rewards, exclude ALGO (tokenId 0)
-        const nonAlgoDefault = defaultCurrencies.find(t => t.tokenId !== 0) || defaultCurrencies[0];
-        const nonAlgoCurrencies = currencies.find(t => t.tokenId !== 0) || currencies[0];
         setSelectedStakingToken(defaultCurrencies[0] || currencies[0] || null);
-        setSelectedRewards(nonAlgoDefault || nonAlgoCurrencies || null);
+        setSelectedRewards(defaultCurrencies[0] || currencies[0] || null);
         setSelectedAlgoRewards(defaultCurrencies.find(t => t.tokenId === 0) || currencies.find(t => t.tokenId === 0) || currencies[1] || null);
       }
       
@@ -204,11 +201,8 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
       ];
       
       setAllTokens(fallbackTokens);
-      // For rewards, exclude ALGO (tokenId 0) - use USDC or FRY instead
-      const nonAlgoDefault = defaultCurrencies.find(t => t.tokenId !== 0) || defaultCurrencies[0];
-      const nonAlgoFallback = fallbackTokens.find(t => t.tokenId !== 0) || fallbackTokens[1] || null; // Skip ALGO (index 0), use USDC (index 1)
       setSelectedStakingToken(defaultCurrencies[0] || fallbackTokens[0] || null);
-      setSelectedRewards(nonAlgoDefault || nonAlgoFallback || null);
+      setSelectedRewards(defaultCurrencies[0] || fallbackTokens[0] || null);
       setSelectedAlgoRewards(defaultCurrencies.find(t => t.tokenId === 0) || fallbackTokens.find(t => t.tokenId === 0) || fallbackTokens[1] || null);
     }
   }
@@ -218,19 +212,11 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
     const q = (searchQuery[dropdown] || '').trim().toLowerCase();
     const searchResultsForDropdown = searchResults[dropdown] || [];
     
-    // Filter function to exclude ALGO from rewards dropdown
-    const filterAlgo = (tokens: Currency[]) => {
-      if (dropdown === 'rewards') {
-        return tokens.filter(token => token.tokenId !== 0);
-      }
-      return tokens;
-    };
-    
     // If searching and we have search results, use them
     if (q && q.length >= 2 && searchResultsForDropdown.length > 0) {
-      return filterAlgo(searchResultsForDropdown);
+      return searchResultsForDropdown;
     }
-    
+
     // If searching but no results yet, show loading or empty state
     if (q && q.length >= 2) {
       if (isSearching[dropdown]) {
@@ -238,10 +224,9 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
       }
       return []; // Will show "no results" in UI
     }
-    
+
     // When not searching, show default tokens first
-    const tokens = defaultTokens.length > 0 ? defaultTokens : allTokens;
-    return filterAlgo(tokens);
+    return defaultTokens.length > 0 ? defaultTokens : allTokens;
   };
 
   const toggleDropdown = (dropdown: string) => {
@@ -312,13 +297,6 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
       !activeAddress
     ) {
       toast.error('Please fill in all the details')
-      isVerifyingRef.current = false
-      return
-    }
-
-    // Validate that reward token is not ALGO (tokenId 0) as it requires special handling
-    if (selectedRewards.tokenId === 0) {
-      toast.error('ALGO cannot be used as a reward token. Please select a different token.')
       isVerifyingRef.current = false
       return
     }

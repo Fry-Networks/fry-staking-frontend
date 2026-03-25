@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
 import { toast } from 'react-toastify'
-import { unstakeTokens as unstakeFarmTokens, getAlgodClient } from '../../farming_func'
-import { unstakeTokens as unstakePoolTokens, checkPoolRewardBalance, estimateStakingReward } from '../../staking_func'
+import { unstakeTokens as unstakeFarmTokens, getAlgodClient, getUserData as getFarmUserData } from '../../farming_func'
+import { unstakeTokens as unstakePoolTokens, checkPoolRewardBalance, estimateStakingReward, getUserData as getPoolUserData } from '../../staking_func'
 import { fetchFeeConfig, calculateFeeSimple } from '../../services/FeeService'
 import { useAuth } from '../../hooks/useAuth'
+import { useChain } from '../../context/ChainContext'
 import { authAxios } from '../../services/apiClient'
 import {
   getPool,
@@ -28,6 +29,7 @@ interface WithdrawModalProps {
   stakeTokenBId?: number
   pairName?: string
   rewardTokenId?: number
+  contractVersion?: number
 }
 
 type WithdrawStep = 'input' | 'confirm' | 'unstaking' | 'removing-liquidity' | 'success' | 'error'
@@ -44,9 +46,18 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
   stakeTokenBId,
   pairName,
   rewardTokenId,
+  contractVersion,
 }) => {
-  const { activeAddress, signer, signTransactions } = useWallet()
+  const { activeAddress, signer: multiSigner, signTransactions: multiSignTxns } = useMultiChainWallet()
+  const signer = multiSigner!
+  const signTransactions = multiSignTxns!
   const { ensureAuth } = useAuth()
+  const { activeChain } = useChain()
+
+  // Build chain-aware algod config (same pattern as StakeModal)
+  const chainAlgodConfig = 'algodServer' in (activeChain?.connection as any || {})
+    ? { server: (activeChain.connection as any).algodServer, port: (activeChain.connection as any).algodPort, token: (activeChain.connection as any).algodToken }
+    : undefined
 
   const [step, setStep] = useState<WithdrawStep>('input')
   const [inputAmount, setInputAmount] = useState('')
@@ -63,6 +74,9 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [quoteError, setQuoteError] = useState('')
   const [poolFailed, setPoolFailed] = useState(false)
+  const [fetchedStake, setFetchedStake] = useState<number | null>(null)
+  const [stakeLoading, setStakeLoading] = useState(false)
+  const effectiveStake = fetchedStake ?? userStake
 
   const displayName = isLpFarm ? (pairName || stakeTokenName) : stakeTokenName
   const tokenNames = isLpFarm ? (pairName || '').split('/') : []
@@ -80,7 +94,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
     return BigInt(Math.floor(v * Math.pow(10, inputDecimals)))
   })()
 
-  const exceedsStake = parseFloat(inputAmount) > 0 && parseFloat(inputAmount) > userStake
+  const exceedsStake = parseFloat(inputAmount) > 0 && parseFloat(inputAmount) > effectiveStake
   const canWithdraw = inputAmountMicro > 0n && !exceedsStake && !!activeAddress && !!signer
 
   // Fetch pool info when advanced mode toggled (LP farm only)
@@ -138,6 +152,33 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
     }
   }, [pool, inputAmount, outputAssetId, isLpFarm, showAdvanced])
 
+  // Self-healing: fetch on-chain stake if parent passed 0
+  useEffect(() => {
+    if (!visible || userStake > 0 || !appId || !activeAddress) return
+    if (fetchedStake !== null) return // already fetched this session
+
+    let cancelled = false
+    setStakeLoading(true)
+
+    const fetch = async () => {
+      try {
+        const data = isLpFarm
+          ? await getFarmUserData(appId, activeAddress)
+          : await getPoolUserData(appId, activeAddress)
+        if (!cancelled && data) {
+          setFetchedStake(Number(data.stakedAmount || 0) / 1_000_000)
+        }
+      } catch (e) {
+        console.warn('WithdrawModal: self-heal stake fetch failed', e)
+      } finally {
+        if (!cancelled) setStakeLoading(false)
+      }
+    }
+
+    fetch()
+    return () => { cancelled = true }
+  }, [visible, userStake, appId, activeAddress, isLpFarm, fetchedStake])
+
   // Simple withdraw (staking pool or LP farm default)
   const handleSimpleWithdraw = useCallback(async () => {
     const amount = parseFloat(inputAmount)
@@ -150,7 +191,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
       // Pre-flight check: verify contract has enough reward tokens for staking pools
       if (!isLpFarm && rewardTokenId) {
         try {
-          const rewardBalance = await checkPoolRewardBalance(appId, rewardTokenId)
+          const rewardBalance = await checkPoolRewardBalance(appId, rewardTokenId, chainAlgodConfig)
           if (rewardBalance <= 0n) {
             setError('This pool\'s rewards are depleted. Withdrawals are temporarily unavailable — contact the pool creator.')
             setStep('error')
@@ -164,7 +205,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
       await ensureAuth()
       const feeType = isLpFarm ? 'farmingWithdraw' : 'stakingWithdraw'
       const feeConfig = await fetchFeeConfig()
-      const fee = calculateFeeSimple(feeType, withdrawAmountMicro, feeConfig)
+      const fee = calculateFeeSimple(feeType, withdrawAmountMicro, feeConfig, activeChain?.feeRecipient)
 
       if (isLpFarm) {
         const farmResult = await unstakeFarmTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient) as any
@@ -182,8 +223,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
           console.warn('Failed to log withdraw data:', e)
         }
       } else {
-        const poolResult = await unstakePoolTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient) as any
-        if (poolResult.tx instanceof Error) throw poolResult.tx
+        const poolResult = await unstakePoolTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient, chainAlgodConfig, contractVersion) as any
 
         try {
           await authAxios.post('/withdraw/add', {
@@ -227,7 +267,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
       // Step 1: Unstake LP from farm
       setStep('unstaking')
       const feeConfig = await fetchFeeConfig()
-      const fee = calculateFeeSimple('farmingWithdraw', withdrawAmountMicro, feeConfig)
+      const fee = calculateFeeSimple('farmingWithdraw', withdrawAmountMicro, feeConfig, activeChain?.feeRecipient)
 
       const zapFarmResult = await unstakeFarmTokens(appId, withdrawAmountMicro, activeAddress, signer, fee.feeAmount, stakeTokenId, fee.feeRecipient)
 
@@ -290,6 +330,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
     setQuoteError('')
     setPool(null)
     setPoolFailed(false)
+    setFetchedStake(null)
     onClose()
   }
 
@@ -336,9 +377,9 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
                     Your Stake:{' '}
                     <span
                       className="cursor-pointer hover:text-[var(--text-primary)]"
-                      onClick={() => setInputAmount(userStake.toString())}
+                      onClick={() => setInputAmount(effectiveStake.toString())}
                     >
-                      {userStake.toFixed(2)} {isLpFarm ? 'LP' : stakeTokenName}
+                      {stakeLoading ? 'Loading...' : `${effectiveStake.toFixed(2)} ${isLpFarm ? 'LP' : stakeTokenName}`}
                     </span>
                   </p>
                 </div>
@@ -351,8 +392,9 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
                     className="flex-1 bg-transparent focus:outline-none text-[var(--text-primary)] text-lg"
                   />
                   <button
-                    onClick={() => setInputAmount(userStake.toString())}
-                    className="text-sm text-blue-500 font-medium hover:text-blue-400"
+                    onClick={() => setInputAmount(effectiveStake.toString())}
+                    disabled={stakeLoading}
+                    className="text-sm text-blue-500 font-medium hover:text-blue-400 disabled:opacity-40"
                   >
                     MAX
                   </button>
@@ -477,7 +519,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
                   if (!activeAddress) { window.dispatchEvent(new Event('openConnectWallet')); return }
                   ;(isLpFarm && showAdvanced ? handleReverseZapWithdraw : handleSimpleWithdraw)()
                 }}
-                disabled={activeAddress ? (!canWithdraw || (isLpFarm && showAdvanced && (!pool || !quoteOutput))) : false}
+                disabled={activeAddress ? (stakeLoading || !canWithdraw || (isLpFarm && showAdvanced && (!pool || !quoteOutput))) : false}
                 className="w-full py-3 rounded-lg font-bold text-white transition-colors linearGradient disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {!activeAddress ? 'Connect Wallet' : exceedsStake ? 'Exceeds Stake' : 'Withdraw'}

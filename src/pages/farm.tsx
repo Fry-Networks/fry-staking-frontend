@@ -2,6 +2,7 @@ import Footer from '../components/layout/footer'
 import Navbar from '../components/layout/navbar'
 import FarmTable from '../components/pages/farm/farmTable'
 import PageBg from '../components/shared/pageBg'
+import { FeatureGate } from '../components/FeatureGate'
 
 const Farm = () => {
   return (
@@ -9,7 +10,9 @@ const Farm = () => {
       <div className="relative overflow-hidden min-h-screen flex flex-col">
         <PageBg />
         <Navbar />
-        <FarmTable />
+        <FeatureGate feature="farming">
+          <FarmTable />
+        </FeatureGate>
         <Footer />
       </div>
     </>

@@ -38,11 +38,14 @@ class TokenService {
    * Resolve the best available image for a token.
    * Priority: DB image (if valid) → Pera API → Tinyman icon.png fallback
    */
-  async resolveTokenImage(tokenId: number, dbImage?: string): Promise<string> {
+  async resolveTokenImage(tokenId: number, dbImage?: string, chainId?: string): Promise<string> {
     const isValid = dbImage &&
       (dbImage.startsWith('http://') || dbImage.startsWith('https://') || dbImage.startsWith('ipfs://') ||
        dbImage.includes('.png') || dbImage.includes('.jpg') || dbImage.includes('.jpeg') || dbImage.includes('.svg'));
     if (isValid) return dbImage;
+
+    // Pera API and Tinyman are Algorand-only — skip for Voi
+    if (chainId === 'voi-mainnet') return '';
 
     const peraImage = await this.getPeraTokenImage(tokenId);
     if (peraImage) return peraImage;
@@ -73,7 +76,8 @@ class TokenService {
 
       // Convert database tokens to Token format, resolving images via Pera API for invalid URLs
       const results = await Promise.allSettled(dbTokens.map(async (token: any) => {
-        const image = await this.resolveTokenImage(token.tokenId, token.tokenImage);
+        const currentChain = typeof localStorage !== 'undefined' ? localStorage.getItem('fry-farm-chain-id') || 'algorand-mainnet' : 'algorand-mainnet';
+        const image = await this.resolveTokenImage(token.tokenId, token.tokenImage, currentChain);
 
         return {
           id: token.tokenId,
@@ -239,7 +243,8 @@ class TokenService {
 
       // Convert search results to Token format, resolving images via Pera API
       const searchSettled = await Promise.allSettled(searchResults.map(async (token: any) => {
-        const image = await this.resolveTokenImage(token.tokenId, token.tokenImage);
+        const currentChain = typeof localStorage !== 'undefined' ? localStorage.getItem('fry-farm-chain-id') || 'algorand-mainnet' : 'algorand-mainnet';
+        const image = await this.resolveTokenImage(token.tokenId, token.tokenImage, currentChain);
 
         return {
           id: token.tokenId,

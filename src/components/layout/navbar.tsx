@@ -1,5 +1,4 @@
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
 import { Drawer } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
@@ -12,6 +11,9 @@ import DailyRewardsModal from '../../Modals/website/DailyRewardsModal'
 import { fetchRewardsStatus } from '../../services/rewardsApi'
 import { fetchActiveEvents } from '../../services/eventService'
 import BetaBanner from '../shared/BetaBanner'
+import ChainSelector from '../ChainSelector'
+import { useChain } from '../../context/ChainContext'
+import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
 
 const Navbar: React.FC = () => {
   const { isDark } = useTheme();
@@ -26,10 +28,12 @@ const Navbar: React.FC = () => {
   const [openRewardsModal, setOpenRewardsModal] = useState(false)
   const [rewardsAvailable, setRewardsAvailable] = useState(false)
   const [hasActiveEvents, setHasActiveEvents] = useState(false)
-  const { activeAddress } = useWallet();
+  const { activeAddress } = useMultiChainWallet();
+  const { chainId: activeChainId, hasFeature } = useChain();
+  const isAlgorand = activeChainId === 'algorand-mainnet';
   const location = useLocation()
   const isStakeActive = location.pathname === '/token-stake' || location.pathname === '/nft-stake' || location.pathname === '/depin-stake'
-  const isFarmActive = location.pathname === '/farm' || location.pathname === '/prediction-lp'
+  const isFarmActive = location.pathname === '/farm' || (location.pathname === '/prediction-lp' && hasFeature('predictionLp'))
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -152,11 +156,13 @@ const Navbar: React.FC = () => {
                     `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
                   }>LP Farm</NavLink>
                 </li>
+                {hasFeature('predictionLp') && (
                 <li>
                   <NavLink to="/prediction-lp" className={({ isActive }) =>
                     `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
                   }>Prediction LP</NavLink>
                 </li>
+                )}
               </ul>
             </li>
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
@@ -185,8 +191,9 @@ const Navbar: React.FC = () => {
           </ul>
 
           <div className="button flex items-center gap-2">
+            <ChainSelector />
             <ThemeToggle />
-            {activeAddress && (
+            {isAlgorand && activeAddress && (
               <div className="relative cursor-pointer" onClick={() => setOpenRewardsModal(true)}>
                 <Icon icon="mdi:gift" width={24} color="#FD0000" />
                 {rewardsAvailable && (
@@ -209,38 +216,7 @@ const Navbar: React.FC = () => {
                   onClick={toggleDropdown}
                 >
                   <p className="font-medium large text-darkRed capitalize">{activeAddress ? activeAddress.slice(0, 6) + "...." + activeAddress.slice(-6) : "Connect Wallet"}</p>
-                  {/* <Icon
-                    icon={isOpen ? 'mdi:chevron-up' : 'mdi:chevron-down'}
-                    width={26}
-                    height={26}
-                    color="#F00"
-                    className="sm-s:h-[22px] sm-s:w-[22px]"
-                  /> */}
                 </div>
-                {/* {isOpen && (
-                  <div className="absolute right-0 mt-2 w-[244px] bg-white rounded-[8px] shadow-lg z-10">
-                    <ul className="py-1">
-                      <p
-                        className="elarge border-solid border-b-2 border-b-[#D9D9D9] font-medium text-text_clr py-[18px] pl-[19px] cursor-pointer"
-                        onClick={() => {
-                          navigate('/transaction-history')
-                        }}
-                      >
-                        Transaction History
-                      </p>
-
-                      <p
-                        className="elarge font-medium text-darkRed py-[18px] pl-[19px] cursor-pointer"
-                        onClick={() => {
-                          setWalletConnected(false)
-                          setIsOpen(false)
-                        }}
-                      >
-                        Disconnect
-                      </p>
-                    </ul>
-                  </div>
-                )} */}
               </div>
             )}
           </div>
@@ -324,6 +300,7 @@ const Navbar: React.FC = () => {
               >
                 LP Farm
               </NavLink>
+              {hasFeature('predictionLp') && (
               <NavLink
                 to="/prediction-lp"
                 onClick={onClose}
@@ -333,6 +310,7 @@ const Navbar: React.FC = () => {
               >
                 Prediction LP
               </NavLink>
+              )}
             </li>
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
@@ -362,8 +340,9 @@ const Navbar: React.FC = () => {
           </ul>
 
           <div className="flex items-center gap-3 mt-[10px] mb-[10px]">
+            <ChainSelector />
             <ThemeToggle />
-            {activeAddress && (
+            {isAlgorand && activeAddress && (
               <div
                 className="relative cursor-pointer"
                 onClick={() => {
@@ -394,39 +373,7 @@ const Navbar: React.FC = () => {
                   onClick={toggleDropdown}
                 >
                   <p className="font-medium large text-darkRed capitalize">{activeAddress ? activeAddress.slice(0, 6) + "...." + activeAddress.slice(-6) : "Connect Wallet"}</p>
-                  {/* <Icon
-                    icon={isOpen ? 'mdi:chevron-up' : 'mdi:chevron-down'}
-                    width={26}
-                    height={26}
-                    color="#F00"
-                    className="sm-s:h-[22px] sm-s:w-[22px]"
-                  /> */}
                 </div>
-                {/* {isOpen && (
-                  <div className="absolute right-[-35%] mt-2 w-[244px] bg-white rounded-[8px] shadow-lg z-10">
-                    <ul className="py-1">
-                      <p
-                        className="elarge border-solid border-b-2 border-b-[#D9D9D9] font-medium text-text_clr py-[18px] pl-[19px] cursor-pointer"
-                        onClick={() => {
-                          navigate('/transaction-history')
-                          onClose()
-                        }}
-                      >
-                        Transaction History
-                      </p>
-
-                      <p
-                        className="elarge font-medium text-darkRed py-[18px] pl-[19px] cursor-pointer"
-                        onClick={() => {
-                          setWalletConnected(false)
-                          setIsOpen(false)
-                        }}
-                      >
-                        Disconnect
-                      </p>
-                    </ul>
-                  </div>
-                )} */}
               </div>
             )}
           </div>

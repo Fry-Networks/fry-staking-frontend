@@ -108,7 +108,7 @@ const FarmPoolStats: React.FC = () => {
             {/* TVL */}
             <div className="flex flex-col items-center gap-[20px] w-full px-[16px] py-[28px] bg-white rounded-[15px] shadow">
               <p className="text-text_clr medium">Total Token Staked</p>
-              <h4 className="small text-primary font-medium tracking-[0.839px]">{poolData}</h4>
+              <h4 className="small text-primary font-medium tracking-[0.839px]">{(poolData / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })}</h4>
             </div>
 
             {/* Timer */}

@@ -1,5 +1,5 @@
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 import axios from 'axios'
 import { Spin } from 'antd'
 import React, { useEffect, useState } from 'react'
@@ -8,7 +8,8 @@ import Button from '../../shared/button'
 import STable from './sTable'
 import Stakebanner from './stakebanner'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
-import { fetchPriceMap } from '../../../services/PriceService'
+import { fetchChainPriceMap } from '../../../services/PriceService'
+import { useChain } from '../../../context/ChainContext'
 
 const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 
@@ -45,7 +46,8 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
   const [searchToken, setSearchToken] = useState<string>('')
   const [userStakedPoolIds, setUserStakedPoolIds] = useState<Set<string>>(new Set())
 
-  const { activeAddress } = useWallet()
+  const { activeAddress } = useMultiChainWallet()
+  const { chainId } = useChain()
 
   const onCreateStakeClick = () => {
     setisaddStakeOpen(true)
@@ -127,7 +129,7 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
       return () => clearTimeout(timer)
     }
     return undefined
-  }, [searchToken])
+  }, [searchToken, chainId])
 
 
   const fetchAllPools = async () => {
@@ -170,12 +172,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
     const usdPrice = prices[stakeTokenId] ?? tvlData[stakeTokenId] ?? 0
     const tvlUsd = item.totalAmountStaked * usdPrice
 
-    // Correct APR for cross-token pools (on-chain APR assumes 1:1 token value)
-    const rewardPrice = prices[rewardTokenId] ?? tvlData[rewardTokenId] ?? 0
-    let displayApr = item.aprRate
-    if (stakeTokenId !== rewardTokenId && usdPrice > 0 && rewardPrice > 0) {
-      displayApr = item.aprRate * (rewardPrice / usdPrice)
-    }
+    const displayApr = item.aprRate || 0
 
     return {
       _id: item._id,
@@ -238,6 +235,9 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
               {item.contractVersion === 2 && (
                 <span className="px-1.5 py-0.5 bg-green-900/30 text-green-400 rounded text-[9px] font-medium">V2</span>
               )}
+              {item.contractVersion === 3 && (
+                <span className="px-1.5 py-0.5 bg-blue-900/30 text-blue-400 rounded text-[9px] font-medium">V3</span>
+              )}
             </div>
             <p className="text-text_clr small">with {item?.lockPeriod / 86400} days lock</p>
           </div>
@@ -267,8 +267,8 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       hasUserStake: userStakedPoolIds.has(item._id),
       isGated: item.isGated || false,
       gateConfig: item.gateConfig || {},
-      stakeTokenId: Number(stakeTokenId) || FRY_ASSET_ID,
-      rewardTokenId: Number(rewardTokenId) || FRY_ASSET_ID,
+      stakeTokenId: Number(stakeTokenId) ?? FRY_ASSET_ID,
+      rewardTokenId: Number(rewardTokenId) ?? FRY_ASSET_ID,
       stakeTokenName: item?.stakeToken?.name || 'Token',
       rewardTokenName: item?.rewardToken?.name || 'Token',
       lockPeriod: item.lockPeriod || 0,
@@ -351,15 +351,37 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
     }
     const fetchUserStakes = async () => {
       try {
-        const res = await axios.get(`${api_base_url}/stakingtoken/wallet/${activeAddress}`)
-        const records = res.data?.data || []
-        setUserStakedPoolIds(new Set(records.map((r: any) => r.poolId)))
+        const [stakeRes, withdrawRes] = await Promise.all([
+          axios.get(`${api_base_url}/stakingtoken/wallet/${activeAddress}`),
+          axios.get(`${api_base_url}/withdraw/wallet/${activeAddress}`),
+        ])
+        const stakes = stakeRes.data?.data || []
+        const withdrawals = withdrawRes.data?.data || []
+
+        // Sum withdrawals per poolId
+        const withdrawnByPool: Record<string, number> = {}
+        for (const w of withdrawals) {
+          const pid = String(w.poolId)
+          withdrawnByPool[pid] = (withdrawnByPool[pid] || 0) + (w.tokens || 0)
+        }
+
+        // Only mark as staked if net position > 0
+        const activePoolIds = new Set<string>(
+          stakes
+            .filter((r: any) => {
+              const staked = (r.totalStaked || 0) / 1_000_000
+              const withdrawn = withdrawnByPool[r.poolId] || 0
+              return staked - withdrawn > 0
+            })
+            .map((r: any) => String(r.poolId))
+        )
+        setUserStakedPoolIds(activePoolIds)
       } catch {
         setUserStakedPoolIds(new Set())
       }
     }
     fetchUserStakes()
-  }, [activeAddress])
+  }, [activeAddress, chainId])
 
   useEffect(() => {
     const loadData = async () => {
@@ -379,7 +401,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
 
         let realPrices: Record<string, number> = {}
         try {
-          realPrices = await fetchPriceMap(asaIds)
+          realPrices = await fetchChainPriceMap(asaIds, chainId)
           setTvlData(prev => ({ ...prev, ...realPrices }))
         } catch (err) {
           console.error('Failed to fetch live prices:', err)
@@ -393,7 +415,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       }
     }
     loadData()
-  }, [])
+  }, [chainId])
   
   // Note: removed duplicate tokenImages refetch effect — initial load already passes imageMap directly
 

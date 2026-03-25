@@ -24,6 +24,7 @@ button {
   }
   &:disabled {
     cursor: not-allowed;
+    opacity: 0.5;
   }
   &.btn-secondary {
     border-radius: 6px !important;

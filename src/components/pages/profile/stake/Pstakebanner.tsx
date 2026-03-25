@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../../../hooks/useMultiChainWallet'
 import axios from 'axios'
 import { usePreferences } from '../../../../contexts/PreferencesContext'
+import { fetchPriceMap } from '../../../../services/PriceService'
 
 const PStakebanner = () => {
-  const { activeAddress } = useWallet()
+  const { activeAddress } = useMultiChainWallet()
   const { isSimpleMode } = usePreferences()
   const [stats, setStats] = useState({ poolsCreated: 0, totalTvl: 0, myStakes: 0, myRewards: 0 })
   const api_base_url = import.meta.env.VITE_API_BASE_URL
@@ -15,17 +16,45 @@ const PStakebanner = () => {
 
   const fetchStats = async () => {
     try {
-      const [allPoolsRes, stakeStatsRes] = await Promise.allSettled([
+      const [allPoolsRes, stakeStatsRes, userPosRes, withdrawRes] = await Promise.allSettled([
         axios.get(`${api_base_url}/staking/all`),
         axios.get(`${api_base_url}/stakingtoken/user-staking-stats/${activeAddress}`),
+        axios.get(`${api_base_url}/stakingtoken/wallet/${activeAddress}`),
+        axios.get(`${api_base_url}/withdraw/wallet/${activeAddress}`),
       ])
 
       const allPools = allPoolsRes.status === 'fulfilled' ? allPoolsRes.value.data?.data || [] : []
       const stakeStats = stakeStatsRes.status === 'fulfilled' && stakeStatsRes.value.data?.success
         ? stakeStatsRes.value.data.data : { totalTVL: 0, myStake: 0, myReward: 0 }
+      const userPositions = userPosRes.status === 'fulfilled' ? userPosRes.value.data?.data || [] : []
+      const withdrawals = withdrawRes.status === 'fulfilled' ? withdrawRes.value.data?.data || [] : []
 
       const poolsCreated = allPools.length
-      const totalTvl = stakeStats.totalTVL
+
+      // Compute user's personal staked value in USD
+      let totalTvl = 0
+      try {
+        const asaIds = [...new Set(userPositions.map((p: any) => Number(p.stakeTokens)).filter((id: number) => !isNaN(id)))] as number[]
+        if (asaIds.length > 0) {
+          const priceMap = await fetchPriceMap(asaIds)
+          // Group withdrawals by poolId (tokens field is in standard units)
+          const withdrawnByPool: Record<string, number> = {}
+          withdrawals.forEach((w: any) => {
+            const key = w.poolId || ''
+            withdrawnByPool[key] = (withdrawnByPool[key] || 0) + (w.tokens || 0)
+          })
+          totalTvl = userPositions.reduce((sum: number, pos: any) => {
+            const deposited = (pos.totalStaked || 0) / 1_000_000
+            const withdrawn = withdrawnByPool[pos.poolId] || 0
+            const net = Math.max(deposited - withdrawn, 0)
+            const price = priceMap[String(pos.stakeTokens)] ?? 0
+            return sum + net * price
+          }, 0)
+        }
+      } catch {
+        totalTvl = 0
+      }
+
       const myStakes = stakeStats.myStake / 1_000_000
       const myRewards = stakeStats.myReward / 1_000_000
 
@@ -46,9 +75,9 @@ const PStakebanner = () => {
         </h3>
       </div>
       <div className="flex flex-col items-center gap-[24px] max-sm:gap-[6px]">
-        <p className="text-[var(--text-secondary)] tracking-[0.54px] large">{isSimpleMode ? 'Total Value Staked' : 'Stake TVL'}</p>
+        <p className="text-[var(--text-secondary)] tracking-[0.54px] large">My Staked Value</p>
         <h3 className="small text-[var(--text-primary)] font-medium tracking-[1.08px]">
-          {fmt(stats.totalTvl)}
+          ${fmt(stats.totalTvl)}
         </h3>
       </div>
       <div className="flex flex-col items-center gap-[24px] max-sm:gap-[6px]">

@@ -50,9 +50,8 @@ const Button: React.FC<ButtonProps> = ({
   return (
     <button className={`flex justify-center ${className}`} style={buttonStyle} onClick={onClick} disabled={loading || disabled}>
       {loading ? (
-        <span className="flex justify-center items-center gap-2">
-          {text}
-          <Icon icon="eos-icons:loading" width={20} className="invert" />
+        <span className="flex justify-center items-center">
+          <Icon icon="eos-icons:loading" width={22} className="text-white" />
         </span>
       ) : (
         <>

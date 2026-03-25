@@ -14,7 +14,13 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { PreferencesProvider } from './contexts/PreferencesContext';
+import { ChainProvider } from './context/ChainContext';
+import { VoiWalletProvider } from './context/VoiWalletContext';
 import { authService } from './services/AuthService';
+import { setupChainIdInterceptor } from './utils/chainApi';
+
+// Add X-Chain-Id header to all axios requests (reads from localStorage)
+setupChainIdInterceptor();
 
 let providersArray: ProvidersArray
 if (import.meta.env.VITE_ALGOD_NETWORK === '') {
@@ -68,6 +74,7 @@ function AppInner() {
     <ConfigProvider theme={{ algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm }}>
       <SnackbarProvider maxSnack={3}>
         <WalletProvider value={walletProviders}>
+          <VoiWalletProvider>
           <PoolDataProvider>
             <ToastContainer
               position="top-right"
@@ -85,6 +92,7 @@ function AppInner() {
               <Home />
             </div>
           </PoolDataProvider>
+          </VoiWalletProvider>
         </WalletProvider>
       </SnackbarProvider>
     </ConfigProvider>
@@ -95,7 +103,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <PreferencesProvider>
-        <AppInner />
+        <ChainProvider>
+          <AppInner />
+        </ChainProvider>
       </PreferencesProvider>
     </ThemeProvider>
   )

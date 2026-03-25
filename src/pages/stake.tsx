@@ -4,6 +4,7 @@ import Navbar from '../components/layout/navbar'
 import Stakebanner from '../components/pages/stake/stakebanner'
 import StakeTable from '../components/pages/stake/stakeTable'
 import PageBg from '../components/shared/pageBg'
+import { FeatureGate } from '../components/FeatureGate'
 
 const Stake = () => {
   const [totals, setTotals] = useState({ totalTvl: 0, totalStaked: 0, totalRewards: 0 })
@@ -12,7 +13,9 @@ const Stake = () => {
       <div className="relative overflow-hidden min-h-screen flex flex-col">
         <PageBg />
         <Navbar />
-        <StakeTable setTotals={setTotals} />
+        <FeatureGate feature="staking">
+          <StakeTable setTotals={setTotals} />
+        </FeatureGate>
         <Footer />
       </div>
     </>
