@@ -1,13 +1,14 @@
 import { toast } from 'react-toastify'
 import React, { useRef, useState } from 'react'
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
+import { useChain } from '../../../context/ChainContext'
 import type { TableColumnsType } from 'antd'
 import { Table } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import Button from '../../shared/button'
 import Input from '../../shared/input'
-import { stakeTokens, claimRewards, unstakeTokens, getUserStakeForPool, getAlgodClient } from '../../../farming_func'
+import { stakeTokens, claimRewards, unstakeTokens, getUserStakeForPool } from '../../../farming_func'
 import axios from 'axios'
 import algosdk from 'algosdk'
 import { usePreferences } from '../../../contexts/PreferencesContext'
@@ -81,7 +82,9 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
   const [feeAmountFormatted, setFeeAmountFormatted] = useState('')
   const [netAmountFormatted, setNetAmountFormatted] = useState('')
 
-  const { providers, clients, activeAccount, activeAddress, signer } = useWallet()
+  const { activeAddress, signer: walletSigner } = useMultiChainWallet()
+  const signer = walletSigner!
+  const { chainId, activeChain, getAlgodClient } = useChain()
   const { ensureAuth } = useAuth()
 
   const navigate = useNavigate()
@@ -99,7 +102,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
       }
     }
     checkOptIn()
-  }, [activeAddress])
+  }, [activeAddress, chainId])
 
   const handleOptIn = async () => {
     if (!activeAddress || !signer) return
@@ -645,7 +648,7 @@ const FTable: React.FC<FTableProps> = ({ farms, fetchData, showExpandable }) => 
                             />
                           )}
                           <a
-                            href={`https://explorer.perawallet.app/application/${record.appId}`}
+                            href={`${activeChain.explorerBaseUrl}/application/${record.appId}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline mt-1"

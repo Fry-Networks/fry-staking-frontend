@@ -3,6 +3,7 @@ import { Modal, Spin, Checkbox } from 'antd'
 import { Icon } from '@iconify/react'
 import { toast } from 'react-toastify'
 import { useWallet } from '@txnlab/use-wallet'
+import { useChain } from '../../context/ChainContext'
 import { useAuth } from '../../hooks/useAuth'
 import { stakeNft, optInContractToNft } from '../../nft_staking_func'
 import { getUserNfts, filterEligibleNfts, batchGetNftMetadata } from '../../services/nftCollectionService'
@@ -20,6 +21,7 @@ interface NftStakeModalProps {
 
 const NftStakeModal: React.FC<NftStakeModalProps> = ({ visible, onClose, onSuccess, pool }) => {
   const { activeAddress, signer } = useWallet()
+  const { chainId } = useChain()
   const { ensureAuth } = useAuth()
 
   const [loading, setLoading] = useState(false)
@@ -42,9 +44,9 @@ const NftStakeModal: React.FC<NftStakeModalProps> = ({ visible, onClose, onSucce
     if (!activeAddress) return
     setLoading(true)
     try {
-      const userNfts = await getUserNfts(activeAddress)
+      const userNfts = await getUserNfts(activeAddress, chainId)
       const eligible = filterEligibleNfts(userNfts, pool)
-      const metadatas = await batchGetNftMetadata(eligible.map((n) => n.asaId))
+      const metadatas = await batchGetNftMetadata(eligible.map((n) => n.asaId), 5, chainId)
 
       const enriched = eligible.map((nft) => ({
         ...nft,
@@ -202,7 +204,7 @@ const NftStakeModal: React.FC<NftStakeModalProps> = ({ visible, onClose, onSucce
                     onChange={() => toggleSelect(nft.asaId)}
                   />
                   <img
-                    src={nft.metadata?.imageUrl || nft.imageUrl || `https://asa-list.tinyman.org/assets/${nft.asaId}/icon.png`}
+                    src={nft.metadata?.imageUrl || nft.imageUrl || (chainId === 'algorand-mainnet' ? `https://asa-list.tinyman.org/assets/${nft.asaId}/icon.png` : '')}
                     alt={nft.metadata?.name || nft.name}
                     className="w-full aspect-square object-cover rounded-lg mb-1"
                     onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U1RTlFQSIvPjwvc3ZnPg==' }}

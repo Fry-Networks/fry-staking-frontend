@@ -3,7 +3,8 @@ import { Modal, Steps, DatePicker } from 'antd';
 import { Icon } from '@iconify/react';
 import { toast } from 'react-toastify';
 import dayjs from 'dayjs';
-import { useWallet } from '@txnlab/use-wallet';
+import { useMultiChainWallet } from '../../hooks/useMultiChainWallet';
+import { useChain } from '../../context/ChainContext';
 import * as farming from '../../farming_func';
 import { authAxios } from '../../services/apiClient';
 import { logFee } from '../../utils/logFee';
@@ -59,8 +60,15 @@ const CreateFarmWizard: React.FC<CreateFarmWizardProps> = ({
   setisaddFarmOpen,
   fetchData,
 }) => {
-  const { signer, activeAddress } = useWallet();
+  const { signer: multiSigner, activeAddress } = useMultiChainWallet();
+  const signer = multiSigner!;
   const { ensureAuth } = useAuth();
+  const { activeChain, chainId } = useChain();
+
+  // Build chain-aware algod config
+  const chainAlgodConfig = 'algodServer' in (activeChain?.connection as any || {})
+    ? { server: (activeChain.connection as any).algodServer, port: (activeChain.connection as any).algodPort, token: (activeChain.connection as any).algodToken }
+    : undefined;
   const isWalletConnected = !!activeAddress && !!signer;
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -241,7 +249,9 @@ const CreateFarmWizard: React.FC<CreateFarmWizardProps> = ({
       const feeCalc = calculateFeeSimple('poolCreation', rewardAmountMicro, feeConfig);
 
       if (feeCalc.feeAmount > 0) {
-        const algodConfig = getAlgodConfigFromViteEnvironment();
+        const algodConfig = chainAlgodConfig
+          ? { ...chainAlgodConfig, network: '' }
+          : getAlgodConfigFromViteEnvironment();
         const algorandClient = algokit.AlgorandClient.fromConfig({ algodConfig });
         algorandClient.setDefaultSigner(signer);
 

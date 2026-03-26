@@ -3,7 +3,8 @@ import { Icon } from '@iconify/react'
 import { Modal, Steps, DatePicker, Radio } from 'antd'
 import { toast } from 'react-toastify'
 import dayjs from 'dayjs'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
+import { useChain } from '../../context/ChainContext'
 import { useAuth } from '../../hooks/useAuth'
 import { createNftPool, depositRewards, depositRewardsAlgo, optInContractToNft } from '../../nft_staking_func'
 import { addNftPool } from '../../services/nftStakingApi'
@@ -20,6 +21,8 @@ import TokenImage from '../../components/shared/TokenImage'
 import type { DiscoveredToken } from '../../services/TokenDiscoveryService'
 import Input from '../../components/shared/input'
 import Button from '../../components/shared/button'
+import CollectionSelector from '../../components/shared/CollectionSelector'
+import type { NftCollection } from '../../components/shared/CollectionSelector'
 
 interface CreateNftPoolWizardProps {
   isOpen: boolean
@@ -58,8 +61,15 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
   setIsOpen,
   fetchData,
 }) => {
-  const { signer, activeAddress } = useWallet()
+  const { signer: multiSigner, activeAddress } = useMultiChainWallet()
+  const signer = multiSigner!
   const { ensureAuth } = useAuth()
+  const { activeChain, chainId } = useChain()
+
+  // Build chain-aware algod config
+  const chainAlgodConfig = 'algodServer' in (activeChain?.connection as any || {})
+    ? { server: (activeChain.connection as any).algodServer, port: (activeChain.connection as any).algodPort, token: (activeChain.connection as any).algodToken }
+    : undefined
   const isWalletConnected = !!activeAddress && !!signer
 
   const PLATFORM_DEPOSIT_FEE_BPS = 50   // 0.50%
@@ -79,6 +89,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
   const [whitelistInput, setWhitelistInput] = useState('')
   const [useCustomName, setUseCustomName] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [selectedCollection, setSelectedCollection] = useState<NftCollection | null>(null)
 
   // Step 1: Reward Model
   const [rewardModel, setRewardModel] = useState(0)
@@ -171,8 +182,9 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
         let asaId: number | null = null
 
         if ((collectionMode === 0 || collectionMode === 2) && collectionCreator.trim().length >= 58) {
+          const indexerServer = (activeChain?.connection as any)?.indexerServer || 'https://mainnet-idx.4160.nodely.dev'
           const res = await axios.get(
-            `https://mainnet-idx.4160.nodely.dev/v2/accounts/${collectionCreator.trim()}/created-assets?limit=1`,
+            `${indexerServer}/v2/accounts/${collectionCreator.trim()}/created-assets?limit=1`,
             { timeout: 10000 },
           )
           asaId = res.data?.assets?.[0]?.index ?? null
@@ -183,7 +195,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
         }
 
         if (asaId && !cancelled) {
-          const meta = await getNftMetadata(asaId)
+          const meta = await getNftMetadata(asaId, chainId)
           if (meta.imageUrl && !cancelled) {
             setPoolImage(meta.imageUrl)
           }
@@ -213,7 +225,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
     const fetchBalance = async () => {
       setBalanceLoading(true)
       try {
-        const algodConfig = getAlgodConfigFromViteEnvironment()
+        const algodConfig = chainAlgodConfig || getAlgodConfigFromViteEnvironment()
         const algod = algokit.getAlgoClient({
           server: algodConfig.server,
           port: algodConfig.port,
@@ -327,7 +339,9 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
 
       if (feeCalc.feeAmount > 0) {
         setDeployStatus('Paying creation fee...')
-        const algodConfig = getAlgodConfigFromViteEnvironment()
+        const algodConfig = chainAlgodConfig
+          ? { ...chainAlgodConfig, network: '' }
+          : getAlgodConfigFromViteEnvironment()
         const algorandClient = algokit.AlgorandClient.fromConfig({ algodConfig })
         algorandClient.setDefaultSigner(signer)
 
@@ -486,26 +500,24 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
                 onChange={(e) => setCollectionMode(e.target.value)}
                 className="flex flex-col gap-2"
               >
-                <Radio value={0}>Creator Address — Accept NFTs from a specific creator</Radio>
-                <Radio value={1}>Whitelist — Accept specific NFT ASA IDs</Radio>
-                <Radio value={2}>Both — Accept from creator OR whitelist</Radio>
+                <Radio value={0}>{chainId === 'voi-mainnet' ? 'By Collection — Select an ARC-72 collection' : 'Creator Address — Accept NFTs from a specific creator'}</Radio>
+                <Radio value={1}>Whitelist — Accept specific NFT IDs</Radio>
+                <Radio value={2}>{chainId === 'voi-mainnet' ? 'Both — Collection OR whitelist' : 'Both — Accept from creator OR whitelist'}</Radio>
               </Radio.Group>
             </div>
 
             {(collectionMode === 0 || collectionMode === 2) && (
-              <div className="flex flex-col gap-[10px]">
-                <p className="large text-[var(--text-primary)]">Collection Creator Address</p>
-                <div className="bg-[var(--input-bg)] rounded-[12px] p-[7px]">
-                  <Input
-                    type="text"
-                    placeholder="Algorand address of NFT creator"
-                    value={collectionCreator}
-                    onChange={(e) => setCollectionCreator(e.target.value)}
-                    className="input-wrapper text-[16px] w-full"
-                  />
-                </div>
-                <p className="text-xs text-[var(--text-secondary)]">Pre-filled with your connected wallet. Change if the collection was created by a different address.</p>
-              </div>
+              <CollectionSelector
+                label={chainId === 'voi-mainnet' ? 'ARC-72 Collection' : 'NFT Collection'}
+                selected={selectedCollection}
+                onSelect={(coll) => {
+                  setSelectedCollection(coll)
+                  // Voi uses contractId, Algorand uses creator address
+                  setCollectionCreator(chainId === 'voi-mainnet' ? String(coll.contractId) : coll.creator)
+                  if (coll.image && !poolImage) setPoolImage(coll.image)
+                }}
+                chainId={chainId}
+              />
             )}
 
             {(collectionMode === 1 || collectionMode === 2) && (

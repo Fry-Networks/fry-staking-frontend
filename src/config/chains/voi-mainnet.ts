@@ -36,8 +36,8 @@ export const voiMainnet: ChainConfig = {
   },
   features: {
     staking: true,
-    farming: false,
-    nftStaking: false,
+    farming: true,
+    nftStaking: true,
     deviceStaking: false,
     swap: true,
     predictionLp: false,

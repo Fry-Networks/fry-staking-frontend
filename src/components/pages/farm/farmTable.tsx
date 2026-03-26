@@ -6,9 +6,10 @@ import Button from '../../shared/button';
 import FTable, { TabOption } from './fTable';
 import Farmbanner from './farmbanner';
 import CreateFarmWizard from '../../../Modals/website/CreateFarmWizard';
-import { useWallet } from '@txnlab/use-wallet';
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet';
+import { useChain } from '../../../context/ChainContext';
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService';
-import { getLpTokenUsdPrice, fetchPriceMap } from '../../../services/PriceService';
+import { getChainLpTokenUsdPrice, fetchChainPriceMap } from '../../../services/PriceService';
 
 
 // Helper function to validate image URL (outside component to avoid recreation)
@@ -25,7 +26,8 @@ const isValidImageUrl = (url: string | undefined | null): boolean => {
 };
 
 const FarmTable: React.FC = () => {
-  const { activeAddress: walletAddress } = useWallet();
+  const { activeAddress: walletAddress } = useMultiChainWallet();
+  const { chainId, activeChain } = useChain();
   const [farms, setFarms] = useState<any[]>([]);
   const [originalData, setOriginalData] = useState<any[]>([]);
   const [isAddFarmOpen, setIsAddFarmOpen] = useState(false);
@@ -96,14 +98,13 @@ const FarmTable: React.FC = () => {
         Promise.allSettled(
           [...pairMap.entries()].map(async ([key, pair]) => ({
             key,
-            price: await getLpTokenUsdPrice(
+            price: await getChainLpTokenUsdPrice(
               pair.tokenAId, pair.tokenBId,
-              decimalMap[pair.tokenAId.toString()] ?? 6,
-              decimalMap[pair.tokenBId.toString()] ?? 6,
+              chainId,
             ),
           }))
         ),
-        fetchPriceMap(rewardTokenIds),
+        fetchChainPriceMap(rewardTokenIds, chainId),
       ]);
 
       const lpPrices: Record<string, number> = {};
@@ -293,7 +294,7 @@ const FarmTable: React.FC = () => {
       }
     };
     fetchUserFarms();
-  }, [walletAddress]);
+  }, [walletAddress, chainId]);
 
   // Client-side filtering: filter originalData by activeTab and walletAddress
   useEffect(() => {
@@ -332,7 +333,7 @@ const FarmTable: React.FC = () => {
       }
     };
     loadData();
-  }, []);
+  }, [chainId]);
 
   return (
     <div className="w-full mt-[40px] mb-[47px] flex-1">
