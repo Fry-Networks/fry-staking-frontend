@@ -635,6 +635,19 @@ export const getAlgodClient = () => {
   });
 };
 
+export interface AlgodConfigOverride {
+  server: string
+  port: number
+  token: string
+}
+
+export function getAlgodClientWithOverride(override?: AlgodConfigOverride) {
+  if (override) {
+    return new algosdk.Algodv2(override.token, override.server, override.port)
+  }
+  return getAlgodClient()
+}
+
 export const getUserData = async (appId: number, userAddress: string) => {
   const algod = await getAlgodClient();
   const boxes = await algod.getApplicationBoxes(appId).do();

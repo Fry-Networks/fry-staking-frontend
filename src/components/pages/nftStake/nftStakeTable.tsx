@@ -1,5 +1,4 @@
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
 import { Spin } from 'antd'
 import React, { useEffect, useState } from 'react'
 import CreateNftPoolWizard from '../../../Modals/website/CreateNftPoolWizard'
@@ -9,6 +8,8 @@ import { getAllNftPools } from '../../../services/nftStakingApi'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
 import { getNftMetadata } from '../../../services/nftCollectionService'
 import { lookupNfd } from '../../../services/nfdService'
+import { useChain } from '../../../context/ChainContext'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 import axios from 'axios'
 import type { NftStakingPool } from '../../../types/nftStaking'
 
@@ -25,7 +26,8 @@ const NftStakeTable: React.FC = () => {
   const [searchToken, setSearchToken] = useState('')
   const [tokenImages, setTokenImages] = useState<Record<string, string>>({})
 
-  const { activeAddress } = useWallet()
+  const { activeAddress } = useMultiChainWallet()
+  const { chainId, activeChain } = useChain()
 
   const fetchPools = async () => {
     try {
@@ -85,7 +87,7 @@ const NftStakeTable: React.FC = () => {
           let asaId: number | null = null
           if (pool.collectionCreator?.trim().length >= 58) {
             const res = await axios.get(
-              `https://mainnet-idx.4160.nodely.dev/v2/accounts/${pool.collectionCreator.trim()}/created-assets?limit=1`,
+              `${(activeChain.connection as any).indexerServer || 'https://mainnet-idx.4160.nodely.dev'}/v2/accounts/${pool.collectionCreator.trim()}/created-assets?limit=1`,
               { timeout: 10000 },
             )
             asaId = res.data?.assets?.[0]?.index ?? null
@@ -93,7 +95,7 @@ const NftStakeTable: React.FC = () => {
             asaId = pool.whitelistedAsaIds[0]
           }
           if (asaId) {
-            const meta = await getNftMetadata(asaId)
+            const meta = await getNftMetadata(asaId, chainId)
             if (meta.imageUrl) imageUpdates[pool.appId] = meta.imageUrl
             if (meta.name && isGenericName(pool.poolName)) {
               const collName = meta.name.replace(/\s*#\d+$/, '').trim()
@@ -139,7 +141,7 @@ const NftStakeTable: React.FC = () => {
       setLoading(false)
     }
     loadData()
-  }, [])
+  }, [chainId])
 
   // Filter pools by tab + search
   useEffect(() => {
@@ -177,7 +179,7 @@ const NftStakeTable: React.FC = () => {
       : filtered
 
     setFilteredPools(searched)
-  }, [pools, activeTab, activeAddress, searchToken])
+  }, [pools, activeTab, activeAddress, searchToken, chainId])
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchToken(event.target.value)

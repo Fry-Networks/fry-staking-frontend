@@ -43,6 +43,19 @@ const getAlgodClient = () => {
   })
 }
 
+export interface AlgodConfigOverride {
+  server: string
+  port: number
+  token: string
+}
+
+export function getAlgodClientWithOverride(override?: AlgodConfigOverride) {
+  if (override) {
+    return new algosdk.Algodv2(override.token, override.server, override.port)
+  }
+  return getAlgodClient()
+}
+
 const getIndexerClient = () => {
   const indexerConfig = getIndexerConfigFromViteEnvironment()
   return algokit.getAlgoIndexerClient({

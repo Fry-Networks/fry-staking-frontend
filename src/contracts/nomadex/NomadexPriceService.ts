@@ -1,5 +1,7 @@
+import algosdk from 'algosdk';
 import axios from 'axios';
 import { loadMarketData, findPool, findToken } from './api';
+import { getChainConfig } from '../../config/chains';
 
 const VOI_ID = 0;
 const WVOI_ID = 390001;
@@ -120,6 +122,76 @@ export async function getVoiTokenUsdPrice(tokenId: number): Promise<number> {
  * Batch-fetch USD prices for a list of Voi token IDs.
  * Mirrors PriceService.fetchPriceMap() interface.
  */
+/**
+ * Get USD price for a Nomadex LP token pair.
+ * LP price = (reserveA_usd + reserveB_usd) / totalLpSupply
+ */
+export async function getNomadexLpTokenUsdPrice(tokenAId: number, tokenBId: number): Promise<number> {
+  const cacheKey = `voi-lp-${Math.min(tokenAId, tokenBId)}-${Math.max(tokenAId, tokenBId)}`;
+  const cached = getCachedPrice(cacheKey);
+  if (cached !== null) return cached;
+
+  await loadMarketData();
+  const pool = findPool(tokenAId, tokenBId);
+  if (!pool) return 0;
+
+  const isAAlpha = pool.alphaId === tokenAId;
+  const reserveA = BigInt(isAAlpha ? pool.balances[0] : pool.balances[1]);
+  const reserveB = BigInt(isAAlpha ? pool.balances[1] : pool.balances[0]);
+
+  const tokenA = findToken(tokenAId);
+  const tokenB = findToken(tokenBId);
+  const decimalsA = tokenA?.decimals ?? 6;
+  const decimalsB = tokenB?.decimals ?? 6;
+
+  const [priceA, priceB] = await Promise.all([
+    getVoiTokenUsdPrice(tokenAId),
+    getVoiTokenUsdPrice(tokenBId),
+  ]);
+
+  const reserveAUsd = (Number(reserveA) / 10 ** decimalsA) * priceA;
+  const reserveBUsd = (Number(reserveB) / 10 ** decimalsB) * priceB;
+  const totalValueUsd = reserveAUsd + reserveBUsd;
+
+  if (totalValueUsd <= 0) return 0;
+
+  // Get LP total supply via arc200_totalSupply on pool app
+  try {
+    const voiConfig = getChainConfig('voi-mainnet');
+    const conn = voiConfig.connection as { algodServer: string; algodPort: number; algodToken: string };
+    const client = new algosdk.Algodv2(conn.algodToken, conn.algodServer, conn.algodPort);
+
+    const totalSupplySelector = new Uint8Array([0xd8, 0x9d, 0x5e, 0x83]); // arc200_totalSupply
+    const result = await client.getApplicationByID(pool.id).do();
+    // Use simulate to call arc200_totalSupply
+    const atc = new algosdk.AtomicTransactionComposer();
+    const params = await client.getTransactionParams().do();
+    const dummyAddr = algosdk.getApplicationAddress(pool.id);
+    atc.addMethodCall({
+      appID: pool.id,
+      method: new algosdk.ABIMethod({ name: 'arc200_totalSupply', args: [], returns: { type: 'uint256' } }),
+      sender: dummyAddr,
+      suggestedParams: params,
+      signer: algosdk.makeEmptyTransactionSigner(),
+    });
+    const simResult = await atc.simulate(client);
+    const returnValue = simResult.methodResults[0]?.returnValue;
+    if (returnValue != null) {
+      const totalSupply = Number(returnValue) / 1e6; // LP tokens have 6 decimals
+      if (totalSupply > 0) {
+        const price = totalValueUsd / totalSupply;
+        if (price > 0) { setCachedPrice(cacheKey, price); return price; }
+      }
+    }
+  } catch {
+    // Fallback: estimate from reserves only (assumes equal-weight pool)
+    // price per LP ≈ 2 * sqrt(reserveA_usd * reserveB_usd) / totalSupply
+    // Without totalSupply, return 0
+  }
+
+  return 0;
+}
+
 export async function fetchVoiPriceMap(tokenIds: number[]): Promise<Record<string, number>> {
   await loadMarketData();
   const unique = [...new Set(tokenIds)];

@@ -1,5 +1,4 @@
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
 import { Table } from 'antd'
 import type { TableColumnsType } from 'antd'
 import React, { memo, useState } from 'react'
@@ -7,6 +6,8 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import Button from '../../shared/button'
 import { useAuth } from '../../../hooks/useAuth'
+import { useChain } from '../../../context/ChainContext'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 import NftStakeModal from '../../../Modals/website/NftStakeModal'
 import NftUnstakeModal from '../../../Modals/website/NftUnstakeModal'
 import NftClaimModal from '../../../Modals/website/NftClaimModal'
@@ -33,7 +34,8 @@ interface NftTableProps {
 
 const NftTable: React.FC<NftTableProps> = memo(({ pools, fetchData, tokenImages, activeTab }) => {
   const { ensureAuth } = useAuth()
-  const { activeAddress, signer } = useWallet()
+  const { activeAddress, signer } = useMultiChainWallet()
+  const { activeChain } = useChain()
   const navigate = useNavigate()
 
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
@@ -95,7 +97,7 @@ const NftTable: React.FC<NftTableProps> = memo(({ pools, fetchData, tokenImages,
 
     const rewardTokenImage = tokenImages[pool.rewardTokenId?.toString()] ||
       pool.rewardTokenImage ||
-      `https://asa-list.tinyman.org/assets/${pool.rewardTokenId}/icon.png`
+      (activeChain.chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${pool.rewardTokenId}/icon.png`)
 
     return {
       key: index,
@@ -119,7 +121,7 @@ const NftTable: React.FC<NftTableProps> = memo(({ pools, fetchData, tokenImages,
               src={rewardTokenImage}
               className="w-[24px] h-[24px] rounded-full drop-shadow-md absolute -bottom-1 -right-1 border-2 border-white"
               alt={pool.rewardTokenName}
-              onError={(e) => { (e.target as HTMLImageElement).src = `https://asa-list.tinyman.org/assets/${pool.rewardTokenId}/icon.png` }}
+              onError={(e) => { if (activeChain.chainId !== 'voi-mainnet') (e.target as HTMLImageElement).src = `https://asa-list.tinyman.org/assets/${pool.rewardTokenId}/icon.png` }}
             />
           </div>
           <div className="flex flex-col">
@@ -206,7 +208,7 @@ const NftTable: React.FC<NftTableProps> = memo(({ pools, fetchData, tokenImages,
                       {/* Left */}
                       <div className="flex flex-col gap-[4px]">
                         <a
-                          href={`https://explorer.perawallet.app/application/${record.pool.appId}`}
+                          href={`${activeChain.explorerBaseUrl}/application/${record.pool.appId}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline"

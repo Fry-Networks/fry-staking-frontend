@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
-import { fetchPriceMap, getLpTokenUsdPrice } from '../../../services/PriceService'
+import { fetchChainPriceMap, getChainLpTokenUsdPrice } from '../../../services/PriceService'
 import { usePreferences } from '../../../contexts/PreferencesContext'
+import { useChain } from '../../../context/ChainContext'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 
 interface FarmStats {
   tvlUsd: number
@@ -15,6 +17,8 @@ interface FarmBannerProps {
 
 const Farmbanner: React.FC<FarmBannerProps> = ({ wallet }) => {
   const { isSimpleMode } = usePreferences()
+  const { chainId } = useChain()
+  const { activeAddress } = useMultiChainWallet()
   const [stats, setStats] = useState<FarmStats>({
     tvlUsd: 0,
     myStakeUsd: 0,
@@ -78,7 +82,7 @@ const Farmbanner: React.FC<FarmBannerProps> = ({ wallet }) => {
         const lpPriceResults = await Promise.allSettled(
           [...pairKeys.entries()].map(async ([key, pair]) => ({
             key,
-            price: await getLpTokenUsdPrice(pair.tokenAId, pair.tokenBId),
+            price: await getChainLpTokenUsdPrice(pair.tokenAId, pair.tokenBId, chainId),
           }))
         )
 
@@ -91,7 +95,7 @@ const Farmbanner: React.FC<FarmBannerProps> = ({ wallet }) => {
 
         // Fetch reward token prices
         const rewardPrices = rewardTokenIds.length > 0
-          ? await fetchPriceMap([...new Set(rewardTokenIds)])
+          ? await fetchChainPriceMap([...new Set(rewardTokenIds)], chainId)
           : {}
 
         // Compute TVL in USD from farm list (totalStaked is in micro-units)
@@ -150,7 +154,7 @@ const Farmbanner: React.FC<FarmBannerProps> = ({ wallet }) => {
     }
 
     fetchStats()
-  }, [wallet])
+  }, [wallet, chainId])
 
   const fmt = (v: number) =>
     `$ ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

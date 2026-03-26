@@ -17,6 +17,22 @@ const api = axios.create({
   baseURL: API_BASE,
 })
 
+// Chain header interceptor (axios.create() instances don't inherit global interceptors)
+api.interceptors.request.use((config) => {
+  try {
+    const chainId = localStorage.getItem('fry-farm-chain-id') || 'algorand-mainnet'
+    config.headers['X-Chain-Id'] = chainId
+    if (chainId === 'voi-mainnet') {
+      const voiConn = localStorage.getItem('voi-wallet-connection')
+      if (voiConn) {
+        const { address } = JSON.parse(voiConn)
+        if (address) config.headers['X-Wallet-Address'] = address
+      }
+    }
+  } catch { /* ignore */ }
+  return config
+})
+
 export async function getAllNftPools(): Promise<NftStakingPool[]> {
   const { data } = await api.get('/nftstaking/all')
   return data.data

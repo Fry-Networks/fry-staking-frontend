@@ -1,8 +1,11 @@
 import axios from 'axios'
 import type { NftAsset, NftMetadata, NftStakingPool } from '../types/nftStaking'
+import { getChainConfig } from '../config/chains'
+import type { ChainId } from '../config/chains/types'
 
 const INDEXER_URL = 'https://mainnet-idx.4160.nodely.dev'
 const PERA_API = 'https://mainnet.api.perawallet.app'
+const VOI_NFT_NAVIGATOR = 'https://arc72-idx.nftnavigator.xyz/nft-indexer/v1'
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
 // In-memory cache
@@ -17,11 +20,16 @@ function getCached<T>(cache: Map<any, { data: T; timestamp: number }>, key: any)
 
 /**
  * Fetch all NFTs (pure collectibles: decimals=0, total=1) owned by a wallet.
+ * For Voi: fetches ARC-72 tokens from NFT Navigator indexer.
  */
-export async function getUserNfts(wallet: string): Promise<NftAsset[]> {
-  const cacheKey = `user-nfts-${wallet}`
+export async function getUserNfts(wallet: string, chainId: ChainId = 'algorand-mainnet'): Promise<NftAsset[]> {
+  const cacheKey = `user-nfts-${chainId}-${wallet}`
   const cached = getCached(nftCache, cacheKey)
   if (cached) return cached as NftAsset[]
+
+  if (chainId === 'voi-mainnet') {
+    return getUserNftsVoi(wallet, cacheKey)
+  }
 
   const nfts: NftAsset[] = []
   let nextToken: string | undefined
@@ -67,6 +75,38 @@ export async function getUserNfts(wallet: string): Promise<NftAsset[]> {
   return nfts
 }
 
+/** Fetch ARC-72 NFTs from Voi NFT Navigator indexer */
+async function getUserNftsVoi(wallet: string, cacheKey: string): Promise<NftAsset[]> {
+  const nfts: NftAsset[] = []
+  try {
+    const res = await axios.get(`${VOI_NFT_NAVIGATOR}/tokens`, {
+      params: { owner: wallet },
+      timeout: 15000,
+    })
+    const tokens = res.data?.tokens ?? []
+    for (const t of tokens) {
+      let metadata: any = {}
+      try {
+        metadata = typeof t.metadata === 'string' ? JSON.parse(t.metadata) : (t.metadata || {})
+      } catch { /* ignore */ }
+      nfts.push({
+        asaId: Number(t.tokenId || t['token-id'] || 0),
+        name: metadata.name || `ARC-72 #${t.tokenId}`,
+        unitName: '',
+        creator: String(t.contractId || t['contract-id'] || ''),
+        total: 1,
+        decimals: 0,
+        url: '',
+        imageUrl: metadata.image || '',
+      })
+    }
+  } catch {
+    // NFT Navigator unavailable
+  }
+  nftCache.set(cacheKey, { data: nfts, timestamp: Date.now() })
+  return nfts
+}
+
 /**
  * Filter NFTs eligible for a given pool based on collection mode.
  * collectionMode: 0 = creator_address, 1 = whitelist, 2 = both (either condition)
@@ -90,11 +130,16 @@ export function filterEligibleNfts(nfts: NftAsset[], pool: NftStakingPool): NftA
 }
 
 /**
- * Fetch NFT metadata from Pera API (name, image, traits).
+ * Fetch NFT metadata from Pera API (Algorand) or NFT Navigator (Voi).
  */
-export async function getNftMetadata(asaId: number): Promise<NftMetadata> {
-  const cached = getCached(metadataCache, asaId)
+export async function getNftMetadata(asaId: number, chainId: ChainId = 'algorand-mainnet'): Promise<NftMetadata> {
+  const cacheKey = chainId === 'voi-mainnet' ? asaId + 1_000_000_000 : asaId
+  const cached = getCached(metadataCache, cacheKey)
   if (cached) return cached
+
+  if (chainId === 'voi-mainnet') {
+    return getNftMetadataVoi(asaId, cacheKey)
+  }
 
   try {
     const res = await axios.get(`${PERA_API}/v1/public/assets/${asaId}/?include_collectible=true`, {
@@ -115,7 +160,7 @@ export async function getNftMetadata(asaId: number): Promise<NftMetadata> {
       traits: collectible?.traits || [],
     }
 
-    metadataCache.set(asaId, { data: metadata, timestamp: Date.now() })
+    metadataCache.set(cacheKey, { data: metadata, timestamp: Date.now() })
     return metadata
   } catch {
     return {
@@ -127,10 +172,36 @@ export async function getNftMetadata(asaId: number): Promise<NftMetadata> {
   }
 }
 
+/** Fetch ARC-72 NFT metadata from Voi NFT Navigator */
+async function getNftMetadataVoi(tokenId: number, cacheKey: number): Promise<NftMetadata> {
+  try {
+    const res = await axios.get(`${VOI_NFT_NAVIGATOR}/tokens`, {
+      params: { tokenId },
+      timeout: 10000,
+    })
+    const token = res.data?.tokens?.[0]
+    if (token) {
+      let meta: any = {}
+      try {
+        meta = typeof token.metadata === 'string' ? JSON.parse(token.metadata) : (token.metadata || {})
+      } catch { /* ignore */ }
+      const metadata: NftMetadata = {
+        asaId: tokenId,
+        name: meta.name || `ARC-72 #${tokenId}`,
+        imageUrl: meta.image || '',
+        traits: meta.properties ? Object.entries(meta.properties).map(([k, v]) => ({ label: k, value: String(v) })) : [],
+      }
+      metadataCache.set(cacheKey, { data: metadata, timestamp: Date.now() })
+      return metadata
+    }
+  } catch { /* fallback */ }
+  return { asaId: tokenId, name: `ARC-72 #${tokenId}`, imageUrl: '', traits: [] }
+}
+
 /**
  * Batch fetch NFT metadata with concurrency limit.
  */
-export async function batchGetNftMetadata(asaIds: number[], concurrency = 5): Promise<NftMetadata[]> {
+export async function batchGetNftMetadata(asaIds: number[], concurrency = 5, chainId: ChainId = 'algorand-mainnet'): Promise<NftMetadata[]> {
   const results: NftMetadata[] = []
   const queue = [...asaIds]
 
@@ -138,7 +209,7 @@ export async function batchGetNftMetadata(asaIds: number[], concurrency = 5): Pr
     while (queue.length > 0) {
       const id = queue.shift()
       if (id !== undefined) {
-        const meta = await getNftMetadata(id)
+        const meta = await getNftMetadata(id, chainId)
         results.push(meta)
       }
     }
