@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Modal, Steps, InputNumber, Input } from 'antd'
+import { Modal, Steps } from 'antd'
 import { Icon } from '@iconify/react'
 import { toast } from 'react-toastify'
 import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
@@ -8,6 +8,8 @@ import { useAuth } from '../../hooks/useAuth'
 import { deployP2PMarket } from '../../p2p_swap_func'
 import { registerP2PMarket } from '../../services/p2pSwapApi'
 import { P2P_DEFAULT_FEE_BPS } from '../../config/p2pSwapConfig'
+import TokenSelector from '../../components/shared/TokenSelector'
+import type { DiscoveredToken } from '../../services/TokenDiscoveryService'
 
 interface CreateP2PMarketModalProps {
   isOpen: boolean;
@@ -26,23 +28,15 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Form state
-  const [offerAssetId, setOfferAssetId] = useState<number | null>(null)
-  const [offerAssetName, setOfferAssetName] = useState('')
-  const [offerAssetSymbol, setOfferAssetSymbol] = useState('')
-  const [requestAssetId, setRequestAssetId] = useState<number | null>(null)
-  const [requestAssetName, setRequestAssetName] = useState('')
-  const [requestAssetSymbol, setRequestAssetSymbol] = useState('')
+  const [offerToken, setOfferToken] = useState<DiscoveredToken | null>(null)
+  const [requestToken, setRequestToken] = useState<DiscoveredToken | null>(null)
 
   const nativeSymbol = activeChain.nativeAsset.symbol
 
   const reset = () => {
     setStep(0)
-    setOfferAssetId(null)
-    setOfferAssetName('')
-    setOfferAssetSymbol('')
-    setRequestAssetId(null)
-    setRequestAssetName('')
-    setRequestAssetSymbol('')
+    setOfferToken(null)
+    setRequestToken(null)
     setIsSubmitting(false)
   }
 
@@ -51,16 +45,14 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
     setIsOpen(false)
   }
 
-  const canProceedStep0 = offerAssetId !== null && offerAssetSymbol.length > 0
-  const canProceedStep1 = requestAssetId !== null && requestAssetSymbol.length > 0 && requestAssetId !== offerAssetId
-  const canSubmit = canProceedStep0 && canProceedStep1 && activeAddress && signer
+  const canProceedStep0 = offerToken !== null
+  const canProceedStep1 = requestToken !== null && requestToken.id !== offerToken?.id
+  const canSubmit = canProceedStep0 && canProceedStep1 && !!activeAddress && !!signer
 
-  const pairName = offerAssetSymbol && requestAssetSymbol
-    ? `${offerAssetSymbol}/${requestAssetSymbol}`
-    : '—'
+  const pairName = `${offerToken?.symbol ?? '?'}/${requestToken?.symbol ?? '?'}`
 
   const handleSubmit = async () => {
-    if (!canSubmit || !signer || !activeAddress || offerAssetId === null || requestAssetId === null) return
+    if (!canSubmit || !signer || !activeAddress || !offerToken || !requestToken) return
     setIsSubmitting(true)
 
     try {
@@ -73,7 +65,7 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
       }
 
       const { appId, appAddress, txId } = await deployP2PMarket(
-        offerAssetId, requestAssetId, P2P_DEFAULT_FEE_BPS,
+        offerToken.id, requestToken.id, P2P_DEFAULT_FEE_BPS,
         activeAddress, signer, chainId, algodConfig,
       )
 
@@ -81,13 +73,13 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
       await registerP2PMarket({
         appId,
         deployTxId: txId,
-        offerAssetId,
-        requestAssetId,
+        offerAssetId: offerToken.id,
+        requestAssetId: requestToken.id,
         feeBps: P2P_DEFAULT_FEE_BPS,
-        offerAssetName,
-        offerAssetSymbol,
-        requestAssetName: requestAssetName || (requestAssetId === 0 ? nativeSymbol : ''),
-        requestAssetSymbol: requestAssetSymbol || (requestAssetId === 0 ? nativeSymbol : ''),
+        offerAssetName: offerToken.name,
+        offerAssetSymbol: offerToken.symbol,
+        requestAssetName: requestToken.name,
+        requestAssetSymbol: requestToken.symbol,
       })
 
       toast.success(`Market ${pairName} deployed! App ID: ${appId}`)
@@ -109,41 +101,12 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
           <div className="text-center text-[var(--text-secondary)] mb-2">
             Which asset will makers sell in this market?
           </div>
-          <div>
-            <label className="block text-sm text-[var(--text-secondary)] mb-1">ASA ID (0 for {nativeSymbol})</label>
-            <InputNumber
-              className="w-full"
-              size="large"
-              placeholder="ASA ID"
-              value={offerAssetId}
-              onChange={(v) => setOfferAssetId(v)}
-              min={0}
-              controls={false}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm text-[var(--text-secondary)] mb-1">Name</label>
-              <Input
-                placeholder="e.g. Fry"
-                value={offerAssetName}
-                onChange={(e) => setOfferAssetName(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-[var(--text-secondary)] mb-1">Symbol</label>
-              <Input
-                placeholder="e.g. FRY"
-                value={offerAssetSymbol}
-                onChange={(e) => setOfferAssetSymbol(e.target.value)}
-              />
-            </div>
-          </div>
-          {offerAssetId === 0 && (
-            <div className="text-xs text-[var(--text-secondary)] text-center">
-              Using native {nativeSymbol} as the offer asset
-            </div>
-          )}
+          <TokenSelector
+            label="Offer Asset"
+            selected={offerToken}
+            onSelect={setOfferToken}
+            excludeIds={requestToken ? [requestToken.id] : []}
+          />
         </div>
       ),
     },
@@ -154,41 +117,12 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
           <div className="text-center text-[var(--text-secondary)] mb-2">
             Which asset will makers receive in return?
           </div>
-          <div>
-            <label className="block text-sm text-[var(--text-secondary)] mb-1">ASA ID (0 for {nativeSymbol})</label>
-            <InputNumber
-              className="w-full"
-              size="large"
-              placeholder="ASA ID"
-              value={requestAssetId}
-              onChange={(v) => setRequestAssetId(v)}
-              min={0}
-              controls={false}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm text-[var(--text-secondary)] mb-1">Name</label>
-              <Input
-                placeholder={`e.g. ${nativeSymbol}`}
-                value={requestAssetName}
-                onChange={(e) => setRequestAssetName(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-[var(--text-secondary)] mb-1">Symbol</label>
-              <Input
-                placeholder={`e.g. ${nativeSymbol}`}
-                value={requestAssetSymbol}
-                onChange={(e) => setRequestAssetSymbol(e.target.value)}
-              />
-            </div>
-          </div>
-          {requestAssetId === offerAssetId && requestAssetId !== null && (
-            <div className="text-xs text-[#DE0308] text-center">
-              Request asset must differ from offer asset
-            </div>
-          )}
+          <TokenSelector
+            label="Request Asset"
+            selected={requestToken}
+            onSelect={setRequestToken}
+            excludeIds={offerToken ? [offerToken.id] : []}
+          />
         </div>
       ),
     },
@@ -203,11 +137,11 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--text-secondary)]">Offer asset ID</span>
-              <span className="text-[var(--text-primary)]">{offerAssetId === 0 ? `${nativeSymbol} (native)` : offerAssetId}</span>
+              <span className="text-[var(--text-primary)]">{offerToken?.id === 0 ? `${nativeSymbol} (native)` : offerToken?.id}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--text-secondary)]">Request asset ID</span>
-              <span className="text-[var(--text-primary)]">{requestAssetId === 0 ? `${nativeSymbol} (native)` : requestAssetId}</span>
+              <span className="text-[var(--text-primary)]">{requestToken?.id === 0 ? `${nativeSymbol} (native)` : requestToken?.id}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--text-secondary)]">Taker fee</span>
@@ -237,7 +171,7 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
       onCancel={handleClose}
       title={<span className="font-apex text-lg">Create P2P Market</span>}
       footer={null}
-      width={500}
+      width={700}
       destroyOnClose
     >
       <Steps current={step} size="small" className="mb-6"
