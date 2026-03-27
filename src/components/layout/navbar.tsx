@@ -49,10 +49,10 @@ const Navbar: React.FC = () => {
 
   // Listen for openDailyRewards event from FeeConfirmation/FryFeeBanner
   useEffect(() => {
-    const handler = () => setOpenRewardsModal(true)
+    const handler = () => { if (isAlgorand) setOpenRewardsModal(true) }
     window.addEventListener('openDailyRewards', handler)
     return () => window.removeEventListener('openDailyRewards', handler)
-  }, [])
+  }, [isAlgorand])
 
   // Listen for openConnectWallet event from stake/withdraw modals
   useEffect(() => {
@@ -68,12 +68,13 @@ const Navbar: React.FC = () => {
       .catch(() => {})
   }, [])
 
-  // Rewards notification dot + auto-open
+  // Rewards notification dot + auto-open (Algorand only — no rewards on Voi)
   useEffect(() => {
     if (!activeAddress) {
       setRewardsAvailable(false)
       return
     }
+    if (!isAlgorand) return
     fetchRewardsStatus(activeAddress)
       .then((s) => {
         setRewardsAvailable(s.canClaim)
@@ -118,6 +119,18 @@ const Navbar: React.FC = () => {
                 Swap
               </NavLink>
             </li>
+            {hasFeature('p2pSwap') && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/p2p"
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                P2P
+              </NavLink>
+            </li>
+            )}
             <li className="relative group uppercase large text-[var(--text-primary)] font-bold font-apex">
               <span className={`cursor-pointer p-[10px] uppercase ${
                 isStakeActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''
@@ -136,11 +149,13 @@ const Navbar: React.FC = () => {
                     `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
                   }>NFT Stake</NavLink>
                 </li>
+                {hasFeature('deviceStaking') && (
                 <li>
                   <NavLink to="/depin-stake" className={({ isActive }) =>
                     `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
                   }>DePIN Stake</NavLink>
                 </li>
+                )}
               </ul>
             </li>
             <li className="relative group uppercase large text-[var(--text-primary)] font-bold font-apex">
@@ -259,6 +274,19 @@ const Navbar: React.FC = () => {
                 Swap
               </NavLink>
             </li>
+            {hasFeature('p2pSwap') && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/p2p"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                P2P
+              </NavLink>
+            </li>
+            )}
             <li className="flex flex-col gap-2">
               <span className="uppercase large text-[var(--text-secondary)] font-bold font-apex px-[10px]">Stake</span>
               <NavLink
@@ -279,6 +307,7 @@ const Navbar: React.FC = () => {
               >
                 NFT Stake
               </NavLink>
+              {hasFeature('deviceStaking') && (
               <NavLink
                 to="/depin-stake"
                 onClick={onClose}
@@ -288,6 +317,7 @@ const Navbar: React.FC = () => {
               >
                 DePIN Stake
               </NavLink>
+              )}
             </li>
             <li className="flex flex-col gap-2">
               <span className="uppercase large text-[var(--text-secondary)] font-bold font-apex px-[10px]">Farm</span>

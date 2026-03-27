@@ -1,0 +1,65 @@
+import { ChainId } from './chains/types';
+
+export interface P2PMarketConfig {
+  appId: number;
+  appAddress: string;
+  offerAssetId: number;
+  offerAssetName: string;
+  offerAssetSymbol: string;
+  offerAssetDecimals: number;
+  requestAssetId: number;
+  requestAssetName: string;
+  requestAssetSymbol: string;
+  requestAssetDecimals: number;
+  feeBps: number;
+  feeRecipient: string;
+}
+
+export const P2P_MARKETS: Record<ChainId, P2PMarketConfig> = {
+  'algorand-mainnet': {
+    appId: 3494825276,
+    appAddress: 'ZBRTLX2KCQLRSY6JVRPQFSCBPEQOW5Q6H3F6QA5M7Z3ASKPCEDUPMJBK6I',
+    offerAssetId: 2485314946,
+    offerAssetName: 'Fry',
+    offerAssetSymbol: 'FRY',
+    offerAssetDecimals: 6,
+    requestAssetId: 0,
+    requestAssetName: 'Algo',
+    requestAssetSymbol: 'ALGO',
+    requestAssetDecimals: 6,
+    feeBps: 50,
+    feeRecipient: 'E2F2LT2INE75DBOYHQXTCTOP2PAP5MHAXQRXTTCCXFKHQTVG36DJONBQZE',
+  },
+  'voi-mainnet': {
+    appId: 48999768,
+    appAddress: '7MRYXYHM77NFXZURNGIP7JD352VR6KVSIDJGCBIVU2ZIZ3YZCKDBOONYZ4',
+    offerAssetId: 48968653,
+    offerAssetName: 'vFry',
+    offerAssetSymbol: 'vFRY',
+    offerAssetDecimals: 6,
+    requestAssetId: 0,
+    requestAssetName: 'Voi',
+    requestAssetSymbol: 'VOI',
+    requestAssetDecimals: 6,
+    feeBps: 50,
+    feeRecipient: 'NQA76E235VCMZB4KZQSV6IU64IWF2GGCXK4Y3QA7N7ZMI7MVHUQVV5BUD4',
+  },
+};
+
+/** Box MBR per offer in microALGO/microVOI (recoverable on cancel/fill) */
+export const P2P_BOX_MBR = 47_300;
+
+/** Minimum fee budgets in microALGO/microVOI */
+export const P2P_FEE_CREATE = 2_000;
+export const P2P_FEE_ACCEPT = 5_000;
+export const P2P_FEE_CANCEL = 2_000;
+export const P2P_FEE_UPDATE = 1_000;
+
+/** Expiry presets in seconds */
+export const EXPIRY_OPTIONS = [
+  { label: 'No expiry', value: 0 },
+  { label: '1 hour', value: 3600 },
+  { label: '6 hours', value: 21600 },
+  { label: '24 hours', value: 86400 },
+  { label: '7 days', value: 604800 },
+];

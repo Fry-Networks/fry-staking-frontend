@@ -12,4 +12,6 @@ export * from "./VestigeLabsClient";
 export * from "./DeflexClient";
 export * from "./SwapService";
 export * from "./nomadex";
+export * from "./humble";
 export * from "./VoiSwapService";
+export * from "./FryP2PSwapClient";
