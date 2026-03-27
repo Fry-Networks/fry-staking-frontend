@@ -19,6 +19,10 @@ interface LpPool {
   tokenB: { id: number; name: string; symbol: string };
 }
 
+function getChainId(): string {
+  return localStorage.getItem('fry-farm-chain-id') || 'algorand-mainnet';
+}
+
 // In-memory cache with TTL
 const cache = new Map<string, { data: any; expires: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -45,7 +49,7 @@ function setCache(key: string, data: any): void {
  * Look up a single ASA by ID.
  */
 export async function lookupAsa(asaId: number): Promise<DiscoveredToken> {
-  const cacheKey = `asa:${asaId}`;
+  const cacheKey = `asa:${getChainId()}:${asaId}`;
   const cached = getCached<DiscoveredToken>(cacheKey);
   if (cached) return cached;
 
@@ -59,7 +63,7 @@ export async function lookupAsa(asaId: number): Promise<DiscoveredToken> {
  * Search tokens by name or symbol.
  */
 export async function getDefaultTokens(): Promise<DiscoveredToken[]> {
-  const cacheKey = 'defaults';
+  const cacheKey = `defaults:${getChainId()}`;
   const cached = getCached<DiscoveredToken[]>(cacheKey);
   if (cached) return cached;
   const resp = await axios.get(`${API_BASE}/tokens/search`, {
@@ -71,7 +75,7 @@ export async function getDefaultTokens(): Promise<DiscoveredToken[]> {
 }
 
 export async function searchTokens(query: string): Promise<DiscoveredToken[]> {
-  const cacheKey = `search:${(query || '').trim().toLowerCase()}`;
+  const cacheKey = `search:${getChainId()}:${(query || '').trim().toLowerCase()}`;
   const cached = getCached<DiscoveredToken[]>(cacheKey);
   if (cached) return cached;
 
