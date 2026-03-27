@@ -3,7 +3,10 @@ import * as algokit from '@algorandfoundation/algokit-utils'
 import algosdk, { TransactionSigner } from 'algosdk'
 import { FryP2PSwapClient } from './contracts/FryP2PSwapClient'
 import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
-import { P2P_BOX_MBR, P2P_FEE_CREATE, P2P_FEE_ACCEPT, P2P_FEE_CANCEL, P2P_FEE_UPDATE } from './config/p2pSwapConfig'
+import { P2P_BOX_MBR, P2P_FEE_CREATE, P2P_FEE_ACCEPT, P2P_FEE_CANCEL, P2P_FEE_UPDATE, P2P_GLOBAL_INTS, P2P_GLOBAL_BYTES, P2P_APP_MBR, P2P_ASA_OPT_IN_MBR } from './config/p2pSwapConfig'
+import { getP2PTeal } from './contracts/p2pSwapTeal'
+// @ts-ignore — ARC32 JSON import for ABI method resolution
+import P2P_APP_SPEC from './contracts/FryP2PSwap.arc32.json'
 
 export interface AlgodConfigOverride {
   server: string;
@@ -383,6 +386,131 @@ export const reclaimExpiredOffer = async (
     return { txId }
   } catch (e) {
     console.error('Error in reclaimExpiredOffer:', e)
+    throw e
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// DEPLOY NEW P2P MARKET (permissionless)
+// ────────────────────────────────────────────────────────────────
+
+export const deployP2PMarket = async (
+  offerAssetId: number,
+  requestAssetId: number,
+  feeBps: number,
+  sender: string,
+  signer: TransactionSigner,
+  chainId: string,
+  algodConfigOverride?: AlgodConfigOverride,
+) => {
+  try {
+    const algodConfig = algodConfigOverride
+      ? { ...algodConfigOverride, network: '' }
+      : getAlgodConfigFromViteEnvironment()
+    const algodClient = algokit.getAlgoClient({
+      server: algodConfig.server,
+      port: algodConfig.port,
+      token: algodConfig.token,
+    })
+
+    // 1. Get and compile TEAL for this chain
+    const { approval, clear } = getP2PTeal(chainId)
+    const encoder = new TextEncoder()
+    const approvalResult = await algodClient.compile(encoder.encode(approval)).do()
+    const clearResult = await algodClient.compile(encoder.encode(clear)).do()
+
+    const approvalBytes = new Uint8Array(Buffer.from(approvalResult.result, 'base64'))
+    const clearBytes = new Uint8Array(Buffer.from(clearResult.result, 'base64'))
+
+    // 2. Build ATC with init method call (appID: 0 = create)
+    const abiContract = new algosdk.ABIContract(P2P_APP_SPEC.contract as any)
+    const initMethod = abiContract.getMethodByName('init')
+
+    const suggestedParams = await algodClient.getTransactionParams().do()
+    suggestedParams.flatFee = true
+    suggestedParams.fee = 2000
+
+    const extraPages = Math.max(0, Math.ceil(approvalBytes.length / 2048) - 1)
+
+    const atc = new algosdk.AtomicTransactionComposer()
+    atc.addMethodCall({
+      appID: 0,
+      method: initMethod,
+      methodArgs: [
+        sender,           // fee_recipient: address (deployer collects fees)
+        feeBps,           // fee_bps: uint64
+        offerAssetId,     // offer_asset_id: uint64
+        requestAssetId,   // request_asset_id: uint64
+      ],
+      approvalProgram: approvalBytes,
+      clearProgram: clearBytes,
+      numGlobalInts: P2P_GLOBAL_INTS,
+      numGlobalByteSlices: P2P_GLOBAL_BYTES,
+      numLocalInts: 0,
+      numLocalByteSlices: 0,
+      extraPages,
+      sender,
+      signer,
+      suggestedParams,
+      onComplete: algosdk.OnApplicationComplete.NoOpOC,
+    })
+
+    const result = await atc.execute(algodClient, 4)
+    const appId = result.methodResults[0].txInfo?.['application-index']
+    if (!appId) throw new Error('Failed to extract app ID from deploy transaction')
+
+    const appAddress = algosdk.getApplicationAddress(appId)
+    const txId = result.txIDs[0]
+
+    // 3. Fund the app address for MBR
+    const nonNativeCount = (offerAssetId !== 0 ? 1 : 0) + (requestAssetId !== 0 ? 1 : 0)
+    const fundAmount = P2P_APP_MBR + (P2P_ASA_OPT_IN_MBR * nonNativeCount) + (extraPages * 100_000)
+
+    const algorandClient = algokit.AlgorandClient.fromConfig({ algodConfig })
+    algorandClient.setDefaultSigner(signer)
+
+    await algorandClient.send.payment({
+      sender,
+      signer,
+      receiver: appAddress,
+      amount: algokit.microAlgos(fundAmount),
+    })
+
+    // 4. Opt the app into non-native ASAs
+    const p2pClient = new FryP2PSwapClient(
+      { resolveBy: 'id', id: appId, sender: { addr: sender, signer } },
+      algorandClient.client.algod,
+    )
+
+    if (offerAssetId !== 0) {
+      const mbrPayment = await algorandClient.transactions.payment({
+        sender,
+        receiver: appAddress,
+        amount: algokit.microAlgos(P2P_ASA_OPT_IN_MBR),
+        signer,
+      })
+      await p2pClient.optInAsset(
+        { asset: offerAssetId, mbrPayment },
+        { sendParams: { fee: algokit.microAlgos(2000) } },
+      )
+    }
+
+    if (requestAssetId !== 0) {
+      const mbrPayment = await algorandClient.transactions.payment({
+        sender,
+        receiver: appAddress,
+        amount: algokit.microAlgos(P2P_ASA_OPT_IN_MBR),
+        signer,
+      })
+      await p2pClient.optInAsset(
+        { asset: requestAssetId, mbrPayment },
+        { sendParams: { fee: algokit.microAlgos(2000) } },
+      )
+    }
+
+    return { appId, appAddress, txId }
+  } catch (e) {
+    console.error('Error in deployP2PMarket:', e)
     throw e
   }
 }

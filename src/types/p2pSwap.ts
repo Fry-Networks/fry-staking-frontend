@@ -105,3 +105,15 @@ export interface CancelOfferPayload {
   marketAppId: number;
   cancelTxId: string;
 }
+
+export interface RegisterMarketPayload {
+  appId: number;
+  deployTxId: string;
+  offerAssetId: number;
+  requestAssetId: number;
+  feeBps: number;
+  offerAssetName?: string;
+  offerAssetSymbol?: string;
+  requestAssetName?: string;
+  requestAssetSymbol?: string;
+}

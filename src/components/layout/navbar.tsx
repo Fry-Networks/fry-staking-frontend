@@ -119,18 +119,6 @@ const Navbar: React.FC = () => {
                 Swap
               </NavLink>
             </li>
-            {hasFeature('p2pSwap') && (
-            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
-              <NavLink
-                to="/p2p"
-                className={({ isActive }) =>
-                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
-                }
-              >
-                P2P
-              </NavLink>
-            </li>
-            )}
             <li className="relative group uppercase large text-[var(--text-primary)] font-bold font-apex">
               <span className={`cursor-pointer p-[10px] uppercase ${
                 isStakeActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''
@@ -180,6 +168,18 @@ const Navbar: React.FC = () => {
                 )}
               </ul>
             </li>
+            {hasFeature('p2pSwap') && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/p2p"
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                P2P
+              </NavLink>
+            </li>
+            )}
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/events"
@@ -274,19 +274,6 @@ const Navbar: React.FC = () => {
                 Swap
               </NavLink>
             </li>
-            {hasFeature('p2pSwap') && (
-            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
-              <NavLink
-                to="/p2p"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
-                }
-              >
-                P2P
-              </NavLink>
-            </li>
-            )}
             <li className="flex flex-col gap-2">
               <span className="uppercase large text-[var(--text-secondary)] font-bold font-apex px-[10px]">Stake</span>
               <NavLink
@@ -342,6 +329,19 @@ const Navbar: React.FC = () => {
               </NavLink>
               )}
             </li>
+            {hasFeature('p2pSwap') && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/p2p"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                P2P
+              </NavLink>
+            </li>
+            )}
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/events"

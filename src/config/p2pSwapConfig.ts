@@ -55,6 +55,13 @@ export const P2P_FEE_ACCEPT = 5_000;
 export const P2P_FEE_CANCEL = 2_000;
 export const P2P_FEE_UPDATE = 1_000;
 
+/** Deploy constants */
+export const P2P_DEFAULT_FEE_BPS = 50;
+export const P2P_GLOBAL_INTS = 8;
+export const P2P_GLOBAL_BYTES = 2;
+export const P2P_APP_MBR = 200_000;
+export const P2P_ASA_OPT_IN_MBR = 100_000;
+
 /** Expiry presets in seconds */
 export const EXPIRY_OPTIONS = [
   { label: 'No expiry', value: 0 },

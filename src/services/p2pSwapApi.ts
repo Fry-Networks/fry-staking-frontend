@@ -2,6 +2,7 @@ import { authAxios } from './apiClient';
 import type {
   P2PMarket, P2POffer, P2PTrade, P2PReputation,
   P2POfferPagination, CreateOfferPayload, AcceptOfferPayload, CancelOfferPayload,
+  RegisterMarketPayload,
 } from '../types/p2pSwap';
 
 // --- Public reads ---
@@ -77,5 +78,10 @@ export async function recordP2PCancel(
   offerId: number, payload: CancelOfferPayload
 ): Promise<P2POffer> {
   const { data } = await authAxios.post(`/p2p/offers/${offerId}/cancel`, payload);
+  return data.data;
+}
+
+export async function registerP2PMarket(payload: RegisterMarketPayload): Promise<P2PMarket> {
+  const { data } = await authAxios.post('/p2p/markets', payload);
   return data.data;
 }
