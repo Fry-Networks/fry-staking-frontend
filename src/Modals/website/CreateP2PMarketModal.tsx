@@ -174,46 +174,49 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
       width={700}
       destroyOnClose
     >
-      <Steps current={step} size="small" className="mb-6"
-        items={steps.map(s => ({ title: s.title }))}
-      />
+      <div className="flex flex-col pt-[24px] pb-[24px] px-[24px]">
+        <Steps current={step} size="small" className="mb-6"
+          items={steps.map(s => ({ title: s.title }))}
+          onChange={(s) => { if (s <= step) setStep(s) }}
+        />
 
-      <div className="min-h-[200px]">
-        {steps[step].content}
-      </div>
+        <div className="min-h-[200px]">
+          {steps[step].content}
+        </div>
 
-      <div className="flex justify-between mt-6">
-        <button
-          onClick={() => step > 0 ? setStep(step - 1) : handleClose()}
-          className="px-4 py-2 rounded border border-[var(--border-color)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
-        >
-          {step === 0 ? 'Cancel' : 'Back'}
-        </button>
-
-        {isLastStep ? (
+        <div className="flex justify-between mt-6">
           <button
-            onClick={handleSubmit}
-            disabled={!canSubmit || isSubmitting}
-            className="flex items-center gap-2 px-5 py-2 rounded-lg bg-[#DE0308] text-white font-bold disabled:opacity-50 hover:opacity-90 transition-opacity"
+            onClick={() => step > 0 ? setStep(step - 1) : handleClose()}
+            className="px-4 py-2 rounded border border-[var(--border-color)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
           >
-            {isSubmitting ? (
-              <>
-                <Icon icon="mdi:loading" className="animate-spin" width={18} />
-                Deploying...
-              </>
-            ) : (
-              'Deploy Market'
-            )}
+            {step === 0 ? 'Cancel' : 'Back'}
           </button>
-        ) : (
-          <button
-            onClick={() => setStep(step + 1)}
-            disabled={!canNext}
-            className="px-5 py-2 rounded-lg bg-[#DE0308] text-white font-bold disabled:opacity-50 hover:opacity-90 transition-opacity"
-          >
-            Next
-          </button>
-        )}
+
+          {isLastStep ? (
+            <button
+              onClick={handleSubmit}
+              disabled={!canSubmit || isSubmitting}
+              className="flex items-center gap-2 px-5 py-2 rounded-lg bg-[#DE0308] text-white font-bold disabled:opacity-50 hover:opacity-90 transition-opacity"
+            >
+              {isSubmitting ? (
+                <>
+                  <Icon icon="mdi:loading" className="animate-spin" width={18} />
+                  Deploying...
+                </>
+              ) : (
+                'Deploy Market'
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={() => setStep(step + 1)}
+              disabled={!canNext}
+              className="px-5 py-2 rounded-lg bg-[#DE0308] text-white font-bold disabled:opacity-50 hover:opacity-90 transition-opacity"
+            >
+              Next
+            </button>
+          )}
+        </div>
       </div>
     </Modal>
   )
