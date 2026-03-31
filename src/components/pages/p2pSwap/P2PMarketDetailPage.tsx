@@ -63,6 +63,7 @@ const P2PMarketDetailPage: React.FC = () => {
   const [market, setMarket] = useState<P2PMarket | null>(null)
   const [stats, setStats] = useState<P2PMarketStats | null>(null)
   const [notFound, setNotFound] = useState(false)
+  const [gatedDenied, setGatedDenied] = useState(false)
 
   // Derive market config
   const marketConfig: P2PMarketConfig = market
@@ -166,6 +167,15 @@ const P2PMarketDetailPage: React.FC = () => {
     fetchAll()
   }, [fetchAll])
 
+  // Recheck wallet gating when wallet changes
+  useEffect(() => {
+    if (market?.gatedWallet && market.gatedWallet !== '') {
+      setGatedDenied(activeAddress !== market.gatedWallet)
+    } else {
+      setGatedDenied(false)
+    }
+  }, [activeAddress, market])
+
   // Handle cancel
   const handleCancel = async (offer: P2POffer) => {
     if (!signer || !activeAddress) return
@@ -189,6 +199,31 @@ const P2PMarketDetailPage: React.FC = () => {
   }
 
   const handleAcceptClick = (offer: P2POffer) => setAcceptOffer(offer)
+
+  if (gatedDenied) {
+    return (
+      <div className="relative z-[1] flex-1 py-[30px] px-[5%]">
+        <div className="max-w-[1400px] m-auto text-center py-20">
+          <Icon icon="mdi:lock-outline" width={48} className="mx-auto mb-4 text-[var(--text-secondary)]" />
+          <h2 className="text-xl font-bold font-apex text-[var(--text-primary)] mb-2">Wallet-Gated Market</h2>
+          <p className="text-[var(--text-secondary)] mb-2">This market is restricted to a specific wallet.</p>
+          <p className="text-sm text-[var(--text-secondary)] mb-6 font-mono">
+            Required: {market?.gatedWallet ? formatAddress(market.gatedWallet) : ''}
+          </p>
+          {!activeAddress ? (
+            <p className="text-[var(--text-secondary)]">Connect your wallet to check access.</p>
+          ) : (
+            <p className="text-[var(--text-secondary)]">
+              Connected: {formatAddress(activeAddress)} — does not match.
+            </p>
+          )}
+          <Link to="/p2p" className="text-[#DE0308] hover:underline font-bold mt-4 inline-block">
+            ← Back to Markets
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   if (notFound) {
     return (

@@ -17,6 +17,8 @@ export interface P2PMarket {
   feeRecipient: string;
   feeBps: number;
   isActive: boolean;
+  isPrivate?: boolean;
+  gatedWallet?: string;
   deployTxId?: string;
   createdAt: string;
   updatedAt: string;
@@ -129,4 +131,6 @@ export interface RegisterMarketPayload {
   offerAssetSymbol?: string;
   requestAssetName?: string;
   requestAssetSymbol?: string;
+  isPrivate?: boolean;
+  gatedWallet?: string;
 }

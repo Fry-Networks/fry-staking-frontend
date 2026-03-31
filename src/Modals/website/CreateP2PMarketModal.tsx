@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Modal, Steps } from 'antd'
+import { Input, Modal, Steps, Switch } from 'antd'
 import { Icon } from '@iconify/react'
 import { toast } from 'react-toastify'
 import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
@@ -30,6 +30,8 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
   // Form state
   const [offerToken, setOfferToken] = useState<DiscoveredToken | null>(null)
   const [requestToken, setRequestToken] = useState<DiscoveredToken | null>(null)
+  const [isPrivate, setIsPrivate] = useState(false)
+  const [gatedWallet, setGatedWallet] = useState('')
 
   const nativeSymbol = activeChain.nativeAsset.symbol
 
@@ -37,6 +39,8 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
     setStep(0)
     setOfferToken(null)
     setRequestToken(null)
+    setIsPrivate(false)
+    setGatedWallet('')
     setIsSubmitting(false)
   }
 
@@ -82,6 +86,8 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
         offerAssetSymbol: offerToken.symbol,
         requestAssetName: requestToken.name,
         requestAssetSymbol: requestToken.symbol,
+        isPrivate,
+        gatedWallet: isPrivate ? gatedWallet : '',
       })
 
       toast.success(`Market ${pairName} deployed! App ID: ${appId}`)
@@ -129,6 +135,35 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
       ),
     },
     {
+      title: 'Options',
+      content: (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-primary)]">Private market</span>
+            <Switch checked={isPrivate} onChange={setIsPrivate} />
+          </div>
+          {isPrivate && (
+            <>
+              <p className="text-sm text-[var(--text-secondary)]">
+                This market won't appear in the public list. Share the link directly.
+              </p>
+              <Input
+                placeholder="Restrict to wallet address (optional)"
+                value={gatedWallet}
+                onChange={(e) => setGatedWallet(e.target.value.trim())}
+                className="font-mono text-sm mt-3"
+              />
+              {gatedWallet && (
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Only this wallet will be able to view and trade on this market.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      ),
+    },
+    {
       title: 'Deploy',
       content: (
         <div className="space-y-3">
@@ -153,6 +188,16 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
               <span className="text-[var(--text-secondary)]">Deploy cost</span>
               <span className="text-[var(--text-primary)]">~0.5 {nativeSymbol}</span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--text-secondary)]">Visibility</span>
+              <span className="text-[var(--text-primary)]">{isPrivate ? 'Private' : 'Public'}</span>
+            </div>
+            {isPrivate && gatedWallet && (
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)]">Restricted to</span>
+                <span className="text-[var(--text-primary)] font-mono text-xs">{gatedWallet.slice(0, 8)}...{gatedWallet.slice(-4)}</span>
+              </div>
+            )}
           </div>
           <div className="p-3 rounded border border-[#d4a017] bg-[#d4a01715] text-sm text-[var(--text-primary)]">
             <Icon icon="mdi:alert" className="inline mr-1 text-[#d4a017]" width={16} />
@@ -165,7 +210,7 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
   ]
 
   const isLastStep = step === steps.length - 1
-  const canNext = step === 0 ? canProceedStep0 : step === 1 ? canProceedStep1 : false
+  const canNext = step === 0 ? canProceedStep0 : step === 1 ? canProceedStep1 : step === 2 ? true : false
 
   return (
     <Modal
