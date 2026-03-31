@@ -52,7 +52,7 @@ function formatAddress(addr: string): string {
 const P2PMarketDetailPage: React.FC = () => {
   const { appId: appIdParam } = useParams<{ appId: string }>()
   const appId = Number(appIdParam)
-  const { chainId, activeChain } = useChain()
+  const { chainId, activeChain, switchChain } = useChain()
   const { activeAddress, signer } = useMultiChainWallet()
   const { ensureAuth } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -87,14 +87,21 @@ const P2PMarketDetailPage: React.FC = () => {
   const shareLink = offerParam ? offerParam.split('/') : null
   const showDetail = shareLink && shareLink.length === 3
 
-  const fetchMarket = useCallback(async () => {
+  const fetchMarket = useCallback(async (): Promise<boolean> => {
     try {
       const m = await getP2PMarketDetail(appId)
       setMarket(m)
+      // Auto-switch chain if market belongs to a different chain (cross-chain shared link)
+      if (m.chainId !== chainId) {
+        switchChain(m.chainId as ChainId)
+        return true
+      }
+      return false
     } catch {
       setNotFound(true)
+      return false
     }
-  }, [appId, chainId])
+  }, [appId, chainId, switchChain])
 
   const fetchStats = useCallback(async () => {
     try {
@@ -146,8 +153,10 @@ const P2PMarketDetailPage: React.FC = () => {
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
+    const switched = await fetchMarket()
+    if (switched) return  // chain switch will trigger re-render and re-fetch
     await Promise.all([
-      fetchMarket(), fetchStats(), fetchOffers(),
+      fetchStats(), fetchOffers(),
       fetchMyOffers(), fetchMyHistory(), fetchMarketTrades(),
     ])
     setLoading(false)
