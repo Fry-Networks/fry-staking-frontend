@@ -54,7 +54,7 @@ const P2PMarketDetailPage: React.FC = () => {
   const appId = Number(appIdParam)
   const { chainId, activeChain, switchChain } = useChain()
   const { activeAddress, signer } = useMultiChainWallet()
-  const { ensureAuth } = useAuth()
+  const { ensureAuth, isAuthenticated } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const fallbackMarket = P2P_MARKETS[chainId as ChainId]
@@ -124,24 +124,24 @@ const P2PMarketDetailPage: React.FC = () => {
   }, [appId, chainId])
 
   const fetchMyOffers = useCallback(async () => {
-    if (!activeAddress) return
+    if (!activeAddress || !isAuthenticated) return
     try {
       const result = await getMyP2POffers({ marketAppId: appId })
       setMyOffers(result.data)
     } catch (err) {
       console.error('Failed to fetch my offers:', err)
     }
-  }, [appId, activeAddress, chainId])
+  }, [appId, activeAddress, chainId, isAuthenticated])
 
   const fetchMyHistory = useCallback(async () => {
-    if (!activeAddress) return
+    if (!activeAddress || !isAuthenticated) return
     try {
       const result = await getP2PHistory({ marketAppId: appId })
       setMyHistory(result.data)
     } catch (err) {
       console.error('Failed to fetch my history:', err)
     }
-  }, [appId, activeAddress, chainId])
+  }, [appId, activeAddress, chainId, isAuthenticated])
 
   const fetchMarketTrades = useCallback(async () => {
     try {
@@ -166,6 +166,14 @@ const P2PMarketDetailPage: React.FC = () => {
   useEffect(() => {
     fetchAll()
   }, [fetchAll])
+
+  // Clear stale my-offers/history when wallet or auth changes
+  useEffect(() => {
+    if (!activeAddress || !isAuthenticated) {
+      setMyOffers([])
+      setMyHistory([])
+    }
+  }, [activeAddress, isAuthenticated])
 
   // Recheck wallet gating when wallet changes
   useEffect(() => {
