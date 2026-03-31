@@ -119,32 +119,6 @@ async function fetchVestigeBatchPrices(asaIds: number[]): Promise<Map<number, nu
   return result
 }
 
-async function fetchCoinGeckoBatchPrices(asaIds: number[]): Promise<Map<number, number>> {
-  const result = new Map<number, number>()
-  if (asaIds.length === 0) return result
-  const CHUNK = 100
-  for (let i = 0; i < asaIds.length; i += CHUNK) {
-    const chunk = asaIds.slice(i, i + CHUNK)
-    try {
-      const r = await axios.get('https://api.coingecko.com/api/v3/simple/token_price/algorand', {
-        params: { contract_addresses: chunk.join(','), vs_currencies: 'usd' },
-        timeout: 10000,
-      })
-      if (r.data && typeof r.data === 'object') {
-        for (const [idStr, value] of Object.entries(r.data)) {
-          const price = (value as any)?.usd
-          if (price && price > 0) {
-            const id = Number(idStr)
-            result.set(id, price)
-            setCachedPrice(`asa-${id}`, price)
-          }
-        }
-      }
-    } catch { /* rate limited or failed, skip chunk */ }
-  }
-  return result
-}
-
 export async function getAsaUsdPrice(asaId: number): Promise<number> {
   const cached = getCachedPrice(`asa-${asaId}`)
   if (cached !== null) return cached
@@ -300,10 +274,8 @@ export async function fetchPriceMap(asaIds: number[]): Promise<Record<string, nu
   })
   if (afterVestige.length === 0) return priceMap
 
-  // Phase 2: CoinGecko batch + Tinyman individual (parallel) for remaining
-  const geckoP = fetchCoinGeckoBatchPrices(afterVestige)
-
-  const tinymanP = Promise.allSettled(
+  // Phase 2: Tinyman individual for remaining
+  const tinymanResults = await Promise.allSettled(
     afterVestige.map(async (id) => {
       // Try USDC pool
       try {
@@ -338,19 +310,10 @@ export async function fetchPriceMap(asaIds: number[]): Promise<Record<string, nu
     })
   )
 
-  const [geckoPrices, tinymanResults] = await Promise.all([geckoP, tinymanP])
-
-  // Phase 3: Merge — Tinyman on-chain prices take priority over CoinGecko
-  const tinymanPriced = new Set<number>()
+  // Phase 3: Merge Tinyman results
   for (const result of tinymanResults) {
     if (result.status === 'fulfilled' && result.value.price > 0) {
       priceMap[result.value.id.toString()] = result.value.price
-      tinymanPriced.add(result.value.id)
-    }
-  }
-  for (const [id, price] of geckoPrices) {
-    if (!tinymanPriced.has(id)) {
-      priceMap[id.toString()] = price
     }
   }
 
