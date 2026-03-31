@@ -2,6 +2,8 @@ import * as algokit from '@algorandfoundation/algokit-utils'
 import algosdk, { TransactionSigner } from 'algosdk'
 import { FryNftStakingClient, APP_SPEC } from './contracts/FryNftStakingClient'
 import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryNftStakingCompiled'
+import ARC72_SPEC from './contracts/FryArc72Staking.arc32.json'
+import { ARC72_COMPILED_APPROVAL, ARC72_COMPILED_CLEAR } from './contracts/FryArc72StakingCompiled'
 import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 import { logFee } from './utils/logFee'
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
@@ -150,6 +152,108 @@ export const createNftPool = async (
     return Number(appId)
   } catch (e) {
     console.error('Error in createNftPool:', e)
+    throw e
+  }
+}
+
+/**
+ * Create a new ARC-72 NFT staking pool on-chain (Voi / ARC-72 contract).
+ * Uses the FryArc72Staking ABI which has collection_app (uint64) instead of
+ * collection_creator (address) and includes reward_token_type.
+ */
+export const createArc72NftPool = async (
+  rewardTokenId: number,
+  rewardTokenType: number,
+  rewardModel: number,
+  collectionMode: number,
+  collectionApp: number,
+  nftValue: number,
+  ratePerDay: number,
+  totalRewardPool: number,
+  aprRate: number,
+  valuePerNft: number,
+  poolEndTime: number,
+  lockPeriod: number,
+  feeRecipient: string,
+  depositFeeBps: number,
+  withdrawFeeBps: number,
+  claimFeeBps: number,
+  sender: string,
+  signer: TransactionSigner,
+  algodConfig?: { server: string; port: number; token: string },
+) => {
+  try {
+    const config = algodConfig || getAlgodConfigFromViteEnvironment()
+    const algodClient = algokit.getAlgoClient({
+      server: config.server,
+      port: config.port,
+      token: config.token,
+    })
+
+    const abiContract = new algosdk.ABIContract((ARC72_SPEC as any).contract)
+    const initPoolMethod = abiContract.getMethodByName('init_pool')
+
+    const suggestedParams = await algodClient.getTransactionParams().do()
+
+    const atc = new algosdk.AtomicTransactionComposer()
+    atc.addMethodCall({
+      appID: 0,
+      method: initPoolMethod,
+      methodArgs: [
+        rewardTokenId,        // reward_token_id: uint64
+        rewardTokenType,      // reward_token_type: uint64
+        rewardModel,          // reward_model: uint64
+        collectionMode,       // collection_mode: uint64
+        collectionApp,        // collection_app: uint64
+        nftValue,             // nft_value: uint64
+        ratePerDay,           // rate_per_day: uint64
+        totalRewardPool,      // total_reward_pool: uint64
+        aprRate,              // apr_rate: uint64
+        valuePerNft,          // value_per_nft: uint64
+        poolEndTime,          // pool_end_time: uint64
+        lockPeriod,           // lock_period: uint64
+        feeRecipient || sender, // fee_recipient: address
+        depositFeeBps,        // deposit_fee_bps: uint64
+        withdrawFeeBps,       // withdraw_fee_bps: uint64
+        claimFeeBps,          // claim_fee_bps: uint64
+      ],
+      approvalProgram: ARC72_COMPILED_APPROVAL,
+      clearProgram: ARC72_COMPILED_CLEAR,
+      numGlobalInts: 19,
+      numGlobalByteSlices: 2,
+      numLocalInts: 0,
+      numLocalByteSlices: 0,
+      extraPages: 1,
+      sender,
+      signer,
+      suggestedParams,
+      onComplete: algosdk.OnApplicationComplete.NoOpOC,
+    })
+
+    const result = await atc.execute(algodClient, 4)
+    const appId = result.methodResults[0].txInfo?.['application-index']
+    if (!appId) {
+      throw new Error('Failed to create ARC-72 NFT staking pool.')
+    }
+
+    // MBR payment for contract
+    const algorandClient = algokit.AlgorandClient.fromConfig({
+      algodConfig: { server: config.server, port: config.port, token: config.token } as any,
+    })
+    algorandClient.setDefaultSigner(signer)
+
+    await algorandClient.send.payment({
+      sender,
+      receiver: algosdk.getApplicationAddress(BigInt(appId)),
+      amount: algokit.algos(0.3),
+      extraFee: algokit.algos(0.001),
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    return Number(appId)
+  } catch (e) {
+    console.error('Error in createArc72NftPool:', e)
     throw e
   }
 }

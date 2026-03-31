@@ -1,6 +1,7 @@
 import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
 import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
+import { useChain } from '../../context/ChainContext'
 import { DatePicker, Modal } from 'antd'
 import dayjs from 'dayjs';
 import React, { useEffect, useRef, useState } from 'react'
@@ -52,6 +53,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
   })
   const { providers } = useWallet()
   const { activeAddress, signer: multiSigner } = useMultiChainWallet()
+  const { chainId } = useChain()
   const signer = multiSigner!
   const { ensureAuth } = useAuth()
   const [searchQuery, setSearchQuery] = useState<{ [key: string]: string }>({
@@ -194,9 +196,9 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
       
       // Fallback to essential tokens
       const fallbackTokens: Currency[] = [
-        { tokenId: 0, tokenName: 'Algorand', tokenSymbol: 'ALGO', tokenImage: 'https://asa-list.tinyman.org/assets/0/icon.png', decimals: 6 },
-        { tokenId: 31566704, tokenName: 'USD Coin', tokenSymbol: 'USDC', tokenImage: 'https://asa-list.tinyman.org/assets/31566704/icon.png', decimals: 6 },
-        { tokenId: 312769, tokenName: 'Tether USD', tokenSymbol: 'USDT', tokenImage: 'https://asa-list.tinyman.org/assets/312769/icon.png', decimals: 6 },
+        { tokenId: 0, tokenName: 'Algorand', tokenSymbol: 'ALGO', tokenImage: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/0/icon.png', decimals: 6 },
+        { tokenId: 31566704, tokenName: 'USD Coin', tokenSymbol: 'USDC', tokenImage: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/31566704/icon.png', decimals: 6 },
+        { tokenId: 312769, tokenName: 'Tether USD', tokenSymbol: 'USDT', tokenImage: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/312769/icon.png', decimals: 6 },
         { tokenId: 2485314946, tokenName: 'Fry', tokenSymbol: 'FRY', tokenImage: '/assets/images/fry-token.png', decimals: 6 }
       ];
       
@@ -672,20 +674,18 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                   >
                     {selectedRewards && (
                       <img 
-                        src={selectedRewards.tokenImage || `https://asa-list.tinyman.org/assets/${selectedRewards.tokenId}/icon.png`} 
-                        alt={selectedRewards.tokenName || 'Reward token'} 
-                        width={28} 
+                        src={selectedRewards.tokenImage || (chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${selectedRewards.tokenId}/icon.png`)}
+                        alt={selectedRewards.tokenName || 'Reward token'}
+                        width={28}
                         height={28}
                         className="rounded-full"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
-                          // Prevent infinite loop - check if we've already tried to fallback
                           const hasTriedFallback = target.dataset.fallbackAttempted === 'true';
-                          if (!hasTriedFallback && !target.src.includes('tinyman.org')) {
+                          if (!hasTriedFallback && !target.src.includes('tinyman.org') && chainId !== 'voi-mainnet') {
                             target.dataset.fallbackAttempted = 'true';
                             target.src = `https://asa-list.tinyman.org/assets/${selectedRewards.tokenId}/icon.png`;
-                          } else if (hasTriedFallback || target.src.includes('tinyman.org')) {
-                            // If Tinyman also fails or we've already tried, use a placeholder
+                          } else {
                             target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAyOCAyOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNCIgY3k9IjE0IiByPSIxNCIgZmlsbD0iI0U1RTlFQSIvPjxwYXRoIGQ9Ik0xNCA4QzExLjgwNjYgOCAxMCA5LjgwNjYgMTAgMTJDMTAgMTQuMTkzNCAxMS44MDY2IDE2IDE0IDE2QzE2LjE5MzQgMTYgMTggMTQuMTkzNCAxOCAxMkMxOCA5LjgwNjYgMTYuMTkzNCA4IDE0IDhaIiBmaWxsPSIjOUI5Q0E1Ii8+PC9zdmc+';
                           }
                         }}
@@ -746,7 +746,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                                     onClick={() => selectCurrency(currency, 'rewards')}
                                   >
                                     <img 
-                                      src={currency.tokenImage || `https://asa-list.tinyman.org/assets/${currency.tokenId}/icon.png`} 
+                                      src={currency.tokenImage || (chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${currency.tokenId}/icon.png`)} 
                                       alt={currency.tokenName} 
                                       width={28} 
                                       height={28}
@@ -754,10 +754,10 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                                       onError={(e) => {
                                         const target = e.target as HTMLImageElement;
                                         const hasTriedFallback = target.dataset.fallbackAttempted === 'true';
-                                        if (!hasTriedFallback && !target.src.includes('tinyman.org')) {
+                                        if (!hasTriedFallback && !target.src.includes('tinyman.org') && chainId !== 'voi-mainnet') {
                                           target.dataset.fallbackAttempted = 'true';
                                           target.src = `https://asa-list.tinyman.org/assets/${currency.tokenId}/icon.png`;
-                                        } else if (hasTriedFallback || target.src.includes('tinyman.org')) {
+                                        } else {
                                           target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAyOCAyOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNCIgY3k9IjE0IiByPSIxNCIgZmlsbD0iI0U1RTlFQSIvPjxwYXRoIGQ9Ik0xNCA4QzExLjgwNjYgOCAxMCA5LjgwNjYgMTAgMTJDMTAgMTQuMTkzNCAxMS44MDY2IDE2IDE0IDE2QzE2LjE5MzQgMTYgMTggMTQuMTkzNCAxOCAxMkMxOCA5LjgwNjYgMTYuMTkzNCA4IDE0IDhaIiBmaWxsPSIjOUI5Q0E1Ii8+PC9zdmc+';
                                         }
                                       }}
@@ -790,7 +790,7 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                                 onClick={() => selectCurrency(currency, 'rewards')}
                               >
                                 <img 
-                                  src={currency.tokenImage || `https://asa-list.tinyman.org/assets/${currency.tokenId}/icon.png`} 
+                                  src={currency.tokenImage || (chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${currency.tokenId}/icon.png`)} 
                                   alt={currency.tokenName} 
                                   width={28} 
                                   height={28}
@@ -798,10 +798,10 @@ const Addstake: React.FC<AddstakeProps> = ({ isaddStakeOpen, setisaddStakeOpen, 
                                   onError={(e) => {
                                     const target = e.target as HTMLImageElement;
                                     const hasTriedFallback = target.dataset.fallbackAttempted === 'true';
-                                    if (!hasTriedFallback && !target.src.includes('tinyman.org')) {
+                                    if (!hasTriedFallback && !target.src.includes('tinyman.org') && chainId !== 'voi-mainnet') {
                                       target.dataset.fallbackAttempted = 'true';
                                       target.src = `https://asa-list.tinyman.org/assets/${currency.tokenId}/icon.png`;
-                                    } else if (hasTriedFallback || target.src.includes('tinyman.org')) {
+                                    } else {
                                       target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAyOCAyOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNCIgY3k9IjE0IiByPSIxNCIgZmlsbD0iI0U1RTlFQSIvPjxwYXRoIGQ9Ik0xNCA4QzExLjgwNjYgOCAxMCA5LjgwNjYgMTAgMTJDMTAgMTQuMTkzNCAxMS44MDY2IDE2IDE0IDE2QzE2LjE5MzQgMTYgMTggMTQuMTkzNCAxOCAxMkMxOCA5LjgwNjYgMTYuMTkzNCA4IDE0IDhaIiBmaWxsPSIjOUI5Q0E1Ii8+PC9zdmc+';
                                     }
                                   }}

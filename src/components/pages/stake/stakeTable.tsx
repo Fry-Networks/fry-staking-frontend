@@ -70,8 +70,8 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
         if (isValidImageUrl(dbImage)) {
           imageMap[token.id.toString()] = dbImage;
         } else {
-          // Use Tinyman as default if database image is invalid
-          imageMap[token.id.toString()] = `https://asa-list.tinyman.org/assets/${token.id}/icon.png`;
+          // Use Tinyman as default if database image is invalid (Algorand only)
+          imageMap[token.id.toString()] = chainId === 'voi-mainnet' ? `https://asset-verification.nautilus.sh/icons/${token.id}.png` : `https://asa-list.tinyman.org/assets/${token.id}/icon.png`;
         }
       });
       
@@ -135,7 +135,7 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
   const fetchAllPools = async () => {
     try {
       const response = await axios.get(`${api_base_url}/staking/all`, {
-        params: { tokenName: searchToken },
+        params: { tokenName: searchToken, chainId },
         headers: { 'Content-Type': 'application/json' },
       })
       // Pass tokenImages to processPoolData to ensure it uses the latest images
@@ -162,12 +162,12 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
     const stakeDbImage = databaseImages[stakeTokenId];
     const rewardDbImage = databaseImages[rewardTokenId];
     
-    const staketokenImage = (stakeDbImage && isValidImageUrl(stakeDbImage)) 
-      ? stakeDbImage 
-      : `https://asa-list.tinyman.org/assets/${stakeTokenId}/icon.png`;
-    const rewardtokenImage = (rewardDbImage && isValidImageUrl(rewardDbImage)) 
-      ? rewardDbImage 
-      : `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`;
+    const staketokenImage = (stakeDbImage && isValidImageUrl(stakeDbImage))
+      ? stakeDbImage
+      : (chainId === 'voi-mainnet' ? `https://asset-verification.nautilus.sh/icons/${stakeTokenId}.png` : `https://asa-list.tinyman.org/assets/${stakeTokenId}/icon.png`);
+    const rewardtokenImage = (rewardDbImage && isValidImageUrl(rewardDbImage))
+      ? rewardDbImage
+      : (chainId === 'voi-mainnet' ? `https://asset-verification.nautilus.sh/icons/${rewardTokenId}.png` : `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`);
 
     const usdPrice = prices[stakeTokenId] ?? tvlData[stakeTokenId] ?? 0
     const tvlUsd = item.totalAmountStaked * usdPrice
@@ -190,10 +190,10 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
                 const target = e.target as HTMLImageElement;
                 // Prevent infinite loop - check if we've already tried to fallback
                 const hasTriedFallback = target.dataset.fallbackAttempted === 'true';
-                if (!hasTriedFallback && !target.src.includes('tinyman.org')) {
+                if (!hasTriedFallback && !target.src.includes('tinyman.org') && chainId !== 'voi-mainnet') {
                   target.dataset.fallbackAttempted = 'true';
                   target.src = `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`;
-                } else if (hasTriedFallback || target.src.includes('tinyman.org')) {
+                } else {
                   // If Tinyman also fails or we've already tried, use a placeholder
                   target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U1RTlFQSIvPjxwYXRoIGQ9Ik0yMCAxMkMxNS41ODIyIDEyIDEyIDE1LjU4MjIgMTIgMjBDMTIgMjQuNDE3OCAxNS41ODIyIDI4IDIwIDI4QzI0LjQxNzggMjggMjggMjQuNDE3OCAyOCAyMEMyOCAxNS41ODIyIDI0LjQxNzggMTIgMjAgMTJaIiBmaWxsPSIjOUI5Q0E1Ii8+PC9zdmc+';
                 }
@@ -209,10 +209,10 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
                 const target = e.target as HTMLImageElement;
                 // Prevent infinite loop - check if we've already tried to fallback
                 const hasTriedFallback = target.dataset.fallbackAttempted === 'true';
-                if (!hasTriedFallback && !target.src.includes('tinyman.org')) {
+                if (!hasTriedFallback && !target.src.includes('tinyman.org') && chainId !== 'voi-mainnet') {
                   target.dataset.fallbackAttempted = 'true';
                   target.src = `https://asa-list.tinyman.org/assets/${stakeTokenId}/icon.png`;
-                } else if (hasTriedFallback || target.src.includes('tinyman.org')) {
+                } else {
                   // If Tinyman also fails or we've already tried, use a placeholder
                   target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U1RTlFQSIvPjxwYXRoIGQ9Ik0yMCAxMkMxNS41ODIyIDEyIDEyIDE1LjU4MjIgMTIgMjBDMTIgMjQuNDE3OCAxNS41ODIyIDI4IDIwIDI4QzI0LjQxNzggMjggMjggMjQuNDE3OCAyOCAyMEMyOCAxNS41ODIyIDI0LjQxNzggMTIgMjAgMTJaIiBmaWxsPSIjOUI5Q0E1Ii8+PC9zdmc+';
                 }
@@ -389,7 +389,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       try {
         const { imageMap } = await fetchTokenData()
         const response = await axios.get(`${api_base_url}/staking/all`, {
-          params: { tokenName: searchToken },
+          params: { tokenName: searchToken, chainId },
           headers: { 'Content-Type': 'application/json' },
         })
         const pools = response.data.data

@@ -3,7 +3,8 @@ import React, { useEffect, useState } from 'react'
 import { useMultiChainWallet } from '../../../../hooks/useMultiChainWallet'
 import P_STable from './PsTable'
 import { tokenServiceInstance } from '../../../../services/TokenService'
-import { fetchPriceMap } from '../../../../services/PriceService'
+import { fetchChainPriceMap } from '../../../../services/PriceService'
+import { useChain } from '../../../../context/ChainContext'
 import { getUserData } from '../../../../staking_func'
 
 export type PoolStatus = 'active' | 'ending-soon' | 'ended'
@@ -52,6 +53,7 @@ const FILTER_LABELS: { key: PoolFilter; label: string }[] = [
 
 const PstakeTable: React.FC = () => {
   const { activeAddress } = useMultiChainWallet()
+  const { chainId } = useChain()
   const [pools, setPools] = useState<ProfileStakePool[]>([])
   const [loading, setLoading] = useState(false)
   const [activeFilter, setActiveFilter] = useState<PoolFilter>('all')
@@ -63,7 +65,7 @@ const PstakeTable: React.FC = () => {
     } else {
       setPools([])
     }
-  }, [activeAddress])
+  }, [activeAddress, chainId])
 
   const fetchUserStakingPools = async () => {
     if (!activeAddress) return
@@ -151,7 +153,7 @@ const PstakeTable: React.FC = () => {
 
       let priceMap: Record<string, number> = {}
       try {
-        priceMap = await fetchPriceMap(asaIds)
+        priceMap = await fetchChainPriceMap(asaIds, chainId)
       } catch (err) {
         console.error('Failed to fetch live prices:', err)
       }
@@ -165,8 +167,8 @@ const PstakeTable: React.FC = () => {
         const stakeTokenId = (pool?.stakeToken?.id ?? pool?.stakeTokenId)?.toString()
         const rewardTokenId = (pool?.rewardToken?.id ?? pool?.rewardTokenId)?.toString()
 
-        const stakeTokenImage = imageMap[stakeTokenId] || `https://asa-list.tinyman.org/assets/${stakeTokenId}/icon.png`
-        const rewardTokenImage = imageMap[rewardTokenId] || `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`
+        const stakeTokenImage = imageMap[stakeTokenId] || (chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${stakeTokenId}/icon.png`)
+        const rewardTokenImage = imageMap[rewardTokenId] || (chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`)
 
         // Use on-chain data when available, fall back to MongoDB
         const contractId = Number(pool.stakingContractId)

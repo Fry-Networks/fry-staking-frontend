@@ -15,6 +15,8 @@ export interface FeeConfig {
   dailyClaimFeePercent: number
   poolCreationFeePercent: number
   poolCreationFeeUsd: number
+  p2pCreateFeePercent: number
+  p2pAcceptFeePercent: number
   feeRecipient: string
 }
 
@@ -38,6 +40,8 @@ const ACTION_TYPE_MAP: Record<string, keyof FeeConfig> = {
   farmingWithdraw: 'farmingWithdrawFeePercent',
   farmingClaim: 'farmingClaimFeePercent',
   poolCreation: 'poolCreationFeePercent',
+  p2pCreate: 'p2pCreateFeePercent',
+  p2pAccept: 'p2pAcceptFeePercent',
 }
 
 export async function fetchFeeConfig(): Promise<FeeConfig> {
@@ -45,7 +49,7 @@ export async function fetchFeeConfig(): Promise<FeeConfig> {
   if (cachedConfig && now - cacheTimestamp < CACHE_TTL_MS) {
     return cachedConfig
   }
-  const res = await authAxios.get('/feeconfig')
+  const res = await authAxios.get(`/feeconfig?_t=${Date.now()}`)
   cachedConfig = res.data.data as FeeConfig
   cacheTimestamp = now
   return cachedConfig

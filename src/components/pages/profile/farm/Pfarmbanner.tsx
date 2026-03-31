@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { useWallet } from '@txnlab/use-wallet'
 import axios from 'axios'
 import { usePreferences } from '../../../../contexts/PreferencesContext'
+import { useChain } from '../../../../context/ChainContext'
 
 const P_Farmbanner = () => {
   const { activeAddress } = useWallet()
   const { isSimpleMode } = usePreferences()
+  const { chainId } = useChain()
   const [stats, setStats] = useState({ poolsCreated: 0, totalTvl: 0, myStakes: 0, myRewards: 0 })
   const api_base_url = import.meta.env.VITE_API_BASE_URL
 
@@ -16,7 +18,7 @@ const P_Farmbanner = () => {
   const fetchStats = async () => {
     try {
       const [allFarmsRes, farmStatsRes] = await Promise.allSettled([
-        axios.get(`${api_base_url}/farming/all`),
+        axios.get(`${api_base_url}/farming/all`, { params: { chainId } }),
         axios.get(`${api_base_url}/stakingfarmingtoken/user-farming-stats/${activeAddress}`),
       ])
 

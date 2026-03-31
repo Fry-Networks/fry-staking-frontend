@@ -2,6 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react'
 import ReactApexChart from 'react-apexcharts'
 import type { ApexOptions } from 'apexcharts' // removed ApexAxisChartSeries
 import axios from 'axios'
+import { getPools, findPool, findToken } from '../../contracts/nomadex/api'
+import { findHumblePool, findHumbleToken } from '../../contracts/humble/api'
+import { getVoiTokenUsdPrice } from '../../contracts/nomadex/NomadexPriceService'
 
 // Vestige Labs candle data interface
 interface VestigeCandle {
@@ -96,15 +99,17 @@ interface CandleStickChartProps {
   toToken?: Currency
   swapAmount?: string
   timeframe?: '1D' | '7D' | '1M' | '3M' | '6M' | '1Y'
+  chainId?: string
 }
 
-const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken, timeframe = '1D' }) => {
+const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken, timeframe = '1D', chainId }) => {
   const [chartData, setChartData] = useState<CandleData[]>([])
   const [currentPrice, setCurrentPrice] = useState<number>(0)
   const [priceChange, setPriceChange] = useState<number>(0)
   const [priceChangePercent, setPriceChangePercent] = useState<number>(0)
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null)
+  const [humblePriceData, setHumblePriceData] = useState<{ price: string; fromUsd: number; toUsd: number } | null>(null)
 
   // Optional fallback generator (used if API fails)
   const generateChartData = useCallback((basePrice: number, volatility: number = 0.02, period: string = '1D') => {
@@ -222,16 +227,46 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
   }, [generateChartData, timeframe, fromToken, toToken])
 
   useEffect(() => {
+    // Vestige Labs only has Algorand data — skip for Voi
+    if (chainId === 'voi-mainnet') {
+      setIsLoading(false)
+      return
+    }
     // Only fetch if both tokens are available
     if (!fromToken || !toToken) {
       setIsLoading(false);
       return;
     }
-    
+
     fetchTradeData()
     const id = setInterval(fetchTradeData, FETCH_INTERVAL)
     return () => clearInterval(id)
-  }, [fetchTradeData, fromToken, toToken])
+  }, [fetchTradeData, fromToken, toToken, chainId])
+
+  // Fetch price data for Humble-only pools (no Nomadex pool available)
+  useEffect(() => {
+    if (chainId !== 'voi-mainnet' || !fromToken || !toToken) return
+    const nomPool = findPool(fromToken.id, toToken.id)
+    if (nomPool) { setHumblePriceData(null); return }
+    const hPool = findHumblePool(fromToken.id, toToken.id)
+    if (!hPool) { setHumblePriceData(null); return }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [fromUsd, toUsd] = await Promise.all([
+          getVoiTokenUsdPrice(fromToken.id),
+          getVoiTokenUsdPrice(toToken.id),
+        ])
+        if (cancelled) return
+        const rate = fromUsd > 0 && toUsd > 0 ? fromUsd / toUsd : 0
+        setHumblePriceData({ price: rate > 0 ? formatPrice(rate) : '--', fromUsd, toUsd })
+      } catch {
+        if (!cancelled) setHumblePriceData(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [chainId, fromToken, toToken])
 
   const options: ApexOptions = {
     chart: {
@@ -325,6 +360,119 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
 
   const formatTime = (date: Date) =>
     date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
+  // Voi price info panel — no OHLCV data source exists, show pool stats instead
+  if (chainId === 'voi-mainnet') {
+    const pool = fromToken && toToken ? findPool(fromToken.id, toToken.id) : null
+    const humblePool = fromToken && toToken ? findHumblePool(fromToken.id, toToken.id) : null
+    const fromMeta = fromToken ? findToken(fromToken.id) : undefined
+    const toMeta = toToken ? findToken(toToken.id) : undefined
+    const fromDecimals = fromMeta?.decimals ?? fromToken?.decimals ?? 6
+    const toDecimals = toMeta?.decimals ?? toToken?.decimals ?? 6
+
+    let priceDisplay = '--'
+    let reserveA = '--'
+    let reserveB = '--'
+    let volumeA = '--'
+    let volumeB = '--'
+    let poolApr = '--'
+    let poolSource = ''
+
+    if (pool) {
+      const isAlphaToBeta = pool.alphaId === fromToken!.id
+      const alphaReserve = Number(pool.balances[0]) / Math.pow(10, isAlphaToBeta ? fromDecimals : toDecimals)
+      const betaReserve = Number(pool.balances[1]) / Math.pow(10, isAlphaToBeta ? toDecimals : fromDecimals)
+      const price = isAlphaToBeta
+        ? betaReserve / alphaReserve
+        : alphaReserve / betaReserve
+      priceDisplay = formatPrice(price)
+      reserveA = alphaReserve.toLocaleString(undefined, { maximumFractionDigits: 2 })
+      reserveB = betaReserve.toLocaleString(undefined, { maximumFractionDigits: 2 })
+      const volA = Number(pool.volume[0]) / Math.pow(10, isAlphaToBeta ? fromDecimals : toDecimals)
+      const volB = Number(pool.volume[1]) / Math.pow(10, isAlphaToBeta ? toDecimals : fromDecimals)
+      volumeA = volA.toLocaleString(undefined, { maximumFractionDigits: 2 })
+      volumeB = volB.toLocaleString(undefined, { maximumFractionDigits: 2 })
+      poolApr = `${pool.apr.toFixed(2)}%`
+      poolSource = 'Nomadex'
+    } else if (humblePool) {
+      poolSource = 'HumbleSwap'
+      if (humblePriceData) {
+        priceDisplay = humblePriceData.price
+      }
+    }
+
+    const hasPoolData = !!(pool || (humblePool && humblePriceData))
+
+    return (
+      <div className="flex flex-col gap-4">
+        {fromToken && toToken && hasPoolData ? (
+          <>
+            <div className="bg-[var(--input-bg)] rounded-[12px] p-4">
+              <p className="text-text_clr text-xs uppercase tracking-wider mb-1">Current Price</p>
+              <p className="text-[var(--text-primary)] text-2xl font-medium">
+                1 {fromToken.code} = {priceDisplay} {toToken.code}
+              </p>
+              <p className="text-text_clr text-xs mt-1">Source: {poolSource} pool</p>
+            </div>
+            {pool && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[var(--input-bg)] rounded-[12px] p-4">
+                  <p className="text-text_clr text-xs uppercase tracking-wider mb-1">Pool Liquidity</p>
+                  <p className="text-[var(--text-primary)] text-sm font-medium">{reserveA} {pool.alphaId === fromToken.id ? fromToken.code : toToken.code}</p>
+                  <p className="text-[var(--text-primary)] text-sm font-medium">{reserveB} {pool.alphaId === fromToken.id ? toToken.code : fromToken.code}</p>
+                </div>
+                <div className="bg-[var(--input-bg)] rounded-[12px] p-4">
+                  <p className="text-text_clr text-xs uppercase tracking-wider mb-1">Volume</p>
+                  <p className="text-[var(--text-primary)] text-sm font-medium">{volumeA} {pool.alphaId === fromToken.id ? fromToken.code : toToken.code}</p>
+                  <p className="text-[var(--text-primary)] text-sm font-medium">{volumeB} {pool.alphaId === fromToken.id ? toToken.code : fromToken.code}</p>
+                </div>
+              </div>
+            )}
+            <div className="bg-[var(--input-bg)] rounded-[12px] p-4">
+              <div className="flex justify-between items-center">
+                {pool ? (
+                  <div>
+                    <p className="text-text_clr text-xs uppercase tracking-wider mb-1">Pool APR</p>
+                    <p className="text-green text-lg font-medium">{poolApr}</p>
+                  </div>
+                ) : humblePriceData ? (
+                  <div>
+                    <p className="text-text_clr text-xs uppercase tracking-wider mb-1">USD Prices</p>
+                    <p className="text-[var(--text-primary)] text-sm font-medium">
+                      {fromToken.code}: ${humblePriceData.fromUsd > 0 ? humblePriceData.fromUsd.toFixed(4) : '--'}
+                    </p>
+                    <p className="text-[var(--text-primary)] text-sm font-medium">
+                      {toToken.code}: ${humblePriceData.toUsd > 0 ? humblePriceData.toUsd.toFixed(4) : '--'}
+                    </p>
+                  </div>
+                ) : null}
+                <div className="text-right">
+                  <p className="text-text_clr text-xs uppercase tracking-wider mb-1">Fee</p>
+                  <p className="text-[var(--text-primary)] text-sm font-medium">
+                    {pool ? `${(Number(pool.swapFee) / 1e16).toFixed(2)}%` : '0.30%'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : fromToken && toToken ? (
+          <div className="flex items-center justify-center h-[200px]">
+            <div className="text-center">
+              <p className="text-[var(--text-secondary)] text-lg mb-2">No pool found</p>
+              <p className="text-[var(--text-secondary)] text-sm opacity-60">No liquidity pool exists for {fromToken.code}/{toToken.code} on Voi DEXes</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-[200px]">
+            <div className="text-center">
+              <p className="text-[var(--text-secondary)] text-lg mb-2">Select tokens to view pool info</p>
+              <p className="text-[var(--text-secondary)] text-sm opacity-60">Choose tokens from the swap interface</p>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   // Show loading or placeholder when tokens aren't selected
   if (!fromToken || !toToken) {

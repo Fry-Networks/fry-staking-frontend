@@ -29,7 +29,7 @@ interface SwapQuote {
 
 type SwapTransactions = string[];
 
-type VoiSwapProvider = 'nomadex';
+type VoiSwapProvider = 'nomadex' | 'humble';
 
 // export { ReferrerGroupTransaction, Network, SwapMode, SwapParams, SwapQuote, SwapTransactions };
 

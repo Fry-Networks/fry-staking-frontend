@@ -80,9 +80,9 @@ const NftTable: React.FC<NftTableProps> = memo(({ pools, fetchData, tokenImages,
   const getRewardInfo = (pool: NftStakingPool): string => {
     switch (pool.rewardModel) {
       case 0:
-        return `${(pool.ratePerDay / 1_000_000).toLocaleString()} ${pool.rewardTokenName}/day`
+        return `${pool.ratePerDay.toLocaleString()} ${pool.rewardTokenName}/day`
       case 1:
-        return `${(pool.totalRewardPool / 1_000_000).toLocaleString()} ${pool.rewardTokenName} total`
+        return `${pool.totalRewardPool.toLocaleString()} ${pool.rewardTokenName} total`
       case 2:
         return `${(pool.aprRate / 100).toFixed(2)}% APR`
       default:

@@ -11,6 +11,7 @@ import DeviceStakeModal from '../../../Modals/website/DeviceStakeModal'
 import DeviceUnstakeModal from '../../../Modals/website/DeviceUnstakeModal'
 import DeviceClaimModal from '../../../Modals/website/DeviceClaimModal'
 import type { DevicePool } from '../../../types/deviceStaking'
+import { useChain } from '../../../context/ChainContext'
 
 const REWARD_MODELS: Record<string, string> = {
   fixed_rate: 'Fixed Rate',
@@ -39,6 +40,7 @@ interface DeviceTableProps {
 const DeviceTable: React.FC<DeviceTableProps> = memo(({ pools, fetchData, tokenImages, activeTab }) => {
   const { ensureAuth } = useAuth()
   const { activeAddress, signer } = useWallet()
+  const { chainId } = useChain()
   const navigate = useNavigate()
 
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
@@ -101,7 +103,7 @@ const DeviceTable: React.FC<DeviceTableProps> = memo(({ pools, fetchData, tokenI
 
     const rewardTokenImage = tokenImages[pool.rewardTokenId?.toString()] ||
       pool.rewardToken?.image ||
-      `https://asa-list.tinyman.org/assets/${pool.rewardTokenId}/icon.png`
+      (chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${pool.rewardTokenId}/icon.png`)
 
     return {
       key: index,
@@ -125,7 +127,7 @@ const DeviceTable: React.FC<DeviceTableProps> = memo(({ pools, fetchData, tokenI
               src={rewardTokenImage}
               className="w-[24px] h-[24px] rounded-full drop-shadow-md absolute -bottom-1 -right-1 border-2 border-white"
               alt={pool.rewardToken?.symbol}
-              onError={(e) => { (e.target as HTMLImageElement).src = `https://asa-list.tinyman.org/assets/${pool.rewardTokenId}/icon.png` }}
+              onError={(e) => { (e.target as HTMLImageElement).src = chainId === 'voi-mainnet' ? 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMiIgZmlsbD0iI0U1RTlFQSIvPjwvc3ZnPg==' : `https://asa-list.tinyman.org/assets/${pool.rewardTokenId}/icon.png` }}
             />
           </div>
           <div className="flex flex-col">

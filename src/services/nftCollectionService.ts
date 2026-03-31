@@ -199,6 +199,32 @@ async function getNftMetadataVoi(tokenId: number, cacheKey: number): Promise<Nft
 }
 
 /**
+ * Fetch collection-level metadata for an ARC-72 collection on Voi by contract ID.
+ * Returns the name and image from the first token in the collection.
+ */
+export async function getArc72CollectionMeta(contractId: number): Promise<{ name: string; imageUrl: string } | null> {
+  const cacheKey = `arc72-coll-${contractId}`
+  const cached = getCached(nftCache, cacheKey)
+  if (cached) return cached as { name: string; imageUrl: string }
+
+  try {
+    const res = await axios.get(`${VOI_NFT_NAVIGATOR}/tokens`, {
+      params: { contractId, limit: 1 },
+      timeout: 10000,
+    })
+    const token = res.data?.tokens?.[0]
+    if (!token) return null
+    const meta = typeof token.metadata === 'string' ? JSON.parse(token.metadata) : (token.metadata || {})
+    const name = (meta.name || '').replace(/\s*#\d+$/, '').trim()
+    const result = { name, imageUrl: meta.image || '' }
+    nftCache.set(cacheKey, { data: result, timestamp: Date.now() })
+    return result
+  } catch {
+    return null
+  }
+}
+
+/**
  * Batch fetch NFT metadata with concurrency limit.
  */
 export async function batchGetNftMetadata(asaIds: number[], concurrency = 5, chainId: ChainId = 'algorand-mainnet'): Promise<NftMetadata[]> {

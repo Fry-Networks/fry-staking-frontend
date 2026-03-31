@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useChain } from '../../context/ChainContext';
 
 const PLACEHOLDER_COLORS = [
   '#6366F1', '#EC4899', '#F59E0B', '#10B981',
@@ -18,10 +19,12 @@ interface TokenImageProps {
 }
 
 const TokenImage: React.FC<TokenImageProps> = ({ tokenId, src, symbol, size = 40, className = '' }) => {
+  const { chainId } = useChain();
   const [fallbackStage, setFallbackStage] = useState(0);
   // 0 = original src, 1 = Tinyman CDN, 2 = colored circle
 
   const tinymanUrl = `https://asa-list.tinyman.org/assets/${tokenId}/icon.png`;
+  const nautilusUrl = `https://asset-verification.nautilus.sh/icons/${tokenId}.png`;
 
   // Reset fallback when props change (prevents stale state when reused for different tokens)
   useEffect(() => {
@@ -34,8 +37,9 @@ const TokenImage: React.FC<TokenImageProps> = ({ tokenId, src, symbol, size = 40
 
   const sources: string[] = [];
   if (src) sources.push(src);
-  // Only try Tinyman CDN if we have a real src — avoids broken image flash for Voi tokens
-  if (src) {
+  if (chainId === 'voi-mainnet') {
+    sources.push(nautilusUrl);
+  } else {
     sources.push(tinymanUrl);
   }
   const currentSrc = fallbackStage < sources.length ? sources[fallbackStage] : null;

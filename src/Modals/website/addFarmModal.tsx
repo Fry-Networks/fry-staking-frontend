@@ -10,6 +10,7 @@ import dayjs from 'dayjs'
 import { tokenServiceInstance as tokenService } from '../../services/TokenService'
 import { authAxios } from '../../services/apiClient'
 import { useAuth } from '../../hooks/useAuth'
+import { useChain } from '../../context/ChainContext'
 
 interface Currency {
   tokenId: number
@@ -27,6 +28,7 @@ interface AddFarmProps {
 
 const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen }) => {
   const { signer, activeAddress } = useWallet()
+  const { chainId } = useChain()
   const { ensureAuth } = useAuth()
   const isWalletConnected = !!activeAddress && !!signer
 
@@ -534,9 +536,9 @@ const AddFarmModal: React.FC<AddFarmProps> = ({ isaddFarmOpen, setisaddFarmOpen 
       
       // Fallback to essential tokens
       const fallbackTokens: Currency[] = [
-        { tokenId: 0, tokenName: 'Algorand', tokenSymbol: 'ALGO', tokenImage: 'https://asa-list.tinyman.org/assets/0/icon.png' },
-        { tokenId: 31566704, tokenName: 'USD Coin', tokenSymbol: 'USDC', tokenImage: 'https://asa-list.tinyman.org/assets/31566704/icon.png' },
-        { tokenId: 312769, tokenName: 'Tether USD', tokenSymbol: 'USDT', tokenImage: 'https://asa-list.tinyman.org/assets/312769/icon.png' },
+        { tokenId: 0, tokenName: 'Algorand', tokenSymbol: 'ALGO', tokenImage: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/0/icon.png' },
+        { tokenId: 31566704, tokenName: 'USD Coin', tokenSymbol: 'USDC', tokenImage: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/31566704/icon.png' },
+        { tokenId: 312769, tokenName: 'Tether USD', tokenSymbol: 'USDT', tokenImage: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/312769/icon.png' },
         { tokenId: 2485314946, tokenName: 'Fry', tokenSymbol: 'FRY', tokenImage: '/assets/images/fry-token.png' }
       ];
       

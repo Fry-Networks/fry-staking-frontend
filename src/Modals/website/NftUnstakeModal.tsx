@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react'
 import { toast } from 'react-toastify'
 import { useWallet } from '@txnlab/use-wallet'
 import { useAuth } from '../../hooks/useAuth'
+import { useChain } from '../../context/ChainContext'
 import { unstakeNft as unstakeNftOnChain } from '../../nft_staking_func'
 import { getStakedNftsByWallet, unstakeNft as unstakeNftApi } from '../../services/nftStakingApi'
 import { batchGetNftMetadata } from '../../services/nftCollectionService'
@@ -20,6 +21,7 @@ interface NftUnstakeModalProps {
 
 const NftUnstakeModal: React.FC<NftUnstakeModalProps> = ({ visible, onClose, onSuccess, pool }) => {
   const { activeAddress, signer } = useWallet()
+  const { chainId } = useChain()
   const { ensureAuth } = useAuth()
 
   const [loading, setLoading] = useState(false)
@@ -209,7 +211,7 @@ const NftUnstakeModal: React.FC<NftUnstakeModalProps> = ({ visible, onClose, onS
                       />
                     )}
                     <img
-                      src={nft.metadata?.imageUrl || nft.nftImage || `https://asa-list.tinyman.org/assets/${nft.asaId}/icon.png`}
+                      src={nft.metadata?.imageUrl || nft.nftImage || (chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${nft.asaId}/icon.png`)}
                       alt={nft.metadata?.name || nft.nftName}
                       className="w-full aspect-square object-cover rounded-lg mb-1"
                       onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U1RTlFQSIvPjwvc3ZnPg==' }}

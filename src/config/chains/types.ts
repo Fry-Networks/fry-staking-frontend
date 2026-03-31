@@ -70,6 +70,7 @@ export interface ChainFeatures {
   predictionLp: boolean;
   communityEvents: boolean;
   zap: boolean;
+  p2pSwap: boolean;
 }
 
 /** Full chain configuration */
