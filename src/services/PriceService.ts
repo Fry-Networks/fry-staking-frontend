@@ -106,9 +106,12 @@ async function fetchVestigeBatchPrices(asaIds: number[]): Promise<Map<number, nu
       for (const entry of r.data) {
         const id = entry?.asset_id
         const price = entry?.price
-        if (id != null && price && price > 0) {
-          result.set(Number(id), price)
-          setCachedPrice(`asa-${id}`, price)
+        if (id != null) {
+          const p = price ?? 0
+          result.set(Number(id), p)
+          if (p > 0) {
+            setCachedPrice(`asa-${id}`, p)
+          }
         }
       }
     }

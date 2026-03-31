@@ -3,8 +3,9 @@ import { useWallet } from '@txnlab/use-wallet'
 import axios from 'axios'
 import P_FTable from './P_fTable'
 import { tokenServiceInstance } from '../../../../services/TokenService'
-import { getLpTokenUsdPrice, fetchPriceMap } from '../../../../services/PriceService'
-import { getUserStakeForPool } from '../../../../farming_func'
+import { getChainLpTokenUsdPrice, fetchChainPriceMap } from '../../../../services/PriceService'
+import { useChain } from '../../../../context/ChainContext'
+import { getUserData } from '../../../../farming_func'
 
 export type FarmStatus = 'active' | 'ending-soon' | 'ended'
 export type FarmFilter = 'all' | 'active' | 'ending-soon' | 'ended'
@@ -49,6 +50,7 @@ const FILTER_LABELS: { key: FarmFilter; label: string }[] = [
 
 const P_FarmTable: React.FC = () => {
   const { activeAddress, signer } = useWallet()
+  const { chainId } = useChain()
   const [pools, setPools] = useState<ProfileFarmPool[]>([])
   const [loading, setLoading] = useState(false)
   const [activeFilter, setActiveFilter] = useState<FarmFilter>('all')
@@ -117,14 +119,10 @@ const P_FarmTable: React.FC = () => {
         Promise.allSettled(
           [...pairMap.entries()].map(async ([key, pair]) => ({
             key,
-            price: await getLpTokenUsdPrice(
-              pair.tokenAId, pair.tokenBId,
-              decimalMap[pair.tokenAId.toString()] ?? 6,
-              decimalMap[pair.tokenBId.toString()] ?? 6,
-            ),
+            price: await getChainLpTokenUsdPrice(pair.tokenAId, pair.tokenBId, chainId),
           }))
         ),
-        fetchPriceMap(rewardTokenIds),
+        fetchChainPriceMap(rewardTokenIds, chainId),
       ])
 
       const lpPrices: Record<string, number> = {}
@@ -143,17 +141,15 @@ const P_FarmTable: React.FC = () => {
 
       // Fetch on-chain stake data for each pool in parallel
       const onChainDataMap: Record<number, { staked: number; reward: number }> = {}
-      if (signer) {
-        await Promise.allSettled(
-          userFarms.map(async (farm: any) => {
-            try {
-              if (!farm.appId || !activeAddress) return
-              const data = await getUserStakeForPool(farm.appId, activeAddress, signer)
-              if (data) onChainDataMap[farm.appId] = { staked: data.staked, reward: data.reward }
-            } catch {}
-          })
-        )
-      }
+      await Promise.allSettled(
+        userFarms.map(async (farm: any) => {
+          try {
+            if (!farm.appId || !activeAddress) return
+            const data = await getUserData(farm.appId, activeAddress)
+            if (data) onChainDataMap[farm.appId] = { staked: Number(data.stakedAmount) / 1e6, reward: 0 }
+          } catch {}
+        })
+      )
 
       const mapped: ProfileFarmPool[] = userFarms.map((farm: any, index: number) => {
         const endTime = farm.farmEndTime || 0
@@ -172,9 +168,9 @@ const P_FarmTable: React.FC = () => {
           tokenAName: farm.lpToken?.tokenA || 'Token A',
           tokenBName: farm.lpToken?.tokenB || 'Token B',
           rewardTokenName: farm.rewardTokenSymbol || farm.rewardToken?.name || 'Token',
-          tokenAImage: imageMap[tokenAId] || `https://asa-list.tinyman.org/assets/${tokenAId}/icon.png`,
-          tokenBImage: imageMap[tokenBId] || `https://asa-list.tinyman.org/assets/${tokenBId}/icon.png`,
-          rewardTokenImage: imageMap[rewardTokenId] || `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`,
+          tokenAImage: imageMap[tokenAId] || (chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${tokenAId}/icon.png`),
+          tokenBImage: imageMap[tokenBId] || (chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${tokenBId}/icon.png`),
+          rewardTokenImage: imageMap[rewardTokenId] || (chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`),
           tvl: (() => {
             const lpHuman = (farm.totalStaked || 0) / 1_000_000
             const aId2 = Number(farm.lpToken?.tokenAId || farm.lpToken?.tokenA || 0)
