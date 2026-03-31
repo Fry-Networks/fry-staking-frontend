@@ -7,6 +7,7 @@ import { useChain } from '../../context/ChainContext'
 import { useAuth } from '../../hooks/useAuth'
 import { acceptOfferAlgo, acceptOfferAsa } from '../../p2p_swap_func'
 import { recordP2PAccept } from '../../services/p2pSwapApi'
+import { fetchFeeConfig, calculateFeeSimple } from '../../services/FeeService'
 import type { P2POffer } from '../../types/p2pSwap'
 import type { P2PMarketConfig } from '../../config/p2pSwapConfig'
 
@@ -49,10 +50,15 @@ const AcceptP2POfferModal: React.FC<AcceptP2POfferModalProps> = ({
         token: (activeChain.connection as any).algodToken,
       }
 
+      // Compute platform fee
+      const feeConfig = await fetchFeeConfig()
+      const feeCalc = calculateFeeSimple('p2pAccept', requestAmountMicro, feeConfig, activeChain.feeRecipient)
+
       // Determine if taker sends native or ASA
       const isRequestNative = market.requestAssetId === 0
 
       let txId: string
+      let feeTxId: string | undefined
 
       if (isRequestNative) {
         // Taker sends ALGO/VOI (native) — primary path for FRY/ALGO market
@@ -60,16 +66,20 @@ const AcceptP2POfferModal: React.FC<AcceptP2POfferModalProps> = ({
           market.appId, offer.offerId, requestAmountMicro,
           market.feeRecipient, offer.makerWallet,
           activeAddress, signer, algodConfig,
+          feeCalc.feeAmount, market.requestAssetId, feeCalc.feeRecipient,
         )
         txId = result.txId
+        feeTxId = result.feeTxId
       } else {
         // Taker sends ASA
         const result = await acceptOfferAsa(
           market.appId, offer.offerId, market.requestAssetId, requestAmountMicro,
           market.feeRecipient, offer.makerWallet,
           activeAddress, signer, algodConfig,
+          feeCalc.feeAmount, market.requestAssetId, feeCalc.feeRecipient,
         )
         txId = result.txId
+        feeTxId = result.feeTxId
       }
 
       // Record in backend
@@ -77,6 +87,7 @@ const AcceptP2POfferModal: React.FC<AcceptP2POfferModalProps> = ({
         marketAppId: market.appId,
         settlementTxId: txId,
         requestAmount: requestAmountMicro,
+        ...(feeTxId ? { feeTxId, feeAssetId: market.requestAssetId } : {}),
       })
 
       toast.success('Offer accepted! Trade complete.')

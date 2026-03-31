@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Input, Modal, Steps, Switch } from 'antd'
 import { Icon } from '@iconify/react'
 import { toast } from 'react-toastify'
@@ -20,6 +21,7 @@ interface CreateP2PMarketModalProps {
 const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
   isOpen, setIsOpen, onSuccess,
 }) => {
+  const navigate = useNavigate()
   const { activeAddress, signer } = useMultiChainWallet()
   const { chainId, activeChain } = useChain()
   const { ensureAuth } = useAuth()
@@ -93,6 +95,7 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
       toast.success(`Market ${pairName} deployed! App ID: ${appId}`)
       handleClose()
       onSuccess()
+      navigate(`/p2p/${appId}`)
     } catch (err: any) {
       console.error('Deploy market failed:', err)
       toast.error(err?.message || 'Failed to deploy market')

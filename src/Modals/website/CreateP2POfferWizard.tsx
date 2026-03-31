@@ -82,9 +82,12 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
 
   const handleSubmit = async () => {
     if (!canSubmit || !signer || !activeAddress) return
-    if (expirySeconds === CUSTOM_EXPIRY_VALUE && customExpiry && customExpiry < new Date()) {
-      toast.error('Custom expiry is in the past. Please select a future date.')
-      return
+    if (expirySeconds === CUSTOM_EXPIRY_VALUE && customExpiry) {
+      const minExpiry = new Date(Date.now() + 6 * 60 * 1000) // 5 min contract minimum + 1 min buffer
+      if (customExpiry < minExpiry) {
+        toast.error('Custom expiry must be at least 6 minutes from now.')
+        return
+      }
     }
     setIsSubmitting(true)
 

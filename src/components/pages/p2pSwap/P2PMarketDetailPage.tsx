@@ -338,6 +338,26 @@ const P2PMarketDetailPage: React.FC = () => {
       <div className="max-w-[1400px] m-auto">
         <P2PExperimentalBanner />
 
+        {/* Private market banner */}
+        {market?.isPrivate && activeAddress && market.creator === activeAddress && (
+          <div className="flex items-center justify-between gap-3 mb-4 px-4 py-3 rounded-lg border border-[#1a7a8a] bg-[#0d2f36]">
+            <div className="flex items-center gap-2 text-sm text-[#5ec4d4]">
+              <Icon icon="mdi:eye-off-outline" width={18} />
+              <span>This is a private market. Bookmark or copy this URL — it won't appear in the market browser.</span>
+            </div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.href)
+                toast.success('Link copied to clipboard!')
+              }}
+              className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold text-[#5ec4d4] border border-[#1a7a8a] hover:bg-[#1a7a8a] transition-colors whitespace-nowrap"
+            >
+              <Icon icon="mdi:content-copy" width={14} />
+              Copy Link
+            </button>
+          </div>
+        )}
+
         {/* Back link */}
         <Link
           to="/p2p"

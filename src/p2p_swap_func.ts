@@ -262,6 +262,9 @@ export const acceptOfferAlgo = async (
   sender: string,
   signer: TransactionSigner,
   algodConfig?: AlgodConfigOverride,
+  platformFeeAmount?: number,
+  platformFeeTokenId?: number,
+  platformFeeRecipient?: string,
 ) => {
   try {
     const appAddress = algosdk.getApplicationAddress(appId)
@@ -293,7 +296,34 @@ export const acceptOfferAlgo = async (
     const txId = result.transaction.txID()
     await algosdk.waitForConfirmation(algodClient, txId, 4)
 
-    return { txId }
+    // Send platform fee after successful accept
+    let feeTxId: string | undefined
+    if (platformFeeAmount && platformFeeAmount > 0 && platformFeeRecipient) {
+      try {
+        if (platformFeeTokenId && platformFeeTokenId > 0) {
+          const feeResult = await algorandClient.send.assetTransfer({
+            sender, signer,
+            receiver: platformFeeRecipient,
+            amount: BigInt(platformFeeAmount),
+            assetId: BigInt(platformFeeTokenId),
+          })
+          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        } else {
+          const feeResult = await algorandClient.send.payment({
+            sender, signer,
+            receiver: platformFeeRecipient,
+            amount: algokit.microAlgos(platformFeeAmount),
+          })
+          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        }
+      } catch (feeErr) {
+        throw new Error(
+          `Offer accepted on-chain (TxID: ${txId}) but platform fee payment failed: ${(feeErr as Error).message || feeErr}. Please contact support.`
+        )
+      }
+    }
+
+    return { txId, feeTxId }
   } catch (e) {
     console.error('Error in acceptOfferAlgo:', e)
     throw e
@@ -314,6 +344,9 @@ export const acceptOfferAsa = async (
   sender: string,
   signer: TransactionSigner,
   algodConfig?: AlgodConfigOverride,
+  platformFeeAmount?: number,
+  platformFeeTokenId?: number,
+  platformFeeRecipient?: string,
 ) => {
   try {
     const appAddress = algosdk.getApplicationAddress(appId)
@@ -344,7 +377,34 @@ export const acceptOfferAsa = async (
     const txId = result.transaction.txID()
     await algosdk.waitForConfirmation(algodClient, txId, 4)
 
-    return { txId }
+    // Send platform fee after successful accept
+    let feeTxId: string | undefined
+    if (platformFeeAmount && platformFeeAmount > 0 && platformFeeRecipient) {
+      try {
+        if (platformFeeTokenId && platformFeeTokenId > 0) {
+          const feeResult = await algorandClient.send.assetTransfer({
+            sender, signer,
+            receiver: platformFeeRecipient,
+            amount: BigInt(platformFeeAmount),
+            assetId: BigInt(platformFeeTokenId),
+          })
+          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        } else {
+          const feeResult = await algorandClient.send.payment({
+            sender, signer,
+            receiver: platformFeeRecipient,
+            amount: algokit.microAlgos(platformFeeAmount),
+          })
+          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        }
+      } catch (feeErr) {
+        throw new Error(
+          `Offer accepted on-chain (TxID: ${txId}) but platform fee payment failed: ${(feeErr as Error).message || feeErr}. Please contact support.`
+        )
+      }
+    }
+
+    return { txId, feeTxId }
   } catch (e) {
     console.error('Error in acceptOfferAsa:', e)
     throw e
