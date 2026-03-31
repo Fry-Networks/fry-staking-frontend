@@ -68,7 +68,16 @@ export async function fetchAlgoUsd(): Promise<number> {
   return 0
 }
 
+const tinymanNegativeCache = new Map<string, number>()
+const TINYMAN_NEGATIVE_TTL = 5 * 60 * 1000 // 5 min
+
 async function fetchTinymanPool(a: number, b: number) {
+  const key = `${Math.min(a, b)}-${Math.max(a, b)}`
+  const neg = tinymanNegativeCache.get(key)
+  if (neg && Date.now() - neg < TINYMAN_NEGATIVE_TTL) {
+    throw new Error('Pool not found (cached)')
+  }
+
   const tryUrls = [
     `https://mainnet.analytics.tinyman.org/api/v1/pool/${a}/${b}/`,
     `https://mainnet.analytics.tinyman.org/api/v1/pool/${b}/${a}/`,
@@ -81,7 +90,56 @@ async function fetchTinymanPool(a: number, b: number) {
       // try next
     }
   }
+  tinymanNegativeCache.set(key, Date.now())
   throw new Error('Pool not found')
+}
+
+async function fetchVestigeBatchPrices(asaIds: number[]): Promise<Map<number, number>> {
+  const result = new Map<number, number>()
+  if (asaIds.length === 0) return result
+  try {
+    const r = await axios.get('https://api.vestigelabs.org/assets/price', {
+      params: { asset_ids: asaIds.join(','), denominating_asset_id: USDC_ID },
+      timeout: 15000,
+    })
+    if (Array.isArray(r.data)) {
+      for (const entry of r.data) {
+        const id = entry?.asset_id
+        const price = entry?.price
+        if (id != null && price && price > 0) {
+          result.set(Number(id), price)
+          setCachedPrice(`asa-${id}`, price)
+        }
+      }
+    }
+  } catch (err: any) { console.warn('[PriceService] Vestige batch failed:', err?.message) }
+  return result
+}
+
+async function fetchCoinGeckoBatchPrices(asaIds: number[]): Promise<Map<number, number>> {
+  const result = new Map<number, number>()
+  if (asaIds.length === 0) return result
+  const CHUNK = 100
+  for (let i = 0; i < asaIds.length; i += CHUNK) {
+    const chunk = asaIds.slice(i, i + CHUNK)
+    try {
+      const r = await axios.get('https://api.coingecko.com/api/v3/simple/token_price/algorand', {
+        params: { contract_addresses: chunk.join(','), vs_currencies: 'usd' },
+        timeout: 10000,
+      })
+      if (r.data && typeof r.data === 'object') {
+        for (const [idStr, value] of Object.entries(r.data)) {
+          const price = (value as any)?.usd
+          if (price && price > 0) {
+            const id = Number(idStr)
+            result.set(id, price)
+            setCachedPrice(`asa-${id}`, price)
+          }
+        }
+      }
+    } catch { /* rate limited or failed, skip chunk */ }
+  }
+  return result
 }
 
 export async function getAsaUsdPrice(asaId: number): Promise<number> {
@@ -207,17 +265,92 @@ export async function getLpTokenUsdPrice(
  */
 export async function fetchPriceMap(asaIds: number[]): Promise<Record<string, number>> {
   const unique = [...new Set(asaIds)]
-  const results = await Promise.allSettled(
-    unique.map(async (id) => ({ id, price: await getAsaUsdPrice(id) }))
+  const priceMap: Record<string, number> = {}
+
+  // Phase 0: Collect already-cached prices
+  const uncachedIds: number[] = []
+  for (const id of unique) {
+    const cached = getCachedPrice(`asa-${id}`)
+    if (cached !== null) {
+      priceMap[id.toString()] = cached
+    } else {
+      uncachedIds.push(id)
+    }
+  }
+  if (uncachedIds.length === 0) return priceMap
+
+  // Phase 1: Vestige batch (primary, no rate limit)
+  const vestigePrices = await fetchVestigeBatchPrices(uncachedIds)
+  for (const [id, price] of vestigePrices) {
+    priceMap[id.toString()] = price
+  }
+
+  const afterVestige = uncachedIds.filter((id) => {
+    if (vestigePrices.has(id)) return false
+    // Re-check cache: a concurrent call may have cached this price
+    const nowCached = getCachedPrice(`asa-${id}`)
+    if (nowCached !== null) {
+      priceMap[id.toString()] = nowCached
+      return false
+    }
+    return true
+  })
+  if (afterVestige.length === 0) return priceMap
+
+  // Phase 2: CoinGecko batch + Tinyman individual (parallel) for remaining
+  const geckoP = fetchCoinGeckoBatchPrices(afterVestige)
+
+  const tinymanP = Promise.allSettled(
+    afterVestige.map(async (id) => {
+      // Try USDC pool
+      try {
+        const usdcPool = await fetchTinymanPool(id, USDC_ID)
+        const r = usdcPool?.reserves || usdcPool?.data?.reserves || usdcPool
+        const reserveA = Number(r?.[id] ?? r?.asset_1 ?? 0)
+        const reserveUSDC = Number(r?.[USDC_ID] ?? r?.asset_2 ?? 0)
+        if (reserveA > 0 && reserveUSDC > 0) {
+          const price = reserveUSDC / reserveA
+          setCachedPrice(`asa-${id}`, price)
+          return { id, price }
+        }
+      } catch { /* no USDC pool */ }
+      // Try ALGO pool
+      try {
+        const algoUsd = await fetchAlgoUsd()
+        const algoPool = await fetchTinymanPool(id, 0)
+        const r2 = algoPool?.reserves || algoPool?.data?.reserves || algoPool
+        const reserveAsa =
+          Number(r2?.[id]) ??
+          Number(r2?.asset_1_id === id ? r2?.asset_1 : r2?.asset_2) ?? 0
+        const reserveAlgo =
+          Number(r2?.[0]) ??
+          Number(r2?.asset_1_id === 0 ? r2?.asset_1 : r2?.asset_2) ?? 0
+        if (reserveAsa > 0 && reserveAlgo > 0) {
+          const price = (reserveAlgo / reserveAsa) * algoUsd
+          setCachedPrice(`asa-${id}`, price)
+          return { id, price }
+        }
+      } catch { /* no ALGO pool */ }
+      return { id, price: 0 }
+    })
   )
 
-  const priceMap: Record<string, number> = {}
-  results.forEach((result) => {
-    if (result.status === 'fulfilled') {
+  const [geckoPrices, tinymanResults] = await Promise.all([geckoP, tinymanP])
+
+  // Phase 3: Merge — Tinyman on-chain prices take priority over CoinGecko
+  const tinymanPriced = new Set<number>()
+  for (const result of tinymanResults) {
+    if (result.status === 'fulfilled' && result.value.price > 0) {
       priceMap[result.value.id.toString()] = result.value.price
+      tinymanPriced.add(result.value.id)
     }
-    // rejected → leave missing, consumer uses ?? 0
-  })
+  }
+  for (const [id, price] of geckoPrices) {
+    if (!tinymanPriced.has(id)) {
+      priceMap[id.toString()] = price
+    }
+  }
+
   return priceMap
 }
 

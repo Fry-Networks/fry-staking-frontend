@@ -138,6 +138,7 @@ class AuthService {
       algodClient = await getAlgodClient();
     }
     const params = await algodClient.getTransactionParams().do();
+    console.log('[AuthService._doAuth] chainId:', chainId, 'genesis:', params.genesisID);
     const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
       from: activeAddress,
       to: activeAddress,

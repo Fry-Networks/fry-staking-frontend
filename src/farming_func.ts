@@ -559,6 +559,7 @@ export const getUserStakeForPool = async (
   userAddress: string,
   signer: TransactionSigner
 ) => {
+  console.log('[getUserStakeForPool] appId:', appId, 'address:', userAddress)
   const { farmingClient } = await createFryFarmingClient(signer, userAddress, appId);
 
   try {
