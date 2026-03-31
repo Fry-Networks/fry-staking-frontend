@@ -92,7 +92,7 @@ export async function searchTokens(query: string): Promise<DiscoveredToken[]> {
  * Discover LP tokens for a pair from Tinyman and Pact.
  */
 export async function discoverLpTokens(tokenA: number, tokenB: number): Promise<LpPool[]> {
-  const cacheKey = `lp:${tokenA}:${tokenB}`;
+  const cacheKey = `lp:${getChainId()}:${tokenA}:${tokenB}`;
   const cached = getCached<LpPool[]>(cacheKey);
   if (cached) return cached;
 

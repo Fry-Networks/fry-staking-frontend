@@ -285,6 +285,9 @@ export const acceptOfferAlgo = async (
           fee: algokit.microAlgos(P2P_FEE_ACCEPT),
         },
         // CRITICAL: include fee_recipient and maker in foreign accounts
+        // TODO: Algorand market 3495625484 has on-chain fee_recipient S7OSR... (deployer)
+        // but this passes E2F2LT... (admin). Accept will fail until update_fee_recipient
+        // is called on-chain from the creator wallet. See handoff doc Priority 4b.
         accounts: [feeRecipient, makerAddress],
         boxes: [{ appIndex: 0, name: encodeOfferId(offerId) }],
       },
@@ -336,6 +339,9 @@ export const acceptOfferAsa = async (
         sendParams: {
           fee: algokit.microAlgos(P2P_FEE_ACCEPT),
         },
+        // TODO: Algorand market 3495625484 has on-chain fee_recipient S7OSR... (deployer)
+        // but this passes E2F2LT... (admin). Accept will fail until update_fee_recipient
+        // is called on-chain from the creator wallet. See handoff doc Priority 4b.
         accounts: [feeRecipient, makerAddress],
         boxes: [{ appIndex: 0, name: encodeOfferId(offerId) }],
       },
