@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal, Steps, InputNumber, Select, Input, Switch } from 'antd'
 import { Icon } from '@iconify/react'
 import { toast } from 'react-toastify'
@@ -7,6 +7,7 @@ import { useChain } from '../../context/ChainContext'
 import { useAuth } from '../../hooks/useAuth'
 import { createOfferAsa, createOfferAlgo } from '../../p2p_swap_func'
 import { recordP2POffer } from '../../services/p2pSwapApi'
+import { fetchFeeConfig, calculateFeeSimple } from '../../services/FeeService'
 import { P2P_BOX_MBR, EXPIRY_OPTIONS, type P2PMarketConfig } from '../../config/p2pSwapConfig'
 
 interface CreateP2POfferWizardProps {
@@ -25,6 +26,16 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
 
   const [step, setStep] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [platformFeePercent, setPlatformFeePercent] = useState(0)
+
+  // Fetch platform fee config on open
+  useEffect(() => {
+    if (isOpen) {
+      fetchFeeConfig().then(config => {
+        setPlatformFeePercent(config.p2pCreateFeePercent ?? 0)
+      }).catch(() => {})
+    }
+  }, [isOpen])
 
   // Form state
   const [offerAmount, setOfferAmount] = useState<number | null>(null)
@@ -53,6 +64,7 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
   const rate = offerAmount && requestAmount ? (requestAmount / offerAmount).toFixed(6) : '-'
   const fee = offerAmountMicro > 0 ? Math.floor(offerAmountMicro * market.feeBps / 10000) : 0
   const takerReceives = offerAmountMicro - fee
+  const platformFee = offerAmountMicro > 0 ? Math.floor(offerAmountMicro * platformFeePercent / 100) : 0
   const expiryTimestamp = expirySeconds > 0 ? Math.floor(Date.now() / 1000) + expirySeconds : 0
 
   const canProceedStep0 = offerAmount && offerAmount > 0
@@ -75,19 +87,24 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
 
       const isOfferNative = market.offerAssetId === 0
 
-      let result: { offerId: number; txId: string }
+      // Compute platform fee
+      const feeConfig = await fetchFeeConfig()
+      const feeCalc = calculateFeeSimple('p2pCreate', offerAmountMicro, feeConfig, activeChain.feeRecipient)
+      let result: { offerId: number; txId: string; feeTxId?: string }
 
       if (isOfferNative) {
         result = await createOfferAlgo(
           market.appId, offerAmountMicro, requestAmountMicro,
           isPrivate ? counterparty : '', expiryTimestamp,
           activeAddress, signer, algodConfig,
+          feeCalc.feeAmount, 0, feeCalc.feeRecipient,
         )
       } else {
         result = await createOfferAsa(
           market.appId, market.offerAssetId, offerAmountMicro, requestAmountMicro,
           isPrivate ? counterparty : '', expiryTimestamp,
           activeAddress, signer, algodConfig,
+          feeCalc.feeAmount, market.offerAssetId, feeCalc.feeRecipient,
         )
       }
 
@@ -101,6 +118,10 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
         offerType: isPrivate ? 'private' : 'public',
         counterparty: isPrivate ? counterparty : '',
         expiresAt: expiryTimestamp > 0 ? new Date(expiryTimestamp * 1000).toISOString() : null,
+        ...(result.feeTxId ? {
+          feeTxId: result.feeTxId,
+          feeAssetId: isOfferNative ? 0 : market.offerAssetId,
+        } : {}),
       })
 
       toast.success(`Offer #${result.offerId} created successfully!`)
@@ -220,6 +241,14 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
                 {(fee / Math.pow(10, market.offerAssetDecimals)).toFixed(market.offerAssetDecimals)} {market.offerAssetSymbol}
               </span>
             </div>
+            {platformFee > 0 && (
+              <div className="flex justify-between">
+                <span className="text-[var(--text-secondary)]">Platform fee ({platformFeePercent}%)</span>
+                <span className="text-[var(--text-primary)]">
+                  {(platformFee / Math.pow(10, market.offerAssetDecimals)).toFixed(market.offerAssetDecimals)} {market.offerAssetSymbol}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-[var(--text-secondary)]">Type</span>
               <span className="text-[var(--text-primary)]">{isPrivate ? 'Private' : 'Public'}</span>

@@ -1,6 +1,6 @@
 import { authAxios } from './apiClient';
 import type {
-  P2PMarket, P2POffer, P2PTrade, P2PReputation,
+  P2PMarket, P2PMarketStats, P2POffer, P2PTrade, P2PReputation,
   P2POfferPagination, CreateOfferPayload, AcceptOfferPayload, CancelOfferPayload,
   RegisterMarketPayload,
 } from '../types/p2pSwap';
@@ -15,6 +15,21 @@ export async function getP2PMarkets(): Promise<P2PMarket[]> {
 export async function getP2PMarketDetail(appId: number): Promise<P2PMarket> {
   const { data } = await authAxios.get(`/p2p/markets/${appId}`);
   return data.data;
+}
+
+export async function getP2PMarketStats(appId: number): Promise<P2PMarketStats> {
+  const { data } = await authAxios.get(`/p2p/markets/${appId}/stats`);
+  return data.data;
+}
+
+export async function getP2PMarketTrades(params: {
+  appId: number;
+  page?: number;
+  limit?: number;
+}): Promise<{ data: P2PTrade[]; pagination: P2POfferPagination }> {
+  const { appId, ...rest } = params;
+  const { data } = await authAxios.get(`/p2p/markets/${appId}/trades`, { params: rest });
+  return { data: data.data, pagination: data.pagination };
 }
 
 export async function getP2POffers(params: {
@@ -45,6 +60,7 @@ export async function getP2PReputation(walletAddress: string): Promise<P2PReputa
 
 export async function getMyP2POffers(params: {
   status?: string;
+  marketAppId?: number;
   page?: number;
   limit?: number;
 } = {}): Promise<{ data: P2POffer[]; pagination: P2POfferPagination }> {
@@ -53,6 +69,7 @@ export async function getMyP2POffers(params: {
 }
 
 export async function getP2PHistory(params: {
+  marketAppId?: number;
   page?: number;
   limit?: number;
 } = {}): Promise<{ data: P2PTrade[]; pagination: P2POfferPagination }> {

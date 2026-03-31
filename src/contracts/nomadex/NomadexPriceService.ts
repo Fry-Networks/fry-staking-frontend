@@ -1,12 +1,36 @@
-import algosdk from 'algosdk';
+import algosdk, { Indexer } from 'algosdk';
 import axios from 'axios';
 import { loadMarketData, findPool, findToken } from './api';
 import { getChainConfig } from '../../config/chains';
+import HumbleClient from '../humble/HumbleClient';
+import { findHumblePool, findHumbleToken, loadHumbleMarketData } from '../humble/api';
 
 const VOI_ID = 0;
 const WVOI_ID = 390001;
 const AUSDC_ID = 395614;
 const PRICE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
+
+// Lazy singletons for Humble on-chain pool queries
+let _voiAlgod: algosdk.Algodv2 | null = null;
+let _voiIndexer: Indexer | null = null;
+let _humbleClient: HumbleClient | null = null;
+
+function getVoiClients() {
+  if (!_voiAlgod) {
+    const conn = getChainConfig('voi-mainnet').connection as {
+      algodServer: string; algodPort: number; algodToken: string;
+      indexerServer: string; indexerPort: number; indexerToken: string;
+    };
+    _voiAlgod = new algosdk.Algodv2(conn.algodToken, conn.algodServer, conn.algodPort);
+    _voiIndexer = new Indexer(conn.indexerToken, conn.indexerServer, conn.indexerPort);
+  }
+  return { algod: _voiAlgod!, indexer: _voiIndexer! };
+}
+
+function getHumbleClient() {
+  if (!_humbleClient) _humbleClient = new HumbleClient();
+  return _humbleClient;
+}
 
 const priceCache = new Map<string, { price: number; timestamp: number }>();
 
@@ -112,6 +136,35 @@ export async function getVoiTokenUsdPrice(tokenId: number): Promise<number> {
       const usdcDecimals = usdcToken?.decimals ?? 6;
       const price = (Number(usdcReserve) / 10 ** usdcDecimals) / (Number(tokenReserve) / 10 ** tokenDecimals);
       if (price > 0) { setCachedPrice(`voi-token-${tokenId}`, price); return price; }
+    }
+  }
+
+  // Strategy 3: Humble TOKEN/VOI pool — derive from on-chain reserves
+  await loadHumbleMarketData();
+  const humbleVoiPool = findHumblePool(tokenId, VOI_ID);
+  if (humbleVoiPool) {
+    const voiUsd = await fetchVoiUsd();
+    if (voiUsd > 0) {
+      try {
+        const poolId = Number(humbleVoiPool.poolId);
+        const { algod, indexer } = getVoiClients();
+        const dummyAddr = algosdk.getApplicationAddress(poolId);
+        const info = await getHumbleClient().fetchPoolInfo(poolId, dummyAddr, algod, indexer);
+
+        // Pool uses wVOI (390001), not raw VOI (0)
+        const effectiveTokenId = tokenId === 0 ? WVOI_ID : tokenId;
+        const isTokenA = info.tokA === effectiveTokenId;
+        const tokenReserve = BigInt(isTokenA ? info.poolBals.A : info.poolBals.B);
+        const voiReserve = BigInt(isTokenA ? info.poolBals.B : info.poolBals.A);
+
+        if (tokenReserve > 0n && voiReserve > 0n) {
+          const hToken = findHumbleToken(effectiveTokenId);
+          const tokenDecimals = hToken?.decimals ?? 6;
+          const voiPerToken = (Number(voiReserve) / 1e6) / (Number(tokenReserve) / 10 ** tokenDecimals);
+          const price = voiUsd * voiPerToken;
+          if (price > 0) { setCachedPrice(`voi-token-${tokenId}`, price); return price; }
+        }
+      } catch { /* Humble pool query failed — continue */ }
     }
   }
 

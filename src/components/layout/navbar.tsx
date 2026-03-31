@@ -34,6 +34,7 @@ const Navbar: React.FC = () => {
   const location = useLocation()
   const isStakeActive = location.pathname === '/token-stake' || location.pathname === '/nft-stake' || location.pathname === '/depin-stake'
   const isFarmActive = location.pathname === '/farm' || (location.pathname === '/prediction-lp' && hasFeature('predictionLp'))
+  const isP2PActive = location.pathname === '/p2p' || location.pathname.startsWith('/p2p/')
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -172,9 +173,7 @@ const Navbar: React.FC = () => {
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/p2p"
-                className={({ isActive }) =>
-                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
-                }
+                className={`cursor-pointer p-[10px] uppercase ${isP2PActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`}
               >
                 P2P
               </NavLink>
@@ -334,9 +333,7 @@ const Navbar: React.FC = () => {
               <NavLink
                 to="/p2p"
                 onClick={onClose}
-                className={({ isActive }) =>
-                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
-                }
+                className={`cursor-pointer p-[10px] uppercase ${isP2PActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`}
               >
                 P2P
               </NavLink>

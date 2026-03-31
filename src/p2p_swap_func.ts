@@ -4,7 +4,7 @@ import algosdk, { TransactionSigner } from 'algosdk'
 import { FryP2PSwapClient } from './contracts/FryP2PSwapClient'
 import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 import { P2P_BOX_MBR, P2P_FEE_CREATE, P2P_FEE_ACCEPT, P2P_FEE_CANCEL, P2P_FEE_UPDATE, P2P_GLOBAL_INTS, P2P_GLOBAL_BYTES, P2P_APP_MBR, P2P_ASA_OPT_IN_MBR } from './config/p2pSwapConfig'
-import { getP2PTeal } from './contracts/p2pSwapTeal'
+import { ALGO_COMPILED_APPROVAL, ALGO_COMPILED_CLEAR, VOI_COMPILED_APPROVAL, VOI_COMPILED_CLEAR, P2P_EXTRA_PAGES } from './contracts/FryP2PSwapCompiled'
 // @ts-ignore — ARC32 JSON import for ABI method resolution
 import P2P_APP_SPEC from './contracts/FryP2PSwap.arc32.json'
 
@@ -74,6 +74,9 @@ export const createOfferAsa = async (
   sender: string,
   signer: TransactionSigner,
   algodConfig?: AlgodConfigOverride,
+  feeAmount?: number,
+  feeTokenId?: number,
+  feeRecipient?: string,
 ) => {
   try {
     const appAddress = algosdk.getApplicationAddress(appId)
@@ -104,7 +107,6 @@ export const createOfferAsa = async (
       {
         assetTransfer,
         boxPayment,
-        requestAssetId,
         requestAmount,
         counterparty: counterparty || ZERO_ADDRESS,
         expiry,
@@ -121,7 +123,34 @@ export const createOfferAsa = async (
     // Parse returned offer ID
     const offerId = Number(result.return)
 
-    return { offerId, txId }
+    // Send platform fee after successful offer creation
+    let feeTxId: string | undefined
+    if (feeAmount && feeAmount > 0 && feeRecipient) {
+      try {
+        if (feeTokenId && feeTokenId > 0) {
+          const feeResult = await algorandClient.send.assetTransfer({
+            sender, signer,
+            receiver: feeRecipient,
+            amount: BigInt(feeAmount),
+            assetId: BigInt(feeTokenId),
+          })
+          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        } else {
+          const feeResult = await algorandClient.send.payment({
+            sender, signer,
+            receiver: feeRecipient,
+            amount: algokit.microAlgos(feeAmount),
+          })
+          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        }
+      } catch (feeErr) {
+        throw new Error(
+          `Offer created on-chain (ID: ${offerId}) but platform fee payment failed: ${(feeErr as Error).message || feeErr}. Please contact support with your offer ID.`
+        )
+      }
+    }
+
+    return { offerId, txId, feeTxId }
   } catch (e) {
     console.error('Error in createOfferAsa:', e)
     throw e
@@ -141,6 +170,9 @@ export const createOfferAlgo = async (
   sender: string,
   signer: TransactionSigner,
   algodConfig?: AlgodConfigOverride,
+  feeAmount?: number,
+  feeTokenId?: number,
+  feeRecipient?: string,
 ) => {
   try {
     const appAddress = algosdk.getApplicationAddress(appId)
@@ -170,7 +202,6 @@ export const createOfferAlgo = async (
         offerPayment,
         boxPayment,
         offerAmount,
-        requestAssetId,
         requestAmount,
         counterparty: counterparty || ZERO_ADDRESS,
         expiry,
@@ -184,7 +215,34 @@ export const createOfferAlgo = async (
     await algosdk.waitForConfirmation(algodClient, txId, 4)
     const offerId = Number(result.return)
 
-    return { offerId, txId }
+    // Send platform fee after successful offer creation
+    let feeTxId: string | undefined
+    if (feeAmount && feeAmount > 0 && feeRecipient) {
+      try {
+        if (feeTokenId && feeTokenId > 0) {
+          const feeResult = await algorandClient.send.assetTransfer({
+            sender, signer,
+            receiver: feeRecipient,
+            amount: BigInt(feeAmount),
+            assetId: BigInt(feeTokenId),
+          })
+          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        } else {
+          const feeResult = await algorandClient.send.payment({
+            sender, signer,
+            receiver: feeRecipient,
+            amount: algokit.microAlgos(feeAmount),
+          })
+          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        }
+      } catch (feeErr) {
+        throw new Error(
+          `Offer created on-chain (ID: ${offerId}) but platform fee payment failed: ${(feeErr as Error).message || feeErr}. Please contact support with your offer ID.`
+        )
+      }
+    }
+
+    return { offerId, txId, feeTxId }
   } catch (e) {
     console.error('Error in createOfferAlgo:', e)
     throw e
@@ -401,6 +459,7 @@ export const deployP2PMarket = async (
   sender: string,
   signer: TransactionSigner,
   chainId: string,
+  feeRecipient?: string,
   algodConfigOverride?: AlgodConfigOverride,
 ) => {
   try {
@@ -413,14 +472,10 @@ export const deployP2PMarket = async (
       token: algodConfig.token,
     })
 
-    // 1. Get and compile TEAL for this chain
-    const { approval, clear } = getP2PTeal(chainId)
-    const encoder = new TextEncoder()
-    const approvalResult = await algodClient.compile(encoder.encode(approval)).do()
-    const clearResult = await algodClient.compile(encoder.encode(clear)).do()
-
-    const approvalBytes = new Uint8Array(Buffer.from(approvalResult.result, 'base64'))
-    const clearBytes = new Uint8Array(Buffer.from(clearResult.result, 'base64'))
+    // 1. Select pre-compiled bytecode for this chain
+    const isVoi = chainId === 'voi-mainnet'
+    const approvalBytes = isVoi ? VOI_COMPILED_APPROVAL : ALGO_COMPILED_APPROVAL
+    const clearBytes = isVoi ? VOI_COMPILED_CLEAR : ALGO_COMPILED_CLEAR
 
     // 2. Build ATC with init method call (appID: 0 = create)
     const abiContract = new algosdk.ABIContract(P2P_APP_SPEC.contract as any)
@@ -430,14 +485,14 @@ export const deployP2PMarket = async (
     suggestedParams.flatFee = true
     suggestedParams.fee = 2000
 
-    const extraPages = Math.max(0, Math.ceil(approvalBytes.length / 2048) - 1)
+    const extraPages = P2P_EXTRA_PAGES
 
     const atc = new algosdk.AtomicTransactionComposer()
     atc.addMethodCall({
       appID: 0,
       method: initMethod,
       methodArgs: [
-        sender,           // fee_recipient: address (deployer collects fees)
+        feeRecipient || sender, // fee_recipient: address
         feeBps,           // fee_bps: uint64
         offerAssetId,     // offer_asset_id: uint64
         requestAssetId,   // request_asset_id: uint64

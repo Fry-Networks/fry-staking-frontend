@@ -1,18 +1,24 @@
+// @ts-nocheck
 import { Icon } from '@iconify/react'
 import { useEffect, useState } from 'react'
 import { useWallet } from '@txnlab/use-wallet'
 import EditProfileModal from '../../../Modals/website/editProfileModal'
 import axios from 'axios'
+import { useChain } from '../../../context/ChainContext'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 
-const FRY_ASSET_ID = import.meta.env.VITE_FRY_TOKEN_ID // Replace with your actual FRY Token ID
+const FRY_ASSET_ID = import.meta.env.VITE_FRY_TOKEN_ID
 
 const Profilebanner: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true)
 
   const [iseditProfileOpen, setiseditProfileOpen] = useState(false)
-  const [fryBalance, setFryBalance] = useState<number>(0)
+  const [tokenBalance, setTokenBalance] = useState<number>(0)
+  const [tokenSymbol, setTokenSymbol] = useState('FRY')
   const [userData, setUserData] = useState<any>(null)
-  const { activeAddress, clients } = useWallet()
+  const { clients } = useWallet()
+  const { activeAddress } = useMultiChainWallet()
+  const { chainId, getAlgodClient } = useChain()
 
   const dummyData = {
     name: 'Dummy User',
@@ -44,34 +50,41 @@ const Profilebanner: React.FC = () => {
     }
   }
 
- const fetchFryBalance = async () => {
-    if (!activeAddress || !clients) return
-
-    const provider = clients.pera || clients.myalgo || clients.defly
-    if (!provider) return
+  const fetchTokenBalance = async () => {
+    if (!activeAddress) return
 
     try {
-      const accountInfo = await provider.getAccountInfo(activeAddress)
-      console.log('Account Info:', accountInfo)
-      // Convert FRY_ASSET_ID to number for comparison
-      const fryAssetId = Number(FRY_ASSET_ID)
-      console.log('FRY_ASSET_ID:', fryAssetId)
-      const fryAsset = accountInfo.assets?.find((a: any) => a['asset-id'] === fryAssetId)
-      console.log('FRY Asset:', fryAsset)
-      const balance = fryAsset ? fryAsset.amount / 1_000_000 : 0
-      setFryBalance(balance)
+      if (chainId === 'voi-mainnet') {
+        // On Voi: show native VOI balance
+        const algodClient = getAlgodClient()
+        const accountInfo = await algodClient.accountInformation(activeAddress).do()
+        const balance = Number(accountInfo.amount) / 1_000_000
+        setTokenBalance(balance)
+        setTokenSymbol('VOI')
+      } else {
+        // On Algorand: show FRY ASA balance
+        const provider = clients?.pera || clients?.myalgo || clients?.defly
+        if (!provider) return
+
+        const accountInfo = await provider.getAccountInfo(activeAddress)
+        const fryAssetId = Number(FRY_ASSET_ID)
+        const fryAsset = accountInfo.assets?.find((a: any) => a['asset-id'] === fryAssetId)
+        const balance = fryAsset ? fryAsset.amount / 1_000_000 : 0
+        setTokenBalance(balance)
+        setTokenSymbol('FRY')
+      }
     } catch (error) {
-      console.error('Error fetching FRY balance:', error)
-      setFryBalance(0)
+      console.error('Error fetching token balance:', error)
+      setTokenBalance(0)
     }
   }
 
   useEffect(() => {
     fetchUserData()
-    fetchFryBalance()
-  }, [activeAddress])
-  console.log('userData', userData)
-    if (isLoading) {
+    fetchTokenBalance()
+  }, [activeAddress, chainId])
+
+  if (isLoading) {
     return (
        <div className="w-full mt-[32px] mb-[47px] flex justify-center items-center min-h-[400px]">
         <svg className="animate-spin h-12 w-12 text-red-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -107,8 +120,12 @@ const Profilebanner: React.FC = () => {
 
           <div className="mt-[17px] flex flex-col items-center gap-[10px]">
             <div className="flex gap-[10px] items-center bg-[var(--bg-card)] border border-[var(--border-color)] rounded-[15px] py-[12px] px-[20px]">
-              <img src="../../assets/images/logo-red.svg" alt="FRY" />
-              <p className="large text-[var(--text-primary)]">{fryBalance.toFixed(2)} FRY</p>
+              {chainId === 'voi-mainnet' ? (
+                <img src="https://asset-verification.nautilus.sh/icons/0.png" alt="VOI" width={24} height={24} className="rounded-full" />
+              ) : (
+                <img src="../../assets/images/logo-red.svg" alt="FRY" />
+              )}
+              <p className="large text-[var(--text-primary)]">{tokenBalance.toFixed(2)} {tokenSymbol}</p>
             </div>
 
             {activeAddress && (

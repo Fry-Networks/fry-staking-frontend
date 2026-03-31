@@ -66,12 +66,10 @@ import {
       const { fromAssetId, toAssetId, amount, swapMode } = params;
   
       // fetch transactions
-      const { data } = await this.api.get("/prepare", {
-        params: {
-          userAddress,
-          slippageBps,
-          txnPayload: swapQuote.txnPayload,
-        },
+      const { data } = await this.api.post("/prepare", {
+        senderAddr: userAddress,
+        slippageBps: Number(slippageBps),
+        txnPayload: swapQuote.txnPayload,
       });
       if (!data.success) throw Error(data.errors);
   

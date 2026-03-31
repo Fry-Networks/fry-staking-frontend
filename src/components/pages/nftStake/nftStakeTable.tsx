@@ -6,7 +6,7 @@ import Button from '../../shared/button'
 import NftTable from './nftTable'
 import { getAllNftPools } from '../../../services/nftStakingApi'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
-import { getNftMetadata } from '../../../services/nftCollectionService'
+import { getNftMetadata, getArc72CollectionMeta } from '../../../services/nftCollectionService'
 import { lookupNfd } from '../../../services/nfdService'
 import { useChain } from '../../../context/ChainContext'
 import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
@@ -68,7 +68,9 @@ const NftStakeTable: React.FC = () => {
     if (!name || name.trim() === '') return true
     if (name.includes('...')) return true
     const lower = name.toLowerCase().trim()
-    return ['nft pool', 'nft staking', 'nft farm'].includes(lower)
+    if (['nft pool', 'nft staking', 'nft farm'].includes(lower)) return true
+    if (/^arc-72 pool\s*#?\d*$/i.test(name.trim())) return true
+    return false
   }
 
   // For pools missing an image or with generic names, enrich from NFT metadata / NFD
@@ -84,6 +86,16 @@ const NftStakeTable: React.FC = () => {
     await Promise.allSettled(
       needsImage.map(async (pool) => {
         try {
+          // ARC-72 pools on Voi: collectionCreator is a short numeric contract ID
+          if (chainId === 'voi-mainnet' && pool.collectionCreator?.trim().length > 0 && pool.collectionCreator.trim().length < 58) {
+            const meta = await getArc72CollectionMeta(Number(pool.collectionCreator.trim()))
+            if (meta?.imageUrl) imageUpdates[pool.appId] = meta.imageUrl
+            if (meta?.name && isGenericName(pool.poolName)) {
+              nameUpdates[pool.appId] = `${meta.name} NFT Staking`
+            }
+            return
+          }
+
           let asaId: number | null = null
           if (pool.collectionCreator?.trim().length >= 58) {
             const res = await axios.get(
@@ -106,10 +118,23 @@ const NftStakeTable: React.FC = () => {
       }),
     )
 
-    // For pools still needing names (not resolved by metadata), try NFD
+    // For pools still needing names (not resolved by metadata), try ARC-72 lookup or NFD
     const stillNeedsName = needsName.filter(p => !nameUpdates[p.appId])
     if (stillNeedsName.length > 0) {
-      const uniqueCreators = [...new Set(stillNeedsName.map(p => p.collectionCreator?.trim()).filter(a => a && a.length >= 58))]
+      // ARC-72 pools on Voi: resolve names via NFT Navigator
+      if (chainId === 'voi-mainnet') {
+        await Promise.allSettled(
+          stillNeedsName
+            .filter(p => p.collectionCreator?.trim().length > 0 && p.collectionCreator.trim().length < 58)
+            .map(async (pool) => {
+              try {
+                const meta = await getArc72CollectionMeta(Number(pool.collectionCreator!.trim()))
+                if (meta?.name) nameUpdates[pool.appId] = `${meta.name} NFT Staking`
+              } catch { /* skip */ }
+            }),
+        )
+      }
+      const uniqueCreators = [...new Set(stillNeedsName.filter(p => !nameUpdates[p.appId]).map(p => p.collectionCreator?.trim()).filter(a => a && a.length >= 58))]
       const nfdResults = await Promise.allSettled(uniqueCreators.map(addr => lookupNfd(addr)))
       const nfdMap = new Map<string, string>()
       uniqueCreators.forEach((addr, i) => {

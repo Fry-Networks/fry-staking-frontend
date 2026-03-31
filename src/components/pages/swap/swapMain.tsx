@@ -7,7 +7,7 @@ import 'react-toastify/dist/ReactToastify.css'
 import Button from '../../shared/button'
 import CandleStickChart from '../../shared/CandleStickChart'
 import Input from '../../shared/input'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 import axios from 'axios'
 import { PeraWalletConnect } from '@perawallet/connect'
 import { Buffer } from 'buffer'
@@ -16,14 +16,22 @@ import { getSwapRoute } from '@tinymanorg/tinyman-js-sdk'
 import { FolksRouterClient, Network, SwapMode, SwapParams, SwapProvider, SwapQuote, SwapService } from '../../../contracts'
 import type { VestigeSwapQuote } from '../../../contracts/VestigeLabsClient'
 import type { DeflexQuote } from '../../../contracts/DeflexClient'
-import algosdk, { Algodv2, decodeUnsignedTransaction, generateAccount } from 'algosdk'
+import { VoiSwapService } from '../../../contracts/VoiSwapService'
+import type { VoiQuoteComparison } from '../../../contracts/VoiSwapService'
+import type { VoiSwapProvider } from '../../../contracts/types'
+import { loadMarketData as loadNomadexData, getTokens as getNomadexTokens } from '../../../contracts/nomadex/api'
+import { loadHumbleMarketData, getHumbleTokens } from '../../../contracts/humble/api'
+import { getChainConfig } from '../../../config/chains'
+import algosdk, { Algodv2, Indexer, decodeUnsignedTransaction, generateAccount } from 'algosdk'
 import ConnectWallet from '../../ConnectWallet'
 import '../../../styles/shared/scrollbar.css'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
 import { usePreferences } from '../../../contexts/PreferencesContext'
 import { friendlySlippage, friendlyPriceImpact } from '../../../utils/grandmaLabels'
 import { useAuth } from '../../../hooks/useAuth'
+import { useChain } from '../../../context/ChainContext'
 import { authAxios } from '../../../services/apiClient'
+import { Spin } from 'antd'
 
 // ...existing code...
 interface Currency {
@@ -63,24 +71,42 @@ const algodToken = import.meta.env.VITE_ALGOD_TOKEN || ''
 const algodMainServer = import.meta.env.VITE_ALGOD_SERVER || 'https://mainnet-api.algonode.cloud'
 const algodMain = new algosdk.Algodv2(algodToken, algodMainServer, '')
 
+// Voi chain clients
+const voiAlgodServer = import.meta.env.VITE_VOI_ALGOD_SERVER || 'https://mainnet-api.voi.nodely.dev'
+const voiAlgod = new algosdk.Algodv2(import.meta.env.VITE_VOI_ALGOD_TOKEN || '', voiAlgodServer, '')
+const voiIndexerServer = import.meta.env.VITE_VOI_INDEXER_SERVER || 'https://mainnet-idx.voi.nodely.dev'
+const voiIndexer = new algosdk.Indexer('', voiIndexerServer, '')
+
 const TINYMAN_ASA_LIST_URL = 'https://asa-list.tinyman.org/assets.json';
+
+const VOI_ICON_BASE = 'https://asset-verification.nautilus.sh/icons/';
+
+const VOI_FALLBACK_CURRENCIES: Currency[] = [
+  { code: 'VOI', label: 'Voi', img: `${VOI_ICON_BASE}0.png`, id: 0, decimals: 6 },
+  { code: 'wVOI', label: 'Wrapped Voi', img: `${VOI_ICON_BASE}390001.png`, id: 390001, decimals: 6 },
+  { code: 'aUSDC', label: 'aUSDC', img: `${VOI_ICON_BASE}395614.png`, id: 395614, decimals: 6 },
+  { code: 'vFRY', label: 'vFRY', img: '', id: 48968653, decimals: 6 },
+  { code: 'VIA', label: 'VIA', img: `${VOI_ICON_BASE}6779767.png`, id: 6779767, decimals: 6 },
+  { code: 'GM', label: 'Good Morning', img: `${VOI_ICON_BASE}300279.png`, id: 300279, decimals: 2 },
+];
 
 const SwapMain = () => {
   const { isSimpleMode } = usePreferences()
+  const { chainId } = useChain()
   // Fallback list in case database fetch fails
   const FALLBACK_CURRENCIES: Currency[] = [
-    { code: 'ALGO', label: 'Algorand', img: 'https://asa-list.tinyman.org/assets/0/icon.png', id: 0, decimals: 6 },
-    { code: 'USDC', label: 'USD Coin', img: 'https://asa-list.tinyman.org/assets/31566704/icon.png', id: 31566704, decimals: 6 },
-    { code: 'goBTC', label: 'Wrapped BTC', img: 'https://asa-list.tinyman.org/assets/386192725/icon.png', id: 386192725, decimals: 8 },
-    { code: 'goETH', label: 'Wrapped ETH', img: 'https://asa-list.tinyman.org/assets/386195940/icon.png', id: 386195940, decimals: 8 },
-    { code: 'PLANET', label: 'Planet', img: 'https://asa-list.tinyman.org/assets/27165954/icon.png', id: 27165954, decimals: 5 },
-    { code: 'OPUL', label: 'Opulous', img: 'https://asa-list.tinyman.org/assets/287867876/icon.png', id: 287867876, decimals: 10 },
-    { code: 'GARD', label: 'GARD', img: 'https://asa-list.tinyman.org/assets/684649988/icon.png', id: 684649988, decimals: 6 },
-    { code: 'STBL', label: 'STBL', img: 'https://asa-list.tinyman.org/assets/465865291/icon.png', id: 465865291, decimals: 6 },
-    { code: 'AKITA', label: 'Akita Inu', img: 'https://asa-list.tinyman.org/assets/244275365/icon.png', id: 244275365, decimals: 6 },
-    { code: 'CHIP', label: 'Chip', img: 'https://asa-list.tinyman.org/assets/77801156/icon.png', id: 77801156, decimals: 6 },
-    { code: 'DEFLY', label: 'Defly', img: 'https://asa-list.tinyman.org/assets/470842789/icon.png', id: 470842789, decimals: 6 },
-    { code: 'ALGOFI', label: 'Algofi Token', img: 'https://asa-list.tinyman.org/assets/81288225/icon.png', id: 81288225, decimals: 6 },
+    { code: 'ALGO', label: 'Algorand', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/0/icon.png', id: 0, decimals: 6 },
+    { code: 'USDC', label: 'USD Coin', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/31566704/icon.png', id: 31566704, decimals: 6 },
+    { code: 'goBTC', label: 'Wrapped BTC', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/386192725/icon.png', id: 386192725, decimals: 8 },
+    { code: 'goETH', label: 'Wrapped ETH', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/386195940/icon.png', id: 386195940, decimals: 8 },
+    { code: 'PLANET', label: 'Planet', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/27165954/icon.png', id: 27165954, decimals: 5 },
+    { code: 'OPUL', label: 'Opulous', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/287867876/icon.png', id: 287867876, decimals: 10 },
+    { code: 'GARD', label: 'GARD', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/684649988/icon.png', id: 684649988, decimals: 6 },
+    { code: 'STBL', label: 'STBL', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/465865291/icon.png', id: 465865291, decimals: 6 },
+    { code: 'AKITA', label: 'Akita Inu', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/244275365/icon.png', id: 244275365, decimals: 6 },
+    { code: 'CHIP', label: 'Chip', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/77801156/icon.png', id: 77801156, decimals: 6 },
+    { code: 'DEFLY', label: 'Defly', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/470842789/icon.png', id: 470842789, decimals: 6 },
+    { code: 'ALGOFI', label: 'Algofi Token', img: chainId === 'voi-mainnet' ? '' : 'https://asa-list.tinyman.org/assets/81288225/icon.png', id: 81288225, decimals: 6 },
   ];
 
   // NEW: pin FRY (env) and manage top/all lists
@@ -110,63 +136,95 @@ const SwapMain = () => {
     return c.id === FRY_ID || txt.includes('fry')
   }
 
-  // Fetch tokens from database on mount
+  // Fetch tokens from database (Algorand) or DEX APIs (Voi) on mount / chain switch
   useEffect(() => {
-    const fetchTokensFromDatabase = async () => {
+    const fetchTokens = async () => {
       try {
         setIsLoadingTokens(true);
-        // Get default tokens first
-        const defaultTokensList = tokenService.getDefaultTokens();
-        const defaultCurrencies = defaultTokensList.map(token => tokenService.convertToCurrency(token));
-        setDefaultTokens(defaultCurrencies);
-        // Set defaults synchronously before any await to prevent race conditions
-        setSelectedRewards((prev) => prev ?? defaultCurrencies[0]);
-        setSelectedAlgoRewards((prev) => prev ?? defaultCurrencies[1]);
 
-        const { all, top } = await tokenService.getTokensSorted();
-        
-        // Pin FRY token to the top if it exists
-        const fryToken = all.find(isFryToken);
-        if (fryToken) {
-          const otherTokens = all.filter(c => !isFryToken(c));
-          const sortedAll = [fryToken, ...otherTokens];
-          setAllCurrencies(sortedAll);
-          
-          const otherTopTokens = top.filter(c => !isFryToken(c));
-          const sortedTop = [fryToken, ...otherTopTokens].slice(0, 20);
-          setTopCurrencies(sortedTop);
-        } else {
+        if (chainId === 'voi-mainnet') {
+          // ── Voi: load tokens from Nomadex + Humble APIs ──
+          await Promise.allSettled([loadNomadexData(), loadHumbleMarketData()]);
+          const nomadexTokens = getNomadexTokens();
+          const humbleTokens = getHumbleTokens();
+
+          // Merge and deduplicate by token ID (prefer Nomadex data)
+          const tokenMap = new Map<number, Currency>();
+          for (const t of humbleTokens) {
+            tokenMap.set(t.id, {
+              code: t.symbol, label: t.name,
+              img: `${VOI_ICON_BASE}${t.id}.png`,
+              id: t.id, decimals: t.decimals,
+            });
+          }
+          for (const t of nomadexTokens) {
+            tokenMap.set(t.id, {
+              code: t.symbol, label: t.name,
+              img: `${VOI_ICON_BASE}${t.id}.png`,
+              id: t.id, decimals: t.decimals,
+            });
+          }
+          // Add native VOI (id=0) at top
+          tokenMap.set(0, { code: 'VOI', label: 'Voi', img: `${VOI_ICON_BASE}0.png`, id: 0, decimals: 6 });
+
+          const all = Array.from(tokenMap.values()).sort((a, b) => {
+            // Pin VOI, wVOI, aUSDC, vFRY to top
+            const pinOrder = [0, 390001, 395614, 48968653];
+            const aIdx = pinOrder.indexOf(a.id);
+            const bIdx = pinOrder.indexOf(b.id);
+            if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+            if (aIdx !== -1) return -1;
+            if (bIdx !== -1) return 1;
+            return a.code.localeCompare(b.code);
+          });
+
           setAllCurrencies(all);
-          setTopCurrencies(top);
-        }
-        
-        // Set default selections from default tokens
-        setSelectedRewards((prev) => prev ?? defaultCurrencies[0] ?? top[0] ?? all[0]);
-        setSelectedAlgoRewards((prev) => prev ?? (defaultCurrencies[1] ?? top[1] ?? all.find(x => x.id === 0) ?? all[1]));
-        
-      } catch (error) {
-        console.error('Failed to fetch tokens from database:', error);
-        
-        // Set default tokens from fallback
-        const defaultTokensList = tokenService.getDefaultTokens();
-        const defaultCurrencies = defaultTokensList.map(token => tokenService.convertToCurrency(token));
-        setDefaultTokens(defaultCurrencies);
-        // Set defaults synchronously before any further state updates
-        setSelectedRewards((prev) => prev ?? defaultCurrencies[0] ?? FALLBACK_CURRENCIES[0]);
-        setSelectedAlgoRewards((prev) => prev ?? (defaultCurrencies[1] ?? FALLBACK_CURRENCIES[1]));
+          setTopCurrencies(all.slice(0, 20));
+          setDefaultTokens(VOI_FALLBACK_CURRENCIES);
+          setSelectedRewards((prev) => prev ?? all[0]);
+          setSelectedAlgoRewards((prev) => prev ?? all.find(c => c.id === 395614) ?? all[1]);
+        } else {
+          // ── Algorand: existing database-driven token loading ──
+          const defaultTokensList = tokenService.getDefaultTokens();
+          const defaultCurrencies = defaultTokensList.map(token => tokenService.convertToCurrency(token));
+          setDefaultTokens(defaultCurrencies);
+          setSelectedRewards((prev) => prev ?? defaultCurrencies[0]);
+          setSelectedAlgoRewards((prev) => prev ?? defaultCurrencies[1]);
 
-        setAllCurrencies(FALLBACK_CURRENCIES);
-        setTopCurrencies(FALLBACK_CURRENCIES.slice(0, 20));
+          const { all, top } = await tokenService.getTokensSorted();
+          const fryToken = all.find(isFryToken);
+          if (fryToken) {
+            const otherTokens = all.filter(c => !isFryToken(c));
+            setAllCurrencies([fryToken, ...otherTokens]);
+            const otherTopTokens = top.filter(c => !isFryToken(c));
+            setTopCurrencies([fryToken, ...otherTopTokens].slice(0, 20));
+          } else {
+            setAllCurrencies(all);
+            setTopCurrencies(top);
+          }
+          setSelectedRewards((prev) => prev ?? defaultCurrencies[0] ?? top[0] ?? all[0]);
+          setSelectedAlgoRewards((prev) => prev ?? (defaultCurrencies[1] ?? top[1] ?? all.find(x => x.id === 0) ?? all[1]));
+        }
+      } catch (error) {
+        console.error('Failed to fetch tokens:', error);
+        const fallback = chainId === 'voi-mainnet' ? VOI_FALLBACK_CURRENCIES : FALLBACK_CURRENCIES;
+        setAllCurrencies(fallback);
+        setTopCurrencies(fallback.slice(0, 20));
+        setSelectedRewards((prev) => prev ?? fallback[0]);
+        setSelectedAlgoRewards((prev) => prev ?? fallback[1]);
       } finally {
         setIsLoadingTokens(false);
       }
     };
 
-    fetchTokensFromDatabase();
-  }, []);
+    // Reset selections on chain switch
+    setSelectedRewards(undefined);
+    setSelectedAlgoRewards(undefined);
+    fetchTokens();
+  }, [chainId]);
 
   const location = useLocation()
-  const { activeAddress, providers, signTransactions: walletSignTransactions } = useWallet()
+  const { activeAddress, signTransactions: walletSignTransactions } = useMultiChainWallet()
   const { ensureAuth } = useAuth()
 
   const [selectedRewards, setSelectedRewards] = useState<Currency | undefined>(undefined);
@@ -206,12 +264,12 @@ const SwapMain = () => {
         return;
       }
       try {
-        const accountInfo = await algodMain.accountInformation(activeAddress).do();
+        const algodClient = chainId === 'voi-mainnet' ? voiAlgod : algodMain;
+        const accountInfo = await algodClient.accountInformation(activeAddress).do();
         if (selectedRewards) {
           if (selectedRewards.id === 0) {
-            // ALGO balance
-            const algoBalance = Number(accountInfo.amount) / Math.pow(10, 6);
-            setFromBalance(algoBalance.toFixed(selectedRewards.decimals));
+            const nativeBalance = Number(accountInfo.amount) / Math.pow(10, 6);
+            setFromBalance(nativeBalance.toFixed(selectedRewards.decimals));
           } else {
             const assetInfo = accountInfo.assets?.find((a: any) => a['asset-id'] === selectedRewards.id);
             const bal = assetInfo ? Number(assetInfo.amount) / Math.pow(10, selectedRewards.decimals) : 0;
@@ -220,8 +278,8 @@ const SwapMain = () => {
         }
         if (selectedAlgoRewards) {
           if (selectedAlgoRewards.id === 0) {
-            const algoBalance = Number(accountInfo.amount) / Math.pow(10, 6);
-            setToBalance(algoBalance.toFixed(selectedAlgoRewards.decimals));
+            const nativeBalance = Number(accountInfo.amount) / Math.pow(10, 6);
+            setToBalance(nativeBalance.toFixed(selectedAlgoRewards.decimals));
           } else {
             const assetInfo = accountInfo.assets?.find((a: any) => a['asset-id'] === selectedAlgoRewards.id);
             const bal = assetInfo ? Number(assetInfo.amount) / Math.pow(10, selectedAlgoRewards.decimals) : 0;
@@ -235,7 +293,7 @@ const SwapMain = () => {
       }
     };
     fetchBalances();
-  }, [selectedRewards, selectedAlgoRewards, activeAddress]);
+  }, [selectedRewards, selectedAlgoRewards, activeAddress, chainId]);
 
   // Handle search submission (only when submit button is clicked)
   const handleSearchSubmit = async (dropdown: 'rewards' | 'algoRewards') => {
@@ -251,8 +309,17 @@ const SwapMain = () => {
     setIsSearching(prev => ({ ...prev, [dropdown]: true }));
     
     try {
-      const searchTokens = await tokenService.searchTokens(query);
-      const searchCurrencies = searchTokens.map(token => tokenService.convertToCurrency(token));
+      let searchCurrencies: Currency[];
+      if (chainId === 'voi-mainnet') {
+        // Voi: filter locally from already-loaded tokens (avoids Pera API calls)
+        const q = query.toLowerCase();
+        searchCurrencies = allCurrencies.filter(
+          (c) => c.code.toLowerCase().includes(q) || c.label.toLowerCase().includes(q)
+        );
+      } else {
+        const searchTokens = await tokenService.searchTokens(query);
+        searchCurrencies = searchTokens.map(token => tokenService.convertToCurrency(token));
+      }
       setSearchResults(prev => ({ ...prev, [dropdown]: searchCurrencies }));
     } catch (error) {
       console.error(`Search error for ${dropdown}:`, error);
@@ -321,13 +388,21 @@ const SwapMain = () => {
   const [minReceived, setMinReceived] = useState<string>('0');
   const [priceImpact, setPriceImpact] = useState<string>('0');
   const [priceRate, setPriceRate] = useState<string>('0');
-  const [currentProvider, setCurrentProvider] = useState<string>('folksrouter');
+  const [currentProvider, setCurrentProvider] = useState<string>(
+    chainId === 'voi-mainnet' ? 'nomadex' : 'folksrouter'
+  );
   const [isQuoteLoading, setIsQuoteLoading] = useState(false);
   const [slippageBps, setSlippageBps] = useState<number>(50);
   const [showSlippageSettings, setShowSlippageSettings] = useState(false);
   const quoteAbortRef = useRef(false);
   const quoteTimestampRef = useRef<number>(0);
   const swapServiceRef = useRef<SwapService | null>(null);
+  const voiSwapServiceRef = useRef<VoiSwapService | null>(null);
+
+  // Reset provider badge when switching chains
+  useEffect(() => {
+    setCurrentProvider(chainId === 'voi-mainnet' ? 'nomadex' : 'folksrouter');
+  }, [chainId]);
 
   useEffect(() => {
     quoteAbortRef.current = false;
@@ -347,80 +422,102 @@ const SwapMain = () => {
 
     const debounceTimer = setTimeout(async () => {
       try {
-        // Convert amount based on source token's decimals
         const multiplier = Math.pow(10, selectedRewards.decimals);
         const microAmount = Math.floor(parseFloat(swapAmount) * multiplier);
-
         if (isNaN(microAmount) || microAmount <= 0) return;
 
-        // Initialize SwapService (reuse via ref)
-        const swapService = new SwapService({
-          network: Network.MAINNET,
-          algodClient: algodMain,
-          walletSignTransactions: walletSignTransactions
-        });
-        swapServiceRef.current = swapService;
-
-        // Try to get quotes from both providers
-        const quoteComparison = await swapService.compareQuotes(
-          selectedRewards.id,
-          selectedAlgoRewards.id,
-          microAmount
-        );
-
-        if (quoteAbortRef.current) return;
-
-        let quote: SwapQuote | VestigeSwapQuote | DeflexQuote | null = null;
-        let provider = 'folksrouter';
-
-        if (quoteComparison.bestProvider === 'deflex' && quoteComparison.deflex) {
-          quote = quoteComparison.deflex;
-          provider = 'deflex';
-        } else if (quoteComparison.bestProvider === 'vestige' && quoteComparison.vestige) {
-          quote = quoteComparison.vestige;
-          provider = 'vestige';
-        } else if (quoteComparison.folksRouter) {
-          quote = quoteComparison.folksRouter;
-          provider = 'folksrouter';
-        } else if (quoteComparison.vestige) {
-          quote = quoteComparison.vestige;
-          provider = 'vestige';
-        } else if (quoteComparison.deflex) {
-          quote = quoteComparison.deflex;
-          provider = 'deflex';
-        }
-
-        if (!quote) throw new Error("Unable to get quote from any provider");
-
-        // Calculate converted amount using correct decimals
-        const fromAmount = parseFloat(swapAmount);
         let toAmount: number;
         let priceImpactValue: string;
+        let provider: string;
 
-        if ('quoteAmount' in quote) {
-          // FolksRouter quote
-          toAmount = formatAssetAmount(Number(quote.quoteAmount), selectedAlgoRewards.decimals);
-          priceImpactValue = quote.priceImpact ?
-            (Number(quote.priceImpact) * 100).toFixed(2) :
-            '0.00';
-        } else if ('amount_out' in quote) {
-          // Vestige quote
-          toAmount = formatAssetAmount((quote as any).amount_out, selectedAlgoRewards.decimals);
-          priceImpactValue = (quote as any).price_impact != null
-            ? ((quote as any).price_impact * 100).toFixed(2)
-            : '0.00';
-        } else if ('quote' in quote && quote.quote != null) {
-          // Deflex quote (SDK type: quote field = output amount)
-          toAmount = formatAssetAmount(Number(quote.quote), selectedAlgoRewards.decimals);
-          priceImpactValue = '0.00'; // Deflex SDK doesn't expose price impact directly
+        if (chainId === 'voi-mainnet') {
+          // ── Voi: use VoiSwapService with Nomadex + Humble ──
+          const voiSwapService = new VoiSwapService({
+            algodClient: voiAlgod,
+            indexerClient: voiIndexer,
+            walletSignTransactions: walletSignTransactions,
+          });
+          voiSwapServiceRef.current = voiSwapService;
+
+          const quoteComparison = await voiSwapService.compareQuotes(
+            selectedRewards.id,
+            selectedAlgoRewards.id,
+            BigInt(microAmount),
+            slippageBps,
+            activeAddress || ''
+          );
+
+          if (quoteAbortRef.current) return;
+
+          let bestQuote = quoteComparison.nomadex || quoteComparison.humble;
+          provider = quoteComparison.bestProvider || 'nomadex';
+
+          if (quoteComparison.bestProvider === 'humble' && quoteComparison.humble) {
+            bestQuote = quoteComparison.humble;
+          } else if (quoteComparison.nomadex) {
+            bestQuote = quoteComparison.nomadex;
+          }
+
+          if (!bestQuote) throw new Error("Unable to get quote from any Voi DEX");
+
+          toAmount = Number(bestQuote.amountOut) / Math.pow(10, selectedAlgoRewards.decimals);
+          priceImpactValue = (bestQuote.priceImpact * 100).toFixed(2);
+
         } else {
-          throw new Error("Invalid quote format");
+          // ── Algorand: existing SwapService with FolksRouter/Vestige/Deflex ──
+          const swapService = new SwapService({
+            network: Network.MAINNET,
+            algodClient: algodMain,
+            walletSignTransactions: walletSignTransactions
+          });
+          swapServiceRef.current = swapService;
+
+          const quoteComparison = await swapService.compareQuotes(
+            selectedRewards.id,
+            selectedAlgoRewards.id,
+            microAmount
+          );
+
+          if (quoteAbortRef.current) return;
+
+          let quote: SwapQuote | VestigeSwapQuote | DeflexQuote | null = null;
+          provider = 'folksrouter';
+
+          if (quoteComparison.bestProvider === 'deflex' && quoteComparison.deflex) {
+            quote = quoteComparison.deflex;
+            provider = 'deflex';
+          } else if (quoteComparison.bestProvider === 'vestige' && quoteComparison.vestige) {
+            quote = quoteComparison.vestige;
+            provider = 'vestige';
+          } else if (quoteComparison.folksRouter) {
+            quote = quoteComparison.folksRouter;
+            provider = 'folksrouter';
+          } else if (quoteComparison.vestige) {
+            quote = quoteComparison.vestige;
+            provider = 'vestige';
+          } else if (quoteComparison.deflex) {
+            quote = quoteComparison.deflex;
+            provider = 'deflex';
+          }
+
+          if (!quote) throw new Error("Unable to get quote from any provider");
+
+          if ('quoteAmount' in quote) {
+            toAmount = formatAssetAmount(Number(quote.quoteAmount), selectedAlgoRewards.decimals);
+            priceImpactValue = quote.priceImpact ? (Number(quote.priceImpact) * 100).toFixed(2) : '0.00';
+          } else if ('amount_out' in quote) {
+            toAmount = formatAssetAmount((quote as any).amount_out, selectedAlgoRewards.decimals);
+            priceImpactValue = (quote as any).price_impact != null ? ((quote as any).price_impact * 100).toFixed(2) : '0.00';
+          } else if ('quote' in quote && quote.quote != null) {
+            toAmount = formatAssetAmount(Number(quote.quote), selectedAlgoRewards.decimals);
+            priceImpactValue = '0.00';
+          } else {
+            throw new Error("Invalid quote format");
+          }
         }
 
-        // Calculate price rate (price per token)
+        const fromAmount = parseFloat(swapAmount);
         const rate = toAmount / fromAmount;
-
-        // Calculate minimum received (with user-configured slippage)
         const minReceivedAmount = toAmount * (1 - slippageBps / 10000);
 
         setTokenPerAlgo(toAmount.toFixed(selectedAlgoRewards.decimals));
@@ -432,40 +529,31 @@ const SwapMain = () => {
 
       } catch (error: any) {
         if (quoteAbortRef.current) return;
-
         console.error("Swap quote error:", error);
-
-        // Only show toast for user-actionable errors
         if (!activeAddress) {
-          // Don't show wallet connection error until user tries to swap
-          console.log("Wallet not connected, skipping quote");
+          // Wallet not connected — skip
         } else if (error?.response?.status === 404) {
           toast.warning("This token pair is currently unavailable for swapping");
         } else if (!navigator.onLine) {
           toast.error("Please check your internet connection");
         } else {
-          // Don't show technical errors to user unless they try to swap
           console.error("Quote fetch failed:", error.message || error);
         }
-
-        // Reset values on error — show N/A for price to avoid misleading "0"
         setTokenPerAlgo('0');
         setMinReceived('0');
-        setPriceRate('N/A');
+        setPriceRate(chainId === 'voi-mainnet' ? '0' : 'N/A');
         setPriceImpact('0');
       } finally {
-        if (!quoteAbortRef.current) {
-          setIsQuoteLoading(false);
-        }
+        setIsQuoteLoading(false);
       }
-    }, 1500); // Debounce api calls by 1500ms to reduce rate-limit pressure
+    }, 1500);
 
     return () => {
       clearTimeout(debounceTimer);
       quoteAbortRef.current = true;
       setIsQuoteLoading(false);
     };
-  }, [selectedRewards, selectedAlgoRewards, swapAmount, activeAddress]);
+  }, [selectedRewards, selectedAlgoRewards, swapAmount, activeAddress, chainId]);
 
   const checkAssetBalance = async (assetId: number): Promise<{ hasAsset: boolean; balance: number }> => {
     if (!activeAddress) {
@@ -570,23 +658,23 @@ const SwapMain = () => {
         return
       }
 
-      // Check balances and opt-in to both source and destination ASA tokens (not ALGO)
-      if (selectedRewards.id !== 0) {
-        const sourceBalance = await checkAssetBalance(selectedRewards.id);
-
-        if (!sourceBalance.hasAsset) {
-          await optInToASA(selectedRewards.id);
-        } else if (sourceBalance.balance < microAmount) {
-          toast.error(`Insufficient balance. You have ${sourceBalance.balance} but need ${microAmount}`);
-          return;
+      // Voi: skip ASA opt-in (ARC-200 boxes handled by swap service)
+      // Algorand: check balances and opt-in to ASA tokens
+      if (chainId !== 'voi-mainnet') {
+        if (selectedRewards.id !== 0) {
+          const sourceBalance = await checkAssetBalance(selectedRewards.id);
+          if (!sourceBalance.hasAsset) {
+            await optInToASA(selectedRewards.id);
+          } else if (sourceBalance.balance < microAmount) {
+            toast.error(`Insufficient balance. You have ${sourceBalance.balance} but need ${microAmount}`);
+            return;
+          }
         }
-      }
-
-      if (selectedAlgoRewards.id !== 0) {
-        const destBalance = await checkAssetBalance(selectedAlgoRewards.id);
-
-        if (!destBalance.hasAsset) {
-          await optInToASA(selectedAlgoRewards.id);
+        if (selectedAlgoRewards.id !== 0) {
+          const destBalance = await checkAssetBalance(selectedAlgoRewards.id);
+          if (!destBalance.hasAsset) {
+            await optInToASA(selectedAlgoRewards.id);
+          }
         }
       }
 
@@ -604,42 +692,58 @@ const SwapMain = () => {
         toast.warning(`High price impact: ${impactPct.toFixed(1)}%`);
       }
 
-      // Reuse SwapService from quote phase, or create a new one
-      const swapService = swapServiceRef.current ?? new SwapService({
-        network: Network.MAINNET,
-        algodClient: algodMain,
-        walletSignTransactions: walletSignTransactions
-      });
-
-      // If the quote is fresh (<30s), use the already-known best provider directly
-      // to avoid a redundant compareQuotes() call that doubles API requests
-      const quoteAge = Date.now() - quoteTimestampRef.current;
-      const provider = (currentProvider as SwapProvider) || 'folksrouter';
-
       let result;
-      if (quoteAge < 30000 && quoteTimestampRef.current > 0) {
-        result = await swapService.performSwapWithProvider(
-          selectedRewards.id,
-          selectedAlgoRewards.id,
-          microAmount,
-          activeAddress,
-          provider,
-          slippageBps
-        );
+      const quoteAge = Date.now() - quoteTimestampRef.current;
+
+      if (chainId === 'voi-mainnet') {
+        // ── Voi: use VoiSwapService ──
+        const voiSwapService = voiSwapServiceRef.current ?? new VoiSwapService({
+          algodClient: voiAlgod,
+          indexerClient: voiIndexer,
+          walletSignTransactions: walletSignTransactions,
+        });
+        const voiProvider = (currentProvider as VoiSwapProvider) || 'nomadex';
+
+        if (quoteAge < 30000 && quoteTimestampRef.current > 0) {
+          result = await voiSwapService.performSwapWithProvider(
+            selectedRewards.id, selectedAlgoRewards.id,
+            BigInt(microAmount), activeAddress, voiProvider, slippageBps
+          );
+        } else {
+          result = await voiSwapService.performSwap(
+            selectedRewards.id, selectedAlgoRewards.id,
+            BigInt(microAmount), activeAddress, slippageBps
+          );
+        }
       } else {
-        // Quote is stale or missing — fall back to full quote+swap
-        result = await swapService.performSwap(
-          selectedRewards.id,
-          selectedAlgoRewards.id,
-          microAmount,
-          activeAddress,
-          slippageBps
-        );
+        // ── Algorand: existing SwapService ──
+        const swapService = swapServiceRef.current ?? new SwapService({
+          network: Network.MAINNET,
+          algodClient: algodMain,
+          walletSignTransactions: walletSignTransactions
+        });
+        const provider = (currentProvider as SwapProvider) || 'folksrouter';
+
+        if (quoteAge < 30000 && quoteTimestampRef.current > 0) {
+          result = await swapService.performSwapWithProvider(
+            selectedRewards.id, selectedAlgoRewards.id,
+            microAmount, activeAddress, provider, slippageBps
+          );
+        } else {
+          result = await swapService.performSwap(
+            selectedRewards.id, selectedAlgoRewards.id,
+            microAmount, activeAddress, slippageBps
+          );
+        }
       }
 
       if (result.success) {
-        const providerName = { folksrouter: 'FolksRouter', vestige: 'Vestige Labs', deflex: 'Deflex' }[result.provider] || result.provider;
-        toast.success(`Swap submitted via ${providerName}! TXID: ${result.txId}`)
+        const providerNames = {
+          folksrouter: 'FolksRouter', vestige: 'Vestige Labs', deflex: 'Deflex',
+          nomadex: 'Nomadex', humble: 'HumbleSwap',
+        };
+        const providerName = providerNames[result.provider] || result.provider;
+        toast.success(`Swap confirmed via ${providerName}! TXID: ${result.txId}`)
 
         // Record swap for event points tracking (fire-and-forget)
         try {
@@ -673,13 +777,17 @@ const SwapMain = () => {
           <h3 className="uppercase font-apex tracking-[1.6px] heading">Swap</h3>
         </div>
 
+        {isLoadingTokens ? (
+          <div className="flex justify-center items-center py-20">
+            <Spin size="large" />
+          </div>
+        ) : (
         <div className="bottom flex gap-[16px] max-md:flex-col">
           <div className="max-w-[35%] max-md:max-w-full w-full px-[24px] pt-[29px] pb-[19px] rounded-[22px] bg-[var(--bg-card)] shadow-md">
 
 
             <p className="mt-[6px] text-text_clr medium tracking-[0.48px]">
-              {/* {isLoadingTokens ? 'Loading tokens ...' : `We find the most efficient path to swap your token. (${allCurrencies.length} tokens available)`} */}
-              {isLoadingTokens ? 'Loading tokens ...' : `We find the most efficient path to swap your token`}
+              We find the most efficient path to swap your token
             </p>
 
             <div className="dropdwon-swap relative mt-[24px] flex flex-col gap-[16px]">
@@ -762,7 +870,7 @@ const SwapMain = () => {
                                     className="flex items-center gap-2 px-4 py-2 rounded-[11px] cursor-pointer hover:bg-gray"
                                     onClick={() => selectCurrency(currency, 'rewards')}
                                   >
-                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
+                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { if (chainId !== 'voi-mainnet') e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
                                     <span className="text-[var(--text-primary)] font-medium">{currency.label}</span>
                                   </li>
                                 ))}
@@ -792,7 +900,7 @@ const SwapMain = () => {
                                     className="flex items-center gap-2 px-4 py-2 rounded-[11px] cursor-pointer hover:bg-gray"
                                     onClick={() => selectCurrency(currency, 'rewards')}
                                   >
-                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
+                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { if (chainId !== 'voi-mainnet') e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
                                     <span className="text-[var(--text-primary)] font-medium">{currency.label}</span>
                                   </li>
                                 ))}
@@ -912,7 +1020,7 @@ const SwapMain = () => {
                                     className="flex items-center gap-2 px-4 py-2 rounded-[11px] cursor-pointer hover:bg-gray"
                                     onClick={() => selectCurrency(currency, 'algoRewards')}
                                   >
-                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
+                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { if (chainId !== 'voi-mainnet') e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
                                     <span className="text-[var(--text-primary)] font-medium">{currency.label}</span>
                                   </li>
                                 ))}
@@ -942,7 +1050,7 @@ const SwapMain = () => {
                                     className="flex items-center gap-2 px-4 py-2 rounded-[11px] cursor-pointer hover:bg-gray"
                                     onClick={() => selectCurrency(currency, 'algoRewards')}
                                   >
-                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
+                                    <img src={currency.img} alt={currency.label} width={28} height={28} onError={(e) => { if (chainId !== 'voi-mainnet') e.currentTarget.src = `https://asa-list.tinyman.org/assets/${currency.id}/icon.png`; }} />
                                     <span className="text-[var(--text-primary)] font-medium">{currency.label}</span>
                                   </li>
                                 ))}
@@ -999,7 +1107,7 @@ const SwapMain = () => {
                 <p className="text-text_clr medium tracking-[0.48px]">Price</p>
                 <div className="flex items-center gap-[2px]">
                   <p className="text-[var(--text-primary)] medium tracking-[0.48px] font-medium">
-                    1 {selectedRewards?.code || ''} = {priceRate} {selectedAlgoRewards?.code || ''}
+                    {chainId === 'voi-mainnet' ? 'Price data coming soon' : `1 ${selectedRewards?.code || ''} = ${priceRate} ${selectedAlgoRewards?.code || ''}`}
                   </p>
                 </div>
               </div>
@@ -1084,13 +1192,19 @@ const SwapMain = () => {
             <div className="mt-[13px] mb-[8px] flex items-center justify-center">
               <div className="flex items-center gap-[8px] px-[12px] py-[6px] bg-[var(--bg-secondary)] rounded-[8px]">
                 <div className={`w-[8px] h-[8px] rounded-full ${
+                  chainId === 'voi-mainnet' ? 'bg-red-500' :
                   currentProvider === 'folksrouter' ? 'bg-blue-500' :
-                  currentProvider === 'vestige' ? 'bg-green-500' : 'bg-purple-500'
+                  currentProvider === 'vestige' ? 'bg-green-500' :
+                  currentProvider === 'nomadex' ? 'bg-orange-500' :
+                  currentProvider === 'humble' ? 'bg-cyan-500' : 'bg-purple-500'
                 }`}></div>
                 <span className="text-[12px] text-[var(--text-secondary)] font-medium">
                   Powered by {
+                    chainId === 'voi-mainnet' ? 'Fry Networks' :
                     currentProvider === 'folksrouter' ? 'FolksRouter' :
-                    currentProvider === 'vestige' ? 'Vestige Labs' : 'Deflex'
+                    currentProvider === 'vestige' ? 'Vestige Labs' :
+                    currentProvider === 'nomadex' ? 'Nomadex' :
+                    currentProvider === 'humble' ? 'HumbleSwap' : 'Deflex'
                   }
                 </span>
               </div>
@@ -1104,17 +1218,21 @@ const SwapMain = () => {
                <div>
                  <h4 className="text-[var(--text-primary)] tracking-[0.96px] mt-[3px]">
                    {selectedRewards && selectedAlgoRewards ?
-                     `${selectedRewards.code}/${selectedAlgoRewards.code} Chart` :
-                     'Select Tokens'
+                     (chainId === 'voi-mainnet'
+                       ? `${selectedRewards.code}/${selectedAlgoRewards.code} Pool Info`
+                       : `${selectedRewards.code}/${selectedAlgoRewards.code} Chart`)
+                     : 'Select Tokens'
                    }
                  </h4>
                  <p className="text-text_clr text-sm mt-1">
-                   {selectedRewards && selectedAlgoRewards ?
-                     `Current Price: 1 ${selectedRewards.code} = ${priceRate} ${selectedAlgoRewards.code} (Vestige Labs)` :
-                     'Choose tokens to see price chart'
+                   {selectedRewards && selectedAlgoRewards
+                     ? chainId === 'voi-mainnet'
+                       ? `Pool data from Voi DEXes`
+                       : `Current Price: 1 ${selectedRewards.code} = ${priceRate} ${selectedAlgoRewards.code} (Vestige Labs)`
+                     : 'Choose tokens to see price data'
                    }
                  </p>
-                 {selectedRewards && selectedAlgoRewards && (
+                 {chainId !== 'voi-mainnet' && selectedRewards && selectedAlgoRewards && (
                    <div className="flex items-center gap-4 mt-2">
                      <div className="text-xs">
                        <span className="text-text_clr">Rate: </span>
@@ -1139,9 +1257,11 @@ const SwapMain = () => {
                fromToken={selectedRewards}
                toToken={selectedAlgoRewards}
                swapAmount={swapAmount}
+               chainId={chainId}
              />
            </div>
         </div>
+        )}
       </div>
 
             <ConnectWallet

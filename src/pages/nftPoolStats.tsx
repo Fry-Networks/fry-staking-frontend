@@ -11,11 +11,13 @@ import { lookupNfd } from '../services/nfdService'
 import axios from 'axios'
 import type { NftStakingPool, StakedNft } from '../types/nftStaking'
 import { Spin } from 'antd'
+import { useChain } from '../context/ChainContext'
 
 const REWARD_MODEL_MAP: Record<string, number> = { fixed_rate: 0, proportional: 1, apr: 2 }
 
 const NftPoolStats = () => {
   const [searchParams] = useSearchParams()
+  const { chainId } = useChain()
   const appId = Number(searchParams.get('appId'))
   const [pool, setPool] = useState<NftStakingPool | null>(null)
   const [stakedNfts, setStakedNfts] = useState<StakedNft[]>([])
@@ -172,13 +174,13 @@ const NftPoolStats = () => {
                     {pool.rewardModel === 0 && (
                       <div className="flex justify-between">
                         <span className="text-[var(--text-secondary)]">Rate Per Day</span>
-                        <span className="text-[var(--text-primary)]">{(pool.ratePerDay / 1_000_000).toLocaleString()} {pool.rewardTokenName}</span>
+                        <span className="text-[var(--text-primary)]">{pool.ratePerDay.toLocaleString()} {pool.rewardTokenName}</span>
                       </div>
                     )}
                     {pool.rewardModel === 1 && (
                       <div className="flex justify-between">
                         <span className="text-[var(--text-secondary)]">Total Reward Pool</span>
-                        <span className="text-[var(--text-primary)]">{(pool.totalRewardPool / 1_000_000).toLocaleString()} {pool.rewardTokenName}</span>
+                        <span className="text-[var(--text-primary)]">{pool.totalRewardPool.toLocaleString()} {pool.rewardTokenName}</span>
                       </div>
                     )}
                     {pool.rewardModel === 2 && (
@@ -209,7 +211,7 @@ const NftPoolStats = () => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[var(--text-secondary)]">Total Rewards Claimed</span>
-                      <span className="text-[var(--text-primary)]">{(pool.totalRewardsClaimed / 1_000_000).toLocaleString()} {pool.rewardTokenName}</span>
+                      <span className="text-[var(--text-primary)]">{pool.totalRewardsClaimed.toLocaleString()} {pool.rewardTokenName}</span>
                     </div>
                   </div>
                 </div>
@@ -224,7 +226,7 @@ const NftPoolStats = () => {
                       {stakedNfts.map((nft) => (
                         <div key={nft._id} className="bg-[var(--bg-secondary)] rounded-lg p-2 text-center">
                           <img
-                            src={nft.nftImage || `https://asa-list.tinyman.org/assets/${nft.asaId}/icon.png`}
+                            src={nft.nftImage || (chainId === 'voi-mainnet' ? '' : `https://asa-list.tinyman.org/assets/${nft.asaId}/icon.png`)}
                             alt={nft.nftName}
                             className="w-full aspect-square object-cover rounded-md mb-1"
                             onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U1RTlFQSIvPjwvc3ZnPg==' }}

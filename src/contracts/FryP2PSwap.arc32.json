@@ -1,21 +1,11 @@
 {
     "hints": {
-        "init(address,uint64)void": {
+        "init(address,uint64,uint64,uint64)void": {
             "call_config": {
                 "no_op": "CREATE"
             }
         },
         "opt_in_asset(uint64,pay)void": {
-            "call_config": {
-                "no_op": "CALL"
-            }
-        },
-        "create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64": {
-            "call_config": {
-                "no_op": "CALL"
-            }
-        },
-        "create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64": {
             "call_config": {
                 "no_op": "CALL"
             }
@@ -66,6 +56,16 @@
             }
         },
         "withdraw_excess_mbr(uint64)void": {
+            "call_config": {
+                "no_op": "CALL"
+            }
+        },
+        "create_offer_asa(axfer,pay,uint64,address,uint64)uint64": {
+            "call_config": {
+                "no_op": "CALL"
+            }
+        },
+        "create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64": {
             "call_config": {
                 "no_op": "CALL"
             }
@@ -142,6 +142,14 @@
                     {
                         "type": "uint64",
                         "name": "fee_bps"
+                    },
+                    {
+                        "type": "uint64",
+                        "name": "offer_asset_id"
+                    },
+                    {
+                        "type": "uint64",
+                        "name": "request_asset_id"
                     }
                 ],
                 "readonly": false,
@@ -180,10 +188,6 @@
                     },
                     {
                         "type": "uint64",
-                        "name": "request_asset_id"
-                    },
-                    {
-                        "type": "uint64",
                         "name": "request_amount"
                     },
                     {
@@ -215,10 +219,6 @@
                     {
                         "type": "uint64",
                         "name": "offer_amount"
-                    },
-                    {
-                        "type": "uint64",
-                        "name": "request_asset_id"
                     },
                     {
                         "type": "uint64",

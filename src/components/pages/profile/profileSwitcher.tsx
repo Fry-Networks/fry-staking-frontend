@@ -5,9 +5,14 @@ import PStakebanner from './stake/Pstakebanner'
 import PstakeTable from './stake/PstakeTable'
 import PPredictbanner from './predict/PPredictbanner'
 import PPredictTable from './predict/PPredictTable'
+import PortfolioBanner from './portfolio/PortfolioBanner'
+import PortfolioTable from './portfolio/PortfolioTable'
+import type { PortfolioToken } from './portfolio/PortfolioTable'
 
 const ProfileSwitcher = () => {
-  const [activeTab, setActiveTab] = useState<'stake' | 'farm' | 'predict'>('stake')
+  const [activeTab, setActiveTab] = useState<'portfolio' | 'stake' | 'farm' | 'predict'>('portfolio')
+  const [portfolioTokens, setPortfolioTokens] = useState<PortfolioToken[]>([])
+  const [portfolioLoading, setPortfolioLoading] = useState(true)
 
   return (
     <>
@@ -15,6 +20,15 @@ const ProfileSwitcher = () => {
         <div className="max-xxxl:max-w-[95%] w-full max-w-[80%] m-auto flex flex-col items-center gap-[41px] max-md:gap-[20px]">
           {/* Switcher tab */}
           <div className="switcher flex justify-center items-center gap-[3px] w-fit p-[3px] bg-white rounded-[12px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]">
+            {/* Portfolio Tab */}
+            <p
+              onClick={() => setActiveTab('portfolio')}
+              className={`${
+                activeTab === 'portfolio' ? 'text-white linearGradient shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]' : 'text-black'
+              } flex items-center justify-center text-center cursor-pointer tracking-[0.09px] rounded-[10px] w-[117px] h-[48px]`}
+            >
+              Portfolio
+            </p>
             {/* Stake Tab */}
             <p
               onClick={() => setActiveTab('stake')}
@@ -45,6 +59,17 @@ const ProfileSwitcher = () => {
           </div>
           {/* Rendered Component div */}
           <div className="flex flex-col gap-[56px] w-full max-md:gap-[20px]">
+            {activeTab === 'portfolio' && (
+              <>
+                <PortfolioBanner tokens={portfolioTokens} isLoading={portfolioLoading} />
+                <PortfolioTable
+                  onTokensLoaded={(tokens) => {
+                    setPortfolioTokens(tokens)
+                    setPortfolioLoading(false)
+                  }}
+                />
+              </>
+            )}
             {activeTab === 'stake' && (
               <>
                 <PStakebanner />

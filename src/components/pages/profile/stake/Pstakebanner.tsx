@@ -2,17 +2,19 @@ import { useEffect, useState } from 'react'
 import { useMultiChainWallet } from '../../../../hooks/useMultiChainWallet'
 import axios from 'axios'
 import { usePreferences } from '../../../../contexts/PreferencesContext'
-import { fetchPriceMap } from '../../../../services/PriceService'
+import { fetchChainPriceMap } from '../../../../services/PriceService'
+import { useChain } from '../../../../context/ChainContext'
 
 const PStakebanner = () => {
   const { activeAddress } = useMultiChainWallet()
+  const { chainId } = useChain()
   const { isSimpleMode } = usePreferences()
   const [stats, setStats] = useState({ poolsCreated: 0, totalTvl: 0, myStakes: 0, myRewards: 0 })
   const api_base_url = import.meta.env.VITE_API_BASE_URL
 
   useEffect(() => {
     if (activeAddress) fetchStats()
-  }, [activeAddress])
+  }, [activeAddress, chainId])
 
   const fetchStats = async () => {
     try {
@@ -36,7 +38,7 @@ const PStakebanner = () => {
       try {
         const asaIds = [...new Set(userPositions.map((p: any) => Number(p.stakeTokens)).filter((id: number) => !isNaN(id)))] as number[]
         if (asaIds.length > 0) {
-          const priceMap = await fetchPriceMap(asaIds)
+          const priceMap = await fetchChainPriceMap(asaIds, chainId)
           // Group withdrawals by poolId (tokens field is in standard units)
           const withdrawnByPool: Record<string, number> = {}
           withdrawals.forEach((w: any) => {

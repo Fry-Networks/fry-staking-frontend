@@ -20,6 +20,19 @@ export interface P2PMarket {
   deployTxId?: string;
   createdAt: string;
   updatedAt: string;
+  openOfferCount?: number;
+}
+
+export interface P2PMarketStats {
+  appId: number;
+  openOffers: number;
+  totalOffers: number;
+  totalTrades: number;
+  totalOfferVolume: string;
+  totalRequestVolume: string;
+  totalFees: string;
+  firstTrade: string | null;
+  lastTrade: string | null;
 }
 
 export interface P2POffer {

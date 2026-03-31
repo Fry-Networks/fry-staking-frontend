@@ -6,7 +6,7 @@ import dayjs from 'dayjs'
 import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
 import { useChain } from '../../context/ChainContext'
 import { useAuth } from '../../hooks/useAuth'
-import { createNftPool, depositRewards, depositRewardsAlgo, optInContractToNft } from '../../nft_staking_func'
+import { createNftPool, createArc72NftPool, depositRewards, depositRewardsAlgo, optInContractToNft } from '../../nft_staking_func'
 import { addNftPool } from '../../services/nftStakingApi'
 import { fetchFeeConfig, calculateFeeSimple, FEE_RECIPIENT } from '../../services/FeeService'
 import { getAssetBalance } from '../../services/ZapService'
@@ -95,6 +95,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
   const [rewardModel, setRewardModel] = useState(0)
 
   // Step 2: Parameters
+  const [rewardTokenType, setRewardTokenType] = useState(1) // 0=native, 1=ASA, 2=ARC-200
   const [rewardToken, setRewardToken] = useState<DiscoveredToken | null>(null)
   const [ratePerDay, setRatePerDay] = useState('')
   const [totalRewardPool, setTotalRewardPool] = useState('')
@@ -257,6 +258,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
     setCollectionCreator('')
     setWhitelistInput('')
     setRewardModel(0)
+    setRewardTokenType(1)
     setRewardToken(null)
     setRatePerDay('')
     setTotalRewardPool('')
@@ -373,25 +375,50 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
 
       // Deploy contract
       setDeployStatus('Deploying contract...')
-      const appId = await createNftPool(
-        rewardToken.id,
-        rewardModel,
-        collectionMode,
-        collectionCreator || activeAddress,
-        Number(nftValue) * 1_000_000 || 0,
-        Number(ratePerDay) * 1_000_000 || 0,
-        Number(totalRewardPool) * 1_000_000 || 0,
-        Number(aprRate) * 100 || 0,
-        Number(valuePerNft) * 1_000_000 || 0,
-        poolEndTime,
-        lockPeriodSeconds,
-        FEE_RECIPIENT,
-        PLATFORM_DEPOSIT_FEE_BPS,
-        PLATFORM_WITHDRAW_FEE_BPS,
-        PLATFORM_CLAIM_FEE_BPS,
-        activeAddress,
-        signer,
-      )
+      let appId: number
+      if (chainId === 'voi-mainnet') {
+        appId = await createArc72NftPool(
+          rewardToken.id,
+          rewardTokenType,
+          rewardModel,
+          collectionMode,
+          Number(collectionCreator) || 0,
+          Number(nftValue) * 1_000_000 || 0,
+          Number(ratePerDay) * 1_000_000 || 0,
+          Number(totalRewardPool) * 1_000_000 || 0,
+          Number(aprRate) * 100 || 0,
+          Number(valuePerNft) * 1_000_000 || 0,
+          poolEndTime,
+          lockPeriodSeconds,
+          FEE_RECIPIENT,
+          PLATFORM_DEPOSIT_FEE_BPS,
+          PLATFORM_WITHDRAW_FEE_BPS,
+          PLATFORM_CLAIM_FEE_BPS,
+          activeAddress,
+          signer,
+          chainAlgodConfig,
+        )
+      } else {
+        appId = await createNftPool(
+          rewardToken.id,
+          rewardModel,
+          collectionMode,
+          collectionCreator || activeAddress,
+          Number(nftValue) * 1_000_000 || 0,
+          Number(ratePerDay) * 1_000_000 || 0,
+          Number(totalRewardPool) * 1_000_000 || 0,
+          Number(aprRate) * 100 || 0,
+          Number(valuePerNft) * 1_000_000 || 0,
+          poolEndTime,
+          lockPeriodSeconds,
+          FEE_RECIPIENT,
+          PLATFORM_DEPOSIT_FEE_BPS,
+          PLATFORM_WITHDRAW_FEE_BPS,
+          PLATFORM_CLAIM_FEE_BPS,
+          activeAddress,
+          signer,
+        )
+      }
 
       if (!appId) throw new Error('App ID not returned from contract.')
 
@@ -420,8 +447,8 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
         whitelistedAsaIds,
         rewardTokenId: rewardToken.id,
         rewardModel: REWARD_MODEL_MAP[rewardModel],
-        ratePerDay: Number(ratePerDay) * 1_000_000 || 0,
-        totalRewardPool: Number(totalRewardPool) * 1_000_000 || 0,
+        ratePerDay: Number(ratePerDay) || 0,
+        totalRewardPool: Number(totalRewardPool) || 0,
         aprRate: Number(aprRate) * 100 || 0,
         valuePerNft: Number(valuePerNft) * 1_000_000 || 0,
         nftValueInRewardToken: Number(nftValue) * 1_000_000 || 0,
@@ -431,6 +458,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
         depositFeeBps: PLATFORM_DEPOSIT_FEE_BPS,
         withdrawFeeBps: PLATFORM_WITHDRAW_FEE_BPS,
         claimFeeBps: PLATFORM_CLAIM_FEE_BPS,
+        ...(chainId === 'voi-mainnet' ? { contractType: 'arc72' } : {}),
       })
 
       toast.success('NFT staking pool created successfully!')
@@ -636,6 +664,17 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
         return (
           <div className="flex flex-col gap-4">
             <p className="text-[var(--text-secondary)] text-sm">Configure reward parameters for your pool.</p>
+
+            {chainId === 'voi-mainnet' && (
+              <div className="flex flex-col gap-[10px]">
+                <p className="large text-[var(--text-primary)]">Reward Token Type</p>
+                <Radio.Group value={rewardTokenType} onChange={(e) => setRewardTokenType(e.target.value)}>
+                  <Radio value={0}>Native (VOI)</Radio>
+                  <Radio value={1}>ASA</Radio>
+                  <Radio value={2}>ARC-200</Radio>
+                </Radio.Group>
+              </div>
+            )}
 
             <TokenSelector
               label="Reward Token"

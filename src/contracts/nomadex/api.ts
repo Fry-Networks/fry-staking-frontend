@@ -11,21 +11,21 @@ let tokens: NomadexToken[] = [];
 let lastFetch = 0;
 
 function getApi(): AxiosInstance {
-  if (!api) api = axios.create({ baseURL: ANALYTICS_BASE, timeout: 15000 });
+  if (!api) api = axios.create({ baseURL: ANALYTICS_BASE, timeout: 8000 });
   return api;
 }
 
-/** Fetch tokens and pools from Nomadex analytics API, with 30s cache */
+/** Fetch tokens and pools from Nomadex analytics API, with 5 min cache */
 export async function loadMarketData(): Promise<void> {
-  if (Date.now() - lastFetch < CACHE_TTL_MS && pools.length > 0) return;
+  if (Date.now() - lastFetch < CACHE_TTL_MS && tokens.length > 0) return;
 
-  const [tokensRes, poolsRes] = await Promise.all([
+  const results = await Promise.allSettled([
     getApi().get<NomadexToken[]>('/tokens'),
     getApi().get<NomadexPool[]>('/pools'),
   ]);
 
-  tokens = tokensRes.data;
-  pools = poolsRes.data.filter((p) => p.online);
+  if (results[0].status === 'fulfilled') tokens = results[0].value.data;
+  if (results[1].status === 'fulfilled') pools = results[1].value.data.filter((p) => p.online);
   lastFetch = Date.now();
 }
 

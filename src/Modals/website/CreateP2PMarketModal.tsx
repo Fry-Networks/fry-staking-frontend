@@ -66,7 +66,9 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
 
       const { appId, appAddress, txId } = await deployP2PMarket(
         offerToken.id, requestToken.id, P2P_DEFAULT_FEE_BPS,
-        activeAddress, signer, chainId, algodConfig,
+        activeAddress, signer, chainId,
+        activeChain.feeRecipient || undefined,
+        algodConfig,
       )
 
       // Register with backend
@@ -145,7 +147,7 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--text-secondary)]">Taker fee</span>
-              <span className="text-[var(--text-primary)]">{P2P_DEFAULT_FEE_BPS / 100}% (you collect all fees)</span>
+              <span className="text-[var(--text-primary)]">{P2P_DEFAULT_FEE_BPS / 100}% (collected by Fry Networks)</span>
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--text-secondary)]">Deploy cost</span>
@@ -155,7 +157,7 @@ const CreateP2PMarketModal: React.FC<CreateP2PMarketModalProps> = ({
           <div className="p-3 rounded border border-[#d4a017] bg-[#d4a01715] text-sm text-[var(--text-primary)]">
             <Icon icon="mdi:alert" className="inline mr-1 text-[#d4a017]" width={16} />
             The contract is immutable — the asset pair and fee cannot be changed after deployment.
-            You will be the admin and fee recipient of this market.
+            The contract is owned by you but fees are directed to Fry Networks.
           </div>
         </div>
       ),

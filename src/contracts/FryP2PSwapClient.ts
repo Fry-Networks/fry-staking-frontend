@@ -41,12 +41,12 @@ export const APP_SPEC: AppSpec = {
         "no_op": "CALL"
       }
     },
-    "create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64": {
+    "create_offer_asa(axfer,pay,uint64,address,uint64)uint64": {
       "call_config": {
         "no_op": "CALL"
       }
     },
-    "create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64": {
+    "create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64": {
       "call_config": {
         "no_op": "CALL"
       }
@@ -211,10 +211,6 @@ export const APP_SPEC: AppSpec = {
           },
           {
             "type": "uint64",
-            "name": "request_asset_id"
-          },
-          {
-            "type": "uint64",
             "name": "request_amount"
           },
           {
@@ -246,10 +242,6 @@ export const APP_SPEC: AppSpec = {
           {
             "type": "uint64",
             "name": "offer_amount"
-          },
-          {
-            "type": "uint64",
-            "name": "request_asset_id"
           },
           {
             "type": "uint64",
@@ -500,29 +492,27 @@ export type FryP2PSwap = {
       argsTuple: [asset: bigint | number, mbrPayment: TransactionToSign | Transaction | Promise<SendTransactionResult>]
       returns: void
     }>
-    & Record<'create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64' | 'create_offer_asa', {
+    & Record<'create_offer_asa(axfer,pay,uint64,address,uint64)uint64' | 'create_offer_asa', {
       argsObj: {
         assetTransfer: TransactionToSign | Transaction | Promise<SendTransactionResult>
         boxPayment: TransactionToSign | Transaction | Promise<SendTransactionResult>
-        requestAssetId: bigint | number
         requestAmount: bigint | number
         counterparty: string
         expiry: bigint | number
       }
-      argsTuple: [assetTransfer: TransactionToSign | Transaction | Promise<SendTransactionResult>, boxPayment: TransactionToSign | Transaction | Promise<SendTransactionResult>, requestAssetId: bigint | number, requestAmount: bigint | number, counterparty: string, expiry: bigint | number]
+      argsTuple: [assetTransfer: TransactionToSign | Transaction | Promise<SendTransactionResult>, boxPayment: TransactionToSign | Transaction | Promise<SendTransactionResult>, requestAmount: bigint | number, counterparty: string, expiry: bigint | number]
       returns: bigint
     }>
-    & Record<'create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64' | 'create_offer_algo', {
+    & Record<'create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64' | 'create_offer_algo', {
       argsObj: {
         offerPayment: TransactionToSign | Transaction | Promise<SendTransactionResult>
         boxPayment: TransactionToSign | Transaction | Promise<SendTransactionResult>
         offerAmount: bigint | number
-        requestAssetId: bigint | number
         requestAmount: bigint | number
         counterparty: string
         expiry: bigint | number
       }
-      argsTuple: [offerPayment: TransactionToSign | Transaction | Promise<SendTransactionResult>, boxPayment: TransactionToSign | Transaction | Promise<SendTransactionResult>, offerAmount: bigint | number, requestAssetId: bigint | number, requestAmount: bigint | number, counterparty: string, expiry: bigint | number]
+      argsTuple: [offerPayment: TransactionToSign | Transaction | Promise<SendTransactionResult>, boxPayment: TransactionToSign | Transaction | Promise<SendTransactionResult>, offerAmount: bigint | number, requestAmount: bigint | number, counterparty: string, expiry: bigint | number]
       returns: bigint
     }>
     & Record<'accept_offer_asa(uint64,axfer)void' | 'accept_offer_asa', {
@@ -701,7 +691,7 @@ any offer involving this ASA can be created or accepted.
     }
   }
   /**
-   * Constructs a no op call for the create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64 ABI method
+   * Constructs a no op call for the create_offer_asa(axfer,pay,uint64,address,uint64)uint64 ABI method
    *
    * Create a swap offer where the maker escrows an ASA.
    *
@@ -709,15 +699,15 @@ any offer involving this ASA can be created or accepted.
    * @param params Any additional parameters for the call
    * @returns A TypedCallParams object for the call
    */
-  static createOfferAsa(args: MethodArgs<'create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64'>, params: AppClientCallCoreParams & CoreAppCallArgs) {
+  static createOfferAsa(args: MethodArgs<'create_offer_asa(axfer,pay,uint64,address,uint64)uint64'>, params: AppClientCallCoreParams & CoreAppCallArgs) {
     return {
-      method: 'create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64' as const,
-      methodArgs: Array.isArray(args) ? args : [args.assetTransfer, args.boxPayment, args.requestAssetId, args.requestAmount, args.counterparty, args.expiry],
+      method: 'create_offer_asa(axfer,pay,uint64,address,uint64)uint64' as const,
+      methodArgs: Array.isArray(args) ? args : [args.assetTransfer, args.boxPayment, args.requestAmount, args.counterparty, args.expiry],
       ...params,
     }
   }
   /**
-   * Constructs a no op call for the create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64 ABI method
+   * Constructs a no op call for the create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64 ABI method
    *
    * Create a swap offer where the maker escrows native ALGO/VOI.
    *
@@ -725,10 +715,10 @@ any offer involving this ASA can be created or accepted.
    * @param params Any additional parameters for the call
    * @returns A TypedCallParams object for the call
    */
-  static createOfferAlgo(args: MethodArgs<'create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64'>, params: AppClientCallCoreParams & CoreAppCallArgs) {
+  static createOfferAlgo(args: MethodArgs<'create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64'>, params: AppClientCallCoreParams & CoreAppCallArgs) {
     return {
-      method: 'create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64' as const,
-      methodArgs: Array.isArray(args) ? args : [args.offerPayment, args.boxPayment, args.offerAmount, args.requestAssetId, args.requestAmount, args.counterparty, args.expiry],
+      method: 'create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64' as const,
+      methodArgs: Array.isArray(args) ? args : [args.offerPayment, args.boxPayment, args.offerAmount, args.requestAmount, args.counterparty, args.expiry],
       ...params,
     }
   }
@@ -999,7 +989,7 @@ any offer involving this ASA can be created or accepted.
   }
 
   /**
-   * Calls the create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64 ABI method.
+   * Calls the create_offer_asa(axfer,pay,uint64,address,uint64)uint64 ABI method.
    *
    * Create a swap offer where the maker escrows an ASA.
    *
@@ -1007,12 +997,12 @@ any offer involving this ASA can be created or accepted.
    * @param params Any additional parameters for the call
    * @returns The result of the call
    */
-  public createOfferAsa(args: MethodArgs<'create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64'>, params: AppClientCallCoreParams & CoreAppCallArgs = {}) {
+  public createOfferAsa(args: MethodArgs<'create_offer_asa(axfer,pay,uint64,address,uint64)uint64'>, params: AppClientCallCoreParams & CoreAppCallArgs = {}) {
     return this.call(FryP2PSwapCallFactory.createOfferAsa(args, params))
   }
 
   /**
-   * Calls the create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64 ABI method.
+   * Calls the create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64 ABI method.
    *
    * Create a swap offer where the maker escrows native ALGO/VOI.
    *
@@ -1020,7 +1010,7 @@ any offer involving this ASA can be created or accepted.
    * @param params Any additional parameters for the call
    * @returns The result of the call
    */
-  public createOfferAlgo(args: MethodArgs<'create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64'>, params: AppClientCallCoreParams & CoreAppCallArgs = {}) {
+  public createOfferAlgo(args: MethodArgs<'create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64'>, params: AppClientCallCoreParams & CoreAppCallArgs = {}) {
     return this.call(FryP2PSwapCallFactory.createOfferAlgo(args, params))
   }
 
@@ -1235,12 +1225,12 @@ contract min balance + any escrowed native tokens.
         resultMappers.push(undefined)
         return this
       },
-      createOfferAsa(args: MethodArgs<'create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64'>, params?: AppClientComposeCallCoreParams & CoreAppCallArgs) {
+      createOfferAsa(args: MethodArgs<'create_offer_asa(axfer,pay,uint64,address,uint64)uint64'>, params?: AppClientComposeCallCoreParams & CoreAppCallArgs) {
         promiseChain = promiseChain.then(() => client.createOfferAsa(args, {...params, sendParams: {...params?.sendParams, skipSending: true, atc}}))
         resultMappers.push(undefined)
         return this
       },
-      createOfferAlgo(args: MethodArgs<'create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64'>, params?: AppClientComposeCallCoreParams & CoreAppCallArgs) {
+      createOfferAlgo(args: MethodArgs<'create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64'>, params?: AppClientComposeCallCoreParams & CoreAppCallArgs) {
         promiseChain = promiseChain.then(() => client.createOfferAlgo(args, {...params, sendParams: {...params?.sendParams, skipSending: true, atc}}))
         resultMappers.push(undefined)
         return this
@@ -1341,7 +1331,7 @@ any offer involving this ASA can be created or accepted.
   optInAsset(args: MethodArgs<'opt_in_asset(uint64,pay)void'>, params?: AppClientComposeCallCoreParams & CoreAppCallArgs): FryP2PSwapComposer<[...TReturns, MethodReturn<'opt_in_asset(uint64,pay)void'>]>
 
   /**
-   * Calls the create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64 ABI method.
+   * Calls the create_offer_asa(axfer,pay,uint64,address,uint64)uint64 ABI method.
    *
    * Create a swap offer where the maker escrows an ASA.
    *
@@ -1349,10 +1339,10 @@ any offer involving this ASA can be created or accepted.
    * @param params Any additional parameters for the call
    * @returns The typed transaction composer so you can fluently chain multiple calls or call execute to execute all queued up transactions
    */
-  createOfferAsa(args: MethodArgs<'create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64'>, params?: AppClientComposeCallCoreParams & CoreAppCallArgs): FryP2PSwapComposer<[...TReturns, MethodReturn<'create_offer_asa(axfer,pay,uint64,uint64,address,uint64)uint64'>]>
+  createOfferAsa(args: MethodArgs<'create_offer_asa(axfer,pay,uint64,address,uint64)uint64'>, params?: AppClientComposeCallCoreParams & CoreAppCallArgs): FryP2PSwapComposer<[...TReturns, MethodReturn<'create_offer_asa(axfer,pay,uint64,address,uint64)uint64'>]>
 
   /**
-   * Calls the create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64 ABI method.
+   * Calls the create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64 ABI method.
    *
    * Create a swap offer where the maker escrows native ALGO/VOI.
    *
@@ -1360,7 +1350,7 @@ any offer involving this ASA can be created or accepted.
    * @param params Any additional parameters for the call
    * @returns The typed transaction composer so you can fluently chain multiple calls or call execute to execute all queued up transactions
    */
-  createOfferAlgo(args: MethodArgs<'create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64'>, params?: AppClientComposeCallCoreParams & CoreAppCallArgs): FryP2PSwapComposer<[...TReturns, MethodReturn<'create_offer_algo(pay,pay,uint64,uint64,uint64,address,uint64)uint64'>]>
+  createOfferAlgo(args: MethodArgs<'create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64'>, params?: AppClientComposeCallCoreParams & CoreAppCallArgs): FryP2PSwapComposer<[...TReturns, MethodReturn<'create_offer_algo(pay,pay,uint64,uint64,address,uint64)uint64'>]>
 
   /**
    * Calls the accept_offer_asa(uint64,axfer)void ABI method.

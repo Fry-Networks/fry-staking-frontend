@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { Tag } from 'antd'
 import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 import type { P2PMarket } from '../../../types/p2pSwap'
@@ -6,7 +7,8 @@ import type { P2PMarketConfig } from '../../../config/p2pSwapConfig'
 interface P2PMarketCardProps {
   market: P2PMarket | P2PMarketConfig;
   openOfferCount: number;
-  onClick: () => void;
+  onClick?: () => void;
+  linkTo?: string;
   isSelected: boolean;
 }
 
@@ -15,7 +17,7 @@ function formatAddress(addr: string): string {
   return `${addr.slice(0, 4)}...${addr.slice(-4)}`
 }
 
-const P2PMarketCard: React.FC<P2PMarketCardProps> = ({ market, openOfferCount, onClick, isSelected }) => {
+const P2PMarketCard: React.FC<P2PMarketCardProps> = ({ market, openOfferCount, onClick, linkTo, isSelected }) => {
   const { activeAddress } = useMultiChainWallet()
 
   const offerSymbol = 'offerAssetSymbol' in market ? market.offerAssetSymbol : ''
@@ -24,15 +26,14 @@ const P2PMarketCard: React.FC<P2PMarketCardProps> = ({ market, openOfferCount, o
   const creator = 'creator' in market ? (market as P2PMarket).creator : ''
   const isYours = creator && activeAddress && creator === activeAddress
 
-  return (
-    <div
-      onClick={onClick}
-      className={`cursor-pointer p-4 rounded-lg border transition-all ${
-        isSelected
-          ? 'border-[#DE0308] bg-[#DE030810]'
-          : 'border-[var(--border-color)] bg-[var(--bg-card)] hover:border-[var(--text-secondary)]'
-      }`}
-    >
+  const cardClasses = `cursor-pointer p-4 rounded-lg border transition-all ${
+    isSelected
+      ? 'border-[#DE0308] bg-[#DE030810]'
+      : 'border-[var(--border-color)] bg-[var(--bg-card)] hover:border-[#DE0308] hover:bg-[#DE030808] hover:shadow-md'
+  }`
+
+  const content = (
+    <>
       <div className="flex items-center gap-3 mb-2">
         <span className="font-bold text-lg text-[var(--text-primary)] font-apex">
           {offerSymbol}/{requestSymbol}
@@ -48,6 +49,20 @@ const P2PMarketCard: React.FC<P2PMarketCardProps> = ({ market, openOfferCount, o
           Creator: {formatAddress(creator)}
         </div>
       )}
+    </>
+  )
+
+  if (linkTo) {
+    return (
+      <Link to={linkTo} className={`${cardClasses} block no-underline`}>
+        {content}
+      </Link>
+    )
+  }
+
+  return (
+    <div onClick={onClick} className={cardClasses}>
+      {content}
     </div>
   )
 }

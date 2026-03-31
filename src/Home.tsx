@@ -31,6 +31,7 @@ import DeviceStake from './pages/deviceStake'
 import DevicePoolStats from './pages/devicePoolStats'
 import DeviceDashboard from './pages/deviceDashboard'
 import P2PSwap from './pages/p2pSwap'
+import P2PMarketDetail from './pages/p2pMarketDetail'
 
 const AppLayout = () => {
   return (
@@ -48,6 +49,10 @@ const appRouter = createBrowserRouter([
   {
     path: '/p2p',
     element: <P2PSwap />,
+  },
+  {
+    path: '/p2p/:appId',
+    element: <P2PMarketDetail />,
   },
   {
     path: '/stake',

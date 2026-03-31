@@ -49,7 +49,7 @@ const FarmTable: React.FC = () => {
           imageMap[token.id.toString()] = dbImage;
         } else {
           // Use Tinyman as default if database image is invalid
-          imageMap[token.id.toString()] = `https://asa-list.tinyman.org/assets/${token.id}/icon.png`;
+          imageMap[token.id.toString()] = chainId === 'voi-mainnet' ? `https://asset-verification.nautilus.sh/icons/${token.id}.png` : `https://asa-list.tinyman.org/assets/${token.id}/icon.png`;
         }
       });
 
@@ -152,13 +152,13 @@ const FarmTable: React.FC = () => {
 
           const tokenAImage = (tokenADbImage && isValidImageUrl(tokenADbImage))
             ? tokenADbImage
-            : `https://asa-list.tinyman.org/assets/${tokenAId}/icon.png`;
+            : (chainId === 'voi-mainnet' ? `https://asset-verification.nautilus.sh/icons/${tokenAId}.png` : `https://asa-list.tinyman.org/assets/${tokenAId}/icon.png`);
           const tokenBImage = (tokenBDbImage && isValidImageUrl(tokenBDbImage))
             ? tokenBDbImage
-            : `https://asa-list.tinyman.org/assets/${tokenBId}/icon.png`;
+            : (chainId === 'voi-mainnet' ? `https://asset-verification.nautilus.sh/icons/${tokenBId}.png` : `https://asa-list.tinyman.org/assets/${tokenBId}/icon.png`);
           const rewardTokenImage = (rewardTokenDbImage && isValidImageUrl(rewardTokenDbImage))
             ? rewardTokenDbImage
-            : `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`;
+            : (chainId === 'voi-mainnet' ? `https://asset-verification.nautilus.sh/icons/${rewardTokenId}.png` : `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`);
 
           return {
             key: farm._id || index,
@@ -182,10 +182,10 @@ const FarmTable: React.FC = () => {
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       const hasTriedFallback = target.dataset.fallbackAttempted === 'true';
-                      if (!hasTriedFallback && !target.src.includes('tinyman.org')) {
+                      if (!hasTriedFallback && !target.src.includes('tinyman.org') && chainId !== 'voi-mainnet') {
                         target.dataset.fallbackAttempted = 'true';
                         target.src = `https://asa-list.tinyman.org/assets/${tokenAId}/icon.png`;
-                      } else if (hasTriedFallback || target.src.includes('tinyman.org')) {
+                      } else {
                         target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U1RTlFQSIvPjxwYXRoIGQ9Ik0yMCAxMkMxNS41ODIyIDEyIDEyIDE1LjU4MjIgMTIgMjBDMTIgMjQuNDE3OCAxNS41ODIyIDI4IDIwIDI4QzI0LjQxNzggMjggMjggMjQuNDE3OCAyOCAyMEMyOCAxNS41ODIyIDI0LjQxNzggMTIgMjAgMTJaIiBmaWxsPSIjOUI5Q0E1Ii8+PC9zdmc+';
                       }
                     }}
@@ -199,10 +199,10 @@ const FarmTable: React.FC = () => {
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       const hasTriedFallback = target.dataset.fallbackAttempted === 'true';
-                      if (!hasTriedFallback && !target.src.includes('tinyman.org')) {
+                      if (!hasTriedFallback && !target.src.includes('tinyman.org') && chainId !== 'voi-mainnet') {
                         target.dataset.fallbackAttempted = 'true';
                         target.src = `https://asa-list.tinyman.org/assets/${tokenBId}/icon.png`;
-                      } else if (hasTriedFallback || target.src.includes('tinyman.org')) {
+                      } else {
                         target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U1RTlFQSIvPjxwYXRoIGQ9Ik0yMCAxMkMxNS41ODIyIDEyIDEyIDE1LjU4MjIgMTIgMjBDMTIgMjQuNDE3OCAxNS41ODIyIDI4IDIwIDI4QzI0LjQxNzggMjggMjggMjQuNDE3OCAyOCAyMEMyOCAxNS41ODIyIDI0LjQxNzggMTIgMjAgMTJaIiBmaWxsPSIjOUI5Q0E1Ii8+PC9zdmc+';
                       }
                     }}
@@ -224,10 +224,10 @@ const FarmTable: React.FC = () => {
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
                         const hasTriedFallback = target.dataset.fallbackAttempted === 'true';
-                        if (!hasTriedFallback && !target.src.includes('tinyman.org')) {
+                        if (!hasTriedFallback && !target.src.includes('tinyman.org') && chainId !== 'voi-mainnet') {
                           target.dataset.fallbackAttempted = 'true';
                           target.src = `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`;
-                        } else if (hasTriedFallback || target.src.includes('tinyman.org')) {
+                        } else {
                           target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxMCIgY3k9IjEwIiByPSIxMCIgZmlsbD0iI0U1RTlFQSIvPjxwYXRoIGQ9Ik0xMCA2QzguODk1NDMgNiA4IDYuODk1NDMgOCA4QzggOS4xMDQ1NyA4Ljg5NTQzIDEwIDEwIDEwQzExLjEwNDYgMTAgMTIgOS4xMDQ1NyAxMiA4QzEyIDYuODk1NDMgMTEuMTA0NiA2IDEwIDZaIiBmaWxsPSIjOUI5Q0E1Ii8+PC9zdmc+';
                         }
                       }}

@@ -29,6 +29,7 @@ const Farmbanner: React.FC<FarmBannerProps> = ({ wallet }) => {
   useEffect(() => {
     const fetchStats = async () => {
       if (!wallet) return
+      if (chainId === 'voi-mainnet') { setLoading(false); return; }
 
       try {
         const api = import.meta.env.VITE_API_BASE_URL

@@ -17,8 +17,8 @@ export interface P2PMarketConfig {
 
 export const P2P_MARKETS: Record<ChainId, P2PMarketConfig> = {
   'algorand-mainnet': {
-    appId: 3494825276,
-    appAddress: 'ZBRTLX2KCQLRSY6JVRPQFSCBPEQOW5Q6H3F6QA5M7Z3ASKPCEDUPMJBK6I',
+    appId: 3495625484,
+    appAddress: 'Z3U6LMNRONCOSBRB2JWF5RXDW7AP4J75YARQ2XOIHYERHPJNEFDUIOPSMQ',
     offerAssetId: 2485314946,
     offerAssetName: 'Fry',
     offerAssetSymbol: 'FRY',
@@ -31,8 +31,8 @@ export const P2P_MARKETS: Record<ChainId, P2PMarketConfig> = {
     feeRecipient: 'E2F2LT2INE75DBOYHQXTCTOP2PAP5MHAXQRXTTCCXFKHQTVG36DJONBQZE',
   },
   'voi-mainnet': {
-    appId: 48999768,
-    appAddress: '7MRYXYHM77NFXZURNGIP7JD352VR6KVSIDJGCBIVU2ZIZ3YZCKDBOONYZ4',
+    appId: 49001043,
+    appAddress: 'IS3U77ZF3WZIRP7KXRU6WLR5F7ZITR6CPDYLLNW2AYMT5BGLJLXXURLOJU',
     offerAssetId: 48968653,
     offerAssetName: 'vFry',
     offerAssetSymbol: 'vFRY',
