@@ -104,10 +104,11 @@ const OfferTable: React.FC<OfferTableProps> = ({
       render: (_, record) => {
         const isMaker = record.makerWallet === activeAddress
         const isOpen = record.status === 'open'
+        const isExpired = record.expiresAt && new Date(record.expiresAt) <= new Date()
 
         return (
           <div className="flex items-center gap-2">
-            {isOpen && !isMaker && activeAddress && (
+            {isOpen && !isMaker && activeAddress && !isExpired && (
               <button
                 onClick={() => onAccept(record)}
                 className="px-3 py-1 rounded bg-[#08A700] text-white text-sm font-bold hover:opacity-80 transition-opacity"

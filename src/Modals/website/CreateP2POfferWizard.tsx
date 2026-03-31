@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Modal, Steps, InputNumber, Select, Input, Switch } from 'antd'
+import { DatePicker, Modal, Steps, InputNumber, Select, Input, Switch } from 'antd'
+import dayjs from 'dayjs'
 import { Icon } from '@iconify/react'
 import { toast } from 'react-toastify'
 import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
@@ -43,6 +44,7 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
   const [isPrivate, setIsPrivate] = useState(false)
   const [counterparty, setCounterparty] = useState('')
   const [expirySeconds, setExpirySeconds] = useState(0)
+  const [customExpiry, setCustomExpiry] = useState<Date | null>(null)
 
   const reset = () => {
     setStep(0)
@@ -51,6 +53,7 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
     setIsPrivate(false)
     setCounterparty('')
     setExpirySeconds(0)
+    setCustomExpiry(null)
     setIsSubmitting(false)
   }
 
@@ -65,7 +68,12 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
   const fee = offerAmountMicro > 0 ? Math.floor(offerAmountMicro * market.feeBps / 10000) : 0
   const takerReceives = offerAmountMicro - fee
   const platformFee = offerAmountMicro > 0 ? Math.floor(offerAmountMicro * platformFeePercent / 100) : 0
-  const expiryTimestamp = expirySeconds > 0 ? Math.floor(Date.now() / 1000) + expirySeconds : 0
+  const CUSTOM_EXPIRY_VALUE = -1
+  const expiryTimestamp = expirySeconds === CUSTOM_EXPIRY_VALUE && customExpiry
+    ? Math.floor(customExpiry.getTime() / 1000)
+    : expirySeconds > 0
+      ? Math.floor(Date.now() / 1000) + expirySeconds
+      : 0
 
   const canProceedStep0 = offerAmount && offerAmount > 0
   const canProceedStep1 = requestAmount && requestAmount > 0
@@ -74,6 +82,10 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
 
   const handleSubmit = async () => {
     if (!canSubmit || !signer || !activeAddress) return
+    if (expirySeconds === CUSTOM_EXPIRY_VALUE && customExpiry && customExpiry < new Date()) {
+      toast.error('Custom expiry is in the past. Please select a future date.')
+      return
+    }
     setIsSubmitting(true)
 
     try {
@@ -205,9 +217,19 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
             <Select
               className="w-full"
               value={expirySeconds}
-              onChange={setExpirySeconds}
-              options={EXPIRY_OPTIONS}
+              onChange={(v) => { setExpirySeconds(v); if (v !== CUSTOM_EXPIRY_VALUE) setCustomExpiry(null) }}
+              options={[...EXPIRY_OPTIONS, { label: 'Custom', value: CUSTOM_EXPIRY_VALUE }]}
             />
+            {expirySeconds === CUSTOM_EXPIRY_VALUE && (
+              <DatePicker
+                showTime
+                className="w-full mt-2"
+                value={customExpiry ? dayjs(customExpiry) : null}
+                onChange={(date) => setCustomExpiry(date?.toDate() || null)}
+                disabledDate={(current) => current && current < dayjs().startOf('minute')}
+                placeholder="Select date and time"
+              />
+            )}
           </div>
         </div>
       ),
@@ -256,7 +278,9 @@ const CreateP2POfferWizard: React.FC<CreateP2POfferWizardProps> = ({
             <div className="flex justify-between">
               <span className="text-[var(--text-secondary)]">Expiry</span>
               <span className="text-[var(--text-primary)]">
-                {EXPIRY_OPTIONS.find(o => o.value === expirySeconds)?.label || 'No expiry'}
+                {expirySeconds === CUSTOM_EXPIRY_VALUE && customExpiry
+                  ? customExpiry.toLocaleString()
+                  : EXPIRY_OPTIONS.find(o => o.value === expirySeconds)?.label || 'No expiry'}
               </span>
             </div>
             <div className="flex justify-between">
