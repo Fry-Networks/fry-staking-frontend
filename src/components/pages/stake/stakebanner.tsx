@@ -27,15 +27,13 @@ const Stakebanner: React.FC<StakeBannerProps> = ({ wallet }) => {
   useEffect(() => {
     const fetchStats = async () => {
       if (!wallet) return
-      if (chainId === 'voi-mainnet') { setLoading(false); return; }
-
       try {
         const api = import.meta.env.VITE_API_BASE_URL
 
         // Fetch user stats + pool list in parallel
         const [statsRes, poolsRes] = await Promise.all([
           axios.get(`${api}/stakingtoken/user-staking-stats/${wallet}`),
-          axios.get(`${api}/staking/all`),
+          axios.get(`${api}/staking/all`, { params: { chainId } }),
         ])
 
         const userStats = statsRes.data?.success ? statsRes.data.data : { totalTVL: 0, myStake: 0, myReward: 0 }

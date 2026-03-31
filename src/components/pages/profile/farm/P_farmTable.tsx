@@ -71,7 +71,7 @@ const P_FarmTable: React.FC = () => {
     try {
       // Fetch all farms, staking farming token records, and legacy claim records in parallel
       const [allFarmsRes, farmTokenRes, claimDataRes] = await Promise.allSettled([
-        axios.get(`${api_base_url}/farming/all`),
+        axios.get(`${api_base_url}/farming/all`, { params: { chainId } }),
         axios.get(`${api_base_url}/stakingfarmingtoken/wallet/${activeAddress}`),
         axios.get(`${api_base_url}/claimfarmrewards/wallet/${activeAddress}`),
       ])

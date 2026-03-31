@@ -29,15 +29,13 @@ const Farmbanner: React.FC<FarmBannerProps> = ({ wallet }) => {
   useEffect(() => {
     const fetchStats = async () => {
       if (!wallet) return
-      if (chainId === 'voi-mainnet') { setLoading(false); return; }
-
       try {
         const api = import.meta.env.VITE_API_BASE_URL
 
         // Fetch user stats + farm list in parallel
         const [statsRes, farmsRes, positionsRes] = await Promise.all([
           axios.get(`${api}/stakingfarmingtoken/user-farming-stats/${wallet}`),
-          axios.get(`${api}/farming/all`),
+          axios.get(`${api}/farming/all`, { params: { chainId } }),
           axios.get(`${api}/stakingfarmingtoken/wallet/${wallet}`),
         ])
 

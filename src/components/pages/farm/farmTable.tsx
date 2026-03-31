@@ -65,7 +65,7 @@ const FarmTable: React.FC = () => {
 
   const fetchAllFarms = async (images: { [key: string]: string } = {}) => {
     try {
-      const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/farming/all`);
+      const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/farming/all`, { params: { chainId } });
       const data = res.data?.data || [];
       const now = Math.floor(Date.now() / 1000);
 

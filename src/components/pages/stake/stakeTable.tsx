@@ -135,7 +135,7 @@ const StakeTable: React.FC<StakeTableProps> = ({ setTotals }) => {
   const fetchAllPools = async () => {
     try {
       const response = await axios.get(`${api_base_url}/staking/all`, {
-        params: { tokenName: searchToken },
+        params: { tokenName: searchToken, chainId },
         headers: { 'Content-Type': 'application/json' },
       })
       // Pass tokenImages to processPoolData to ensure it uses the latest images
@@ -389,7 +389,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       try {
         const { imageMap } = await fetchTokenData()
         const response = await axios.get(`${api_base_url}/staking/all`, {
-          params: { tokenName: searchToken },
+          params: { tokenName: searchToken, chainId },
           headers: { 'Content-Type': 'application/json' },
         })
         const pools = response.data.data
