@@ -52,23 +52,27 @@ const DiscordLink: React.FC<DiscordLinkProps> = ({ userData, onUpdate, walletId 
       toast.error('Please connect your wallet first')
       return
     }
+    setLoading(true)
+    // Open popup synchronously to preserve user gesture (async gaps block popups)
+    const popup = window.open('about:blank', 'discord-oauth', 'width=500,height=700')
+    if (!popup) {
+      toast.error('Please allow popups for this site')
+      setLoading(false)
+      return
+    }
     try {
-      setLoading(true)
       await ensureAuth()
       const res = await authAxios.get('/discord/link')
       if (res.data.success && res.data.url) {
-        const popup = window.open(res.data.url, 'discord-oauth', 'width=500,height=700')
-        if (!popup) {
-          toast.error('Please allow popups for this site')
-          setLoading(false)
-          return
-        }
+        popup.location.href = res.data.url
         setPendingPopup(popup)
       } else {
+        popup.close()
         toast.error('Failed to generate Discord link')
         setLoading(false)
       }
     } catch (err: any) {
+      popup.close()
       if (err.response?.status === 429) {
         toast.error('Too many requests. Please wait a moment and try again.')
       } else {
