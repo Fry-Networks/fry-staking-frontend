@@ -68,6 +68,10 @@ export function useAuth() {
         toast.error('Sign-in was cancelled. Please approve the signature to continue.');
         throw err;
       }
+      if (err.message?.includes('429')) {
+        toast.error('Server is busy. Please wait a moment and try again.');
+        throw err;
+      }
       toast.error(err.message || 'Authentication failed. Please try again.');
       throw err;
     }

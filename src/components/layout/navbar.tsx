@@ -8,6 +8,7 @@ import ThemeToggle from '../shared/ThemeToggle'
 import Transact from '../Transact'
 import { useTheme } from '../../contexts/ThemeContext'
 import DailyRewardsModal from '../../Modals/website/DailyRewardsModal'
+import BugReportModal from '../../Modals/website/bugReportModal'
 import { fetchRewardsStatus } from '../../services/rewardsApi'
 import { fetchActiveEvents } from '../../services/eventService'
 import BetaBanner from '../shared/BetaBanner'
@@ -26,6 +27,7 @@ const Navbar: React.FC = () => {
   const [openWalletModal, setOpenWalletModal] = useState<boolean>(false);
   const [openDemoModal, setOpenDemoModal] = useState<boolean>(false);
   const [openRewardsModal, setOpenRewardsModal] = useState(false)
+  const [isBugReportOpen, setIsBugReportOpen] = useState(false)
   const [rewardsAvailable, setRewardsAvailable] = useState(false)
   const [hasActiveEvents, setHasActiveEvents] = useState(false)
   const { activeAddress } = useMultiChainWallet();
@@ -109,7 +111,7 @@ const Navbar: React.FC = () => {
             </NavLink>
           </div>
 
-          <ul className="md:flex space-x-10 max-xxl:space-x-5">
+          <ul className="md:flex space-x-10 max-xxl:space-x-5 max-xxxl:space-x-3 min-w-0">
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/"
@@ -204,9 +206,16 @@ const Navbar: React.FC = () => {
             </li>
           </ul>
 
-          <div className="button flex items-center gap-2">
+          <div className="button flex items-center gap-2 shrink-0">
             <ChainSelector />
             <ThemeToggle />
+            <div
+              className="cursor-pointer opacity-60 hover:opacity-100 transition-opacity"
+              onClick={() => setIsBugReportOpen(true)}
+              title="Report a Bug"
+            >
+              <Icon icon="mdi:bug-outline" width={22} color="var(--text-primary)" />
+            </div>
             {isAlgorand && activeAddress && (
               <div className="relative cursor-pointer" onClick={() => setOpenRewardsModal(true)}>
                 <Icon icon="mdi:gift" width={24} color="#FD0000" />
@@ -226,7 +235,7 @@ const Navbar: React.FC = () => {
             ) : (
               <div ref={dropdownRef} className="relative inline-block text-left" onClick={() => toggleWalletModal()} >
                 <div
-                  className="flex items-center justify-center gap-[10px] cursor-pointer w-[186px] h-[53px] rounded-[8px] p-[8px] border-solid border-[2px] border-red bg-transparent"
+                  className="flex items-center justify-center gap-[10px] cursor-pointer w-[186px] max-xxl:w-[150px] h-[53px] rounded-[8px] p-[8px] border-solid border-[2px] border-red bg-transparent"
                   onClick={toggleDropdown}
                 >
                   <p className="font-medium large text-darkRed capitalize">{activeAddress ? activeAddress.slice(0, 6) + "...." + activeAddress.slice(-6) : "Connect Wallet"}</p>
@@ -369,6 +378,16 @@ const Navbar: React.FC = () => {
           <div className="flex items-center gap-3 mt-[10px] mb-[10px]">
             <ChainSelector />
             <ThemeToggle />
+            <div
+              className="cursor-pointer opacity-60 hover:opacity-100 transition-opacity"
+              onClick={() => {
+                onClose()
+                setIsBugReportOpen(true)
+              }}
+              title="Report a Bug"
+            >
+              <Icon icon="mdi:bug-outline" width={22} color="var(--text-primary)" />
+            </div>
             {isAlgorand && activeAddress && (
               <div
                 className="relative cursor-pointer"
@@ -420,6 +439,7 @@ const Navbar: React.FC = () => {
         }}
       />
       <BetaBanner />
+      <BugReportModal isOpen={isBugReportOpen} setIsOpen={setIsBugReportOpen} />
     </>
   )
 }

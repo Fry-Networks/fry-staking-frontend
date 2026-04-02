@@ -33,6 +33,8 @@ function getHumbleClient() {
 }
 
 const priceCache = new Map<string, { price: number; timestamp: number }>();
+const inflightPrices = new Map<string, Promise<number>>();
+const CONCURRENCY_LIMIT = 6;
 
 function getCachedPrice(key: string): number | null {
   const entry = priceCache.get(key);
@@ -52,6 +54,19 @@ export async function fetchVoiUsd(): Promise<number> {
   const cached = getCachedPrice('voi-usd');
   if (cached !== null) return cached;
 
+  const inflight = inflightPrices.get('voi-usd');
+  if (inflight) return inflight;
+
+  const promise = _fetchVoiUsdUncached();
+  inflightPrices.set('voi-usd', promise);
+  try {
+    return await promise;
+  } finally {
+    inflightPrices.delete('voi-usd');
+  }
+}
+
+async function _fetchVoiUsdUncached(): Promise<number> {
   // Primary: CoinGecko
   try {
     const r = await axios.get('https://api.coingecko.com/api/v3/simple/price', {
@@ -103,6 +118,20 @@ export async function getVoiTokenUsdPrice(tokenId: number): Promise<number> {
   const cached = getCachedPrice(`voi-token-${tokenId}`);
   if (cached !== null) return cached;
 
+  const key = `voi-token-${tokenId}`;
+  const inflight = inflightPrices.get(key);
+  if (inflight) return inflight;
+
+  const promise = _getVoiTokenUsdPriceUncached(tokenId);
+  inflightPrices.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    inflightPrices.delete(key);
+  }
+}
+
+async function _getVoiTokenUsdPriceUncached(tokenId: number): Promise<number> {
   await loadMarketData();
 
   // Strategy 1: TOKEN/VOI pool
@@ -248,14 +277,16 @@ export async function getNomadexLpTokenUsdPrice(tokenAId: number, tokenBId: numb
 export async function fetchVoiPriceMap(tokenIds: number[]): Promise<Record<string, number>> {
   await loadMarketData();
   const unique = [...new Set(tokenIds)];
-  const results = await Promise.allSettled(
-    unique.map(async (id) => ({ id, price: await getVoiTokenUsdPrice(id) }))
-  );
   const priceMap: Record<string, number> = {};
-  results.forEach((result) => {
-    if (result.status === 'fulfilled') {
-      priceMap[result.value.id.toString()] = result.value.price;
-    }
-  });
+
+  for (let i = 0; i < unique.length; i += CONCURRENCY_LIMIT) {
+    const batch = unique.slice(i, i + CONCURRENCY_LIMIT);
+    const results = await Promise.allSettled(
+      batch.map(async (id) => ({ id, price: await getVoiTokenUsdPrice(id) }))
+    );
+    results.forEach((r) => {
+      if (r.status === 'fulfilled') priceMap[r.value.id.toString()] = r.value.price;
+    });
+  }
   return priceMap;
 }
