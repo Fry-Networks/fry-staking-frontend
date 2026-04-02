@@ -33,9 +33,14 @@ export class VoiWalletService {
     }
 
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Wallet connection timed out. Please ensure Kibisis is installed and unlocked.'));
+      }, 5000);
+
       const client = this.getClient();
 
       client.onEnable(({ error, result }) => {
+        clearTimeout(timeout);
         if (error) {
           reject(new Error(error.message || 'Failed to connect to Kibisis'));
           return;
