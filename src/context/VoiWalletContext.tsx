@@ -26,6 +26,7 @@ export const VoiWalletProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [activeProvider, setActiveProvider] = useState<VoiWalletProviderType>(null);
   const luteRef = useRef<LuteConnect | null>(null);
   const restoringRef = useRef(false);
+  const needsReconnectRef = useRef(false);
   const { chainId } = useChain();
 
   // Persist connection to localStorage
@@ -45,42 +46,49 @@ export const VoiWalletProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // Restore connection on mount
+  // Restore connection on mount — trust localStorage immediately, reconnect extension in background
   useEffect(() => {
-    const restore = async () => {
-      if (restoringRef.current) return;
-      restoringRef.current = true;
+    if (restoringRef.current) return;
+    restoringRef.current = true;
 
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(VOI_WALLET_STORAGE_KEY); } catch { /* ignore */ }
+    if (!stored) return;
+
+    let storedAddr: string | undefined;
+    let provider: VoiWalletProviderType | undefined;
+    try {
+      const parsed = JSON.parse(stored);
+      storedAddr = parsed.address;
+      provider = parsed.provider;
+    } catch { return; }
+    if (!storedAddr || !provider) return;
+
+    // Immediately show the wallet as connected (address is trusted from localStorage)
+    setAddress(storedAddr);
+    setActiveProvider(provider);
+    needsReconnectRef.current = true;
+
+    // Background: attempt to establish extension/SDK connection for signing
+    // On failure: keep address displayed, signing will retry on demand
+    const reconnect = async () => {
       try {
-        const stored = localStorage.getItem(VOI_WALLET_STORAGE_KEY);
-        if (!stored) return;
-
-        const { address: storedAddr, provider } = JSON.parse(stored) as {
-          address: string;
-          provider: VoiWalletProviderType;
-        };
-        if (!storedAddr || !provider) return;
-
         if (provider === 'kibisis') {
-          const addr = await voiWalletService.connect('voi-mainnet');
-          setAddress(addr);
-          setActiveProvider('kibisis');
+          await voiWalletService.connect('voi-mainnet');
+          needsReconnectRef.current = false;
         } else if (provider === 'lute') {
           const lute = new LuteConnect('Fry Farm');
           const addresses = await lute.connect('voimain-v1.0');
           if (addresses.length > 0) {
             luteRef.current = lute;
-            setAddress(addresses[0]);
-            setActiveProvider('lute');
-          } else {
-            clearConnection();
+            needsReconnectRef.current = false;
           }
         }
       } catch {
-        clearConnection();
+        // Extension not ready — will retry when user signs a transaction
       }
     };
-    restore();
+    reconnect();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Kibisis connect
@@ -88,6 +96,7 @@ export const VoiWalletProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const addr = await voiWalletService.connect(chainId);
     setAddress(addr);
     setActiveProvider('kibisis');
+    needsReconnectRef.current = false;
     saveConnection(addr, 'kibisis');
   }, [chainId, saveConnection]);
 
@@ -99,6 +108,7 @@ export const VoiWalletProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       luteRef.current = lute;
       setAddress(addresses[0]);
       setActiveProvider('lute');
+      needsReconnectRef.current = false;
       saveConnection(addresses[0], 'lute');
     } else {
       throw new Error('No accounts returned from Lute');
@@ -114,8 +124,26 @@ export const VoiWalletProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [clearConnection]);
 
   const signTransactions = useCallback(async (txns: Uint8Array[]) => {
+    // Lazy reconnect: if extension wasn't ready on page load, try now
+    if (needsReconnectRef.current) {
+      try {
+        if (activeProvider === 'kibisis') {
+          await voiWalletService.connect('voi-mainnet');
+          needsReconnectRef.current = false;
+        } else if (activeProvider === 'lute') {
+          const lute = new LuteConnect('Fry Farm');
+          const addresses = await lute.connect('voimain-v1.0');
+          if (addresses.length > 0) {
+            luteRef.current = lute;
+            needsReconnectRef.current = false;
+          }
+        }
+      } catch {
+        throw new Error('Wallet extension not available. Please reconnect your wallet.');
+      }
+    }
+
     if (activeProvider === 'lute' && luteRef.current) {
-      // Lute expects WalletTransaction[] with base64-encoded txns
       const walletTxns = txns.map((txn) => ({
         txn: Buffer.from(txn).toString('base64'),
       }));
