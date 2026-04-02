@@ -6,6 +6,14 @@ import { useChain } from './ChainContext';
 
 type VoiWalletProviderType = 'kibisis' | 'lute' | null;
 
+const CONNECT_TIMEOUT_MS = 5000;
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+}
+
 const VOI_WALLET_STORAGE_KEY = 'voi-wallet-connection';
 
 interface VoiWalletContextValue {
@@ -78,14 +86,14 @@ export const VoiWalletProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           needsReconnectRef.current = false;
         } else if (provider === 'lute') {
           const lute = new LuteConnect('Fry Farm');
-          const addresses = await lute.connect('voimain-v1.0');
+          const addresses = await withTimeout(lute.connect('voimain-v1.0'), CONNECT_TIMEOUT_MS, 'Lute connection timed out');
           if (addresses.length > 0) {
             luteRef.current = lute;
             needsReconnectRef.current = false;
           }
         }
       } catch {
-        // Extension not ready — will retry when user signs a transaction
+        // Extension/wallet not ready — will retry when user signs a transaction
       }
     };
     reconnect();
@@ -103,7 +111,7 @@ export const VoiWalletProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Lute connect
   const connectLute = useCallback(async () => {
     const lute = new LuteConnect('Fry Farm');
-    const addresses = await lute.connect('voimain-v1.0');
+    const addresses = await withTimeout(lute.connect('voimain-v1.0'), CONNECT_TIMEOUT_MS, 'Lute connection timed out. Please ensure Lute is running.');
     if (addresses.length > 0) {
       luteRef.current = lute;
       setAddress(addresses[0]);
@@ -132,7 +140,7 @@ export const VoiWalletProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           needsReconnectRef.current = false;
         } else if (activeProvider === 'lute') {
           const lute = new LuteConnect('Fry Farm');
-          const addresses = await lute.connect('voimain-v1.0');
+          const addresses = await withTimeout(lute.connect('voimain-v1.0'), CONNECT_TIMEOUT_MS, 'Lute connection timed out');
           if (addresses.length > 0) {
             luteRef.current = lute;
             needsReconnectRef.current = false;
