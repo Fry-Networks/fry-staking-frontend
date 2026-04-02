@@ -30,27 +30,23 @@ export function useAuth() {
     }
   }, [activeAddress, chainId]);
 
-  // Auto-authenticate when wallet connects (address + signer both ready)
-  // First checks if existing session cookie is still valid to avoid unnecessary signature popup
+  // Auto-restore session when wallet address is known (no signing — just cookie check)
+  // If no valid session exists, user will auth on-demand via ensureAuth when they take an action
   useEffect(() => {
-    if (activeAddress && signer && !isAuthenticated) {
+    if (activeAddress && !isAuthenticated) {
       if (authInFlightRef.current) return;
       authInFlightRef.current = true;
       authService.checkSession(activeAddress)
-        .then(async (session) => {
+        .then((session) => {
           if (session.authenticated) {
             setIsAuthenticated(true);
             setIsAdmin(session.isAdmin);
-          } else {
-            await authService.authenticate(activeAddress, signer, chainId);
-            setIsAuthenticated(true);
-            setIsAdmin(authService.isAdmin());
           }
         })
-        .catch(() => {}) // Silent — user will auth on-demand via ensureAuth
+        .catch(() => {})
         .finally(() => { authInFlightRef.current = false; });
     }
-  }, [activeAddress, signer, isAuthenticated, chainId]);
+  }, [activeAddress, isAuthenticated, chainId]);
 
   const ensureAuth = useCallback(async (): Promise<void> => {
     if (!activeAddress) {
