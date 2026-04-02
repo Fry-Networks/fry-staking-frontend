@@ -99,7 +99,12 @@ class AuthService {
     // Coalesce concurrent auth attempts
     if (this.pendingAuth) return this.pendingAuth;
 
-    this.pendingAuth = this._doAuth(activeAddress, signer, chainId);
+    this.pendingAuth = Promise.race([
+      this._doAuth(activeAddress, signer, chainId),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Authentication timed out. Please try again.')), 90000)
+      ),
+    ]);
     try {
       await this.pendingAuth;
     } finally {

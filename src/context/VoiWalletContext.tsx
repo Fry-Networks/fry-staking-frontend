@@ -155,13 +155,13 @@ export const VoiWalletProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const walletTxns = txns.map((txn) => ({
         txn: Buffer.from(txn).toString('base64'),
       }));
-      const signed = await luteRef.current.signTxns(walletTxns);
+      const signed = await withTimeout(luteRef.current.signTxns(walletTxns), 30000, 'Lute signing timed out. Please try again.');
       return signed.map((s) => {
         if (!s) throw new Error('Null signed transaction from Lute');
         return s;
       });
     }
-    return voiWalletService.signTransactions(txns);
+    return withTimeout(voiWalletService.signTransactions(txns), 35000, 'Wallet signing timed out. Please try again.');
   }, [activeProvider]);
 
   const signer = useMemo((): TransactionSigner => {

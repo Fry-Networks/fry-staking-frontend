@@ -6,6 +6,8 @@ import algosdk, { TransactionSigner } from 'algosdk';
  * Uses ARC-0027 protocol via @agoralabs-sh/avm-web-provider.
  */
 
+const SIGN_TIMEOUT_MS = 30000;
+
 const GENESIS_HASHES: Record<string, string> = {
   'algorand-mainnet': 'wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=',
   'voi-mainnet': 'IXnoWtviVVJW5LGivNFc0Dq14V3kqaXuK2u5OQrdVZo=',
@@ -80,9 +82,14 @@ export class VoiWalletService {
    */
   async signTransactions(txns: Uint8Array[]): Promise<Uint8Array[]> {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Wallet signing timed out. Please try again.'));
+      }, SIGN_TIMEOUT_MS);
+
       const client = this.getClient();
 
       client.onSignTransactions(({ error, result }) => {
+        clearTimeout(timeout);
         if (error) {
           reject(new Error(error.message || 'Transaction signing failed'));
           return;
