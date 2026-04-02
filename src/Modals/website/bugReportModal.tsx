@@ -11,6 +11,15 @@ import { useChain } from '../../context/ChainContext'
 import { useMultiChainWallet } from '../../hooks/useMultiChainWallet'
 import '../../styles/shared/scrollbar.css'
 
+const InfoTooltip = ({ text }: { text: string }) => (
+  <span className="relative group inline-block ml-1 cursor-help">
+    <span className="text-gray-400 hover:text-gray-200 text-xs border border-gray-500 rounded-full px-1">i</span>
+    <span className="absolute left-0 bottom-full mb-1 w-72 p-2 text-xs text-gray-200 bg-gray-800 border border-gray-600 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-50 pointer-events-none whitespace-normal">
+      {text}
+    </span>
+  </span>
+)
+
 interface BugReportModalProps {
   isOpen: boolean
   setIsOpen: (state: boolean) => void
@@ -70,6 +79,14 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, setIsOpen }) =>
     onSubmit: async (values, { resetForm }) => {
       if (!activeAddress) {
         toast.error('Please connect your wallet first')
+        return
+      }
+      if (!consoleLogFile) {
+        toast.error('Console log is required')
+        return
+      }
+      if (!harFileData) {
+        toast.error('HAR file is required')
         return
       }
       try {
@@ -271,7 +288,8 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, setIsOpen }) =>
                   className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-[8px] border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
                 >
                   <Icon icon="mdi:console" width={16} />
-                  Console Log
+                  Console Log *
+                  <InfoTooltip text="In Chrome/Brave: Right-click the page → Inspect → Console tab → Right-click anywhere in the console → Save as... → Save as .txt file. Include errors from the time the bug occurred." />
                 </button>
                 {consoleLogName && (
                   <span className="text-xs text-[var(--text-secondary)] truncate max-w-[200px]">{consoleLogName}</span>
@@ -293,7 +311,8 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, setIsOpen }) =>
                   className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-[8px] border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
                 >
                   <Icon icon="mdi:file-code-outline" width={16} />
-                  HAR File
+                  HAR File *
+                  <InfoTooltip text="In Chrome/Brave: Right-click the page → Inspect → Network tab → Right-click any request → Save all as HAR with content. Capture this while reproducing the bug." />
                 </button>
                 {harFileName && (
                   <span className="text-xs text-[var(--text-secondary)] truncate max-w-[200px]">{harFileName}</span>
