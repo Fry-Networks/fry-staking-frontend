@@ -2,7 +2,9 @@
 import { Icon } from '@iconify/react'
 import { useEffect, useState } from 'react'
 import { useWallet } from '@txnlab/use-wallet'
+import { toast } from 'react-toastify'
 import EditProfileModal from '../../../Modals/website/editProfileModal'
+import DiscordLink from './discordLink'
 import axios from 'axios'
 import { useChain } from '../../../context/ChainContext'
 import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
@@ -19,7 +21,6 @@ const Profilebanner: React.FC = () => {
   const { clients } = useWallet()
   const { activeAddress } = useMultiChainWallet()
   const { chainId, getAlgodClient } = useChain()
-
   const dummyData = {
     name: 'Dummy User',
     profilePicture: '../../assets/images/home/mainDP.png',
@@ -132,6 +133,14 @@ const Profilebanner: React.FC = () => {
               <div className="bg-[#f7f7f7] text-xs text-[#666] px-4 py-2 rounded-[10px] break-all text-center">
                 Wallet: {activeAddress}
               </div>
+            )}
+
+            {activeAddress && (
+              <DiscordLink
+                userData={userData}
+                onUpdate={fetchUserData}
+                walletId={activeAddress}
+              />
             )}
           </div>
         </div>
