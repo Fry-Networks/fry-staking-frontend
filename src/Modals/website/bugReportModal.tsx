@@ -20,6 +20,8 @@ const InfoTooltip = ({ text }: { text: string }) => (
   </span>
 )
 
+const CHUNK_SIZE = 4 * 1024 * 1024 // 4MB
+
 interface BugReportModalProps {
   isOpen: boolean
   setIsOpen: (state: boolean) => void
@@ -36,6 +38,43 @@ const CATEGORIES = [
   { value: 'other', label: 'Other' },
 ]
 
+async function uploadFileInChunks(
+  file: File,
+  fieldName: string,
+  uploadId: string,
+  onProgress: (current: number, total: number) => void,
+): Promise<string | null> {
+  if (file.size <= CHUNK_SIZE) return null // small file — use direct upload
+
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE
+    const end = Math.min(start + CHUNK_SIZE, file.size)
+    const chunk = file.slice(start, end)
+
+    const form = new FormData()
+    form.append('uploadId', uploadId)
+    form.append('chunkIndex', String(i))
+    form.append('totalChunks', String(totalChunks))
+    form.append('fieldName', fieldName)
+    form.append('chunk', chunk)
+
+    await authAxios.post('/bug-reports/chunk', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    onProgress(i + 1, totalChunks)
+  }
+
+  const finalizeRes = await authAxios.post('/bug-reports/finalize', {
+    uploadId,
+    fieldName,
+    originalName: file.name,
+  })
+
+  return finalizeRes.data.filename
+}
+
 const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, setIsOpen }) => {
   const { ensureAuth } = useAuth()
   const { chainId } = useChain()
@@ -47,6 +86,7 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, setIsOpen }) =>
   const [consoleLogName, setConsoleLogName] = useState('')
   const [harFileData, setHarFileData] = useState<File | null>(null)
   const [harFileName, setHarFileName] = useState('')
+  const [uploadStatus, setUploadStatus] = useState('')
 
   // Reset file state when modal opens
   useEffect(() => {
@@ -57,6 +97,7 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, setIsOpen }) =>
       setConsoleLogName('')
       setHarFileData(null)
       setHarFileName('')
+      setUploadStatus('')
     }
   }, [isOpen])
 
@@ -91,6 +132,26 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, setIsOpen }) =>
       }
       try {
         await ensureAuth()
+        const uploadId = Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+        // Upload large files via chunks
+        const preUploaded: Record<string, string> = {}
+        const filesToChunk: [File, string, string][] = []
+        if (harFileData) filesToChunk.push([harFileData, 'harFile', 'HAR file'])
+        if (consoleLogFile) filesToChunk.push([consoleLogFile, 'consoleLog', 'Console log'])
+        if (screenshotFile) filesToChunk.push([screenshotFile, 'screenshot', 'Screenshot'])
+
+        for (const [file, fieldName, label] of filesToChunk) {
+          const result = await uploadFileInChunks(file, fieldName, uploadId, (current, total) => {
+            setUploadStatus(`Uploading ${label}... (${current}/${total})`)
+          })
+          if (result) {
+            preUploaded[fieldName] = result
+          }
+        }
+
+        setUploadStatus('Submitting report...')
+
         const form = new FormData()
         form.append('chain', values.chain)
         form.append('walletAddress', values.walletAddress)
@@ -98,9 +159,15 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, setIsOpen }) =>
         form.append('category', values.category)
         form.append('description', values.description.trim())
 
-        if (screenshotFile) form.append('screenshot', screenshotFile)
-        if (consoleLogFile) form.append('consoleLog', consoleLogFile)
-        if (harFileData) form.append('harFile', harFileData)
+        // Attach small files directly, pass pre-uploaded filenames for large ones
+        if (screenshotFile && !preUploaded.screenshot) form.append('screenshot', screenshotFile)
+        if (preUploaded.screenshot) form.append('screenshotPreUploaded', preUploaded.screenshot)
+
+        if (consoleLogFile && !preUploaded.consoleLog) form.append('consoleLog', consoleLogFile)
+        if (preUploaded.consoleLog) form.append('consoleLogPreUploaded', preUploaded.consoleLog)
+
+        if (harFileData && !preUploaded.harFile) form.append('harFile', harFileData)
+        if (preUploaded.harFile) form.append('harFilePreUploaded', preUploaded.harFile)
 
         const response = await authAxios.post('/bug-reports', form, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -115,9 +182,11 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, setIsOpen }) =>
           setConsoleLogName('')
           setHarFileData(null)
           setHarFileName('')
+          setUploadStatus('')
           setIsOpen(false)
         }
       } catch (error: any) {
+        setUploadStatus('')
         if (error?.response?.status === 429) {
           toast.error('Too many bug reports. Please try again later.')
         } else {
@@ -331,8 +400,12 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, setIsOpen }) =>
               </p>
             </div>
 
+            {uploadStatus && (
+              <p className="text-xs text-[var(--text-secondary)] mb-2 text-center">{uploadStatus}</p>
+            )}
+
             <Button
-              text={formik.isSubmitting ? 'Submitting...' : 'Submit Bug Report'}
+              text={formik.isSubmitting ? (uploadStatus || 'Submitting...') : 'Submit Bug Report'}
               className="button btn-primary mt-2"
               height={53}
               width="100%"
