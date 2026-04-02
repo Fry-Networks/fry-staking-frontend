@@ -322,12 +322,12 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, setIsOpen }) =>
                   id="bugHarFile"
                   accept=".har,.json"
                   className="hidden"
-                  onChange={(e) => handleFileChange(e, setHarFileData, setHarFileName, 10 * 1024 * 1024, ['.har', '.json'], 'HAR file')}
+                  onChange={(e) => handleFileChange(e, setHarFileData, setHarFileName, 1 * 1024 * 1024 * 1024, ['.har', '.json'], 'HAR file')}
                 />
               </div>
 
               <p className="text-xs text-gray-500">
-                Screenshot: JPG/PNG/WebP (max 5MB) | Console Log: .txt/.log (max 2MB) | HAR: .har/.json (max 10MB)
+                Screenshot: JPG/PNG/WebP (max 5MB) | Console Log: .txt/.log (max 2MB) | HAR: .har/.json (max 1GB)
               </p>
             </div>
 
