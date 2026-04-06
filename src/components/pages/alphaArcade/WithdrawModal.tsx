@@ -25,6 +25,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({ visible, position, market
   const [error, setError] = useState('')
   const [txId, setTxId] = useState('')
   const [feeInfo, setFeeInfo] = useState<{ fee: number; feePercent: number } | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const algod = getAlgodClient()
 
@@ -34,7 +35,8 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({ visible, position, market
     : 0
 
   const handleWithdraw = useCallback(async () => {
-    if (!activeAddress || !position || !signTransactions) return
+    if (!activeAddress || !position || !signTransactions || isSubmitting) return
+    setIsSubmitting(true)
 
     setError('')
 
@@ -105,14 +107,17 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({ visible, position, market
         setError(msg)
       }
       setStep('error')
+    } finally {
+      setIsSubmitting(false)
     }
-  }, [activeAddress, position, signTransactions, ensureAuth, algod])
+  }, [activeAddress, position, signTransactions, isSubmitting, ensureAuth, algod])
 
   const handleClose = () => {
     setStep('confirm')
     setError('')
     setTxId('')
     setFeeInfo(null)
+    setIsSubmitting(false)
     onClose()
   }
 
@@ -168,8 +173,9 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({ visible, position, market
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--text-secondary)]">Platform Fee (0.25%)</span>
+                  {/* TODO: pull withdraw fee rate from fee config instead of hardcoding 0.0025 */}
                   <span className="text-red-400">
-                    ${(position.usdcDeposited * 0.0025 / 1_000_000).toFixed(2)}
+                    ${((position.usdcDeposited - (position.feesPaid?.depositFee || 0)) * 0.0025 / 1_000_000).toFixed(2)}
                   </span>
                 </div>
                 <p className="text-xs text-[var(--text-secondary)]">
@@ -193,9 +199,10 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({ visible, position, market
                 </button>
                 <button
                   onClick={handleWithdraw}
-                  className="flex-1 py-3 rounded-lg font-bold text-white linearGradient transition-colors"
+                  disabled={isSubmitting}
+                  className="flex-1 py-3 rounded-lg font-bold text-white linearGradient transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Confirm Withdraw
+                  {isSubmitting ? 'Processing...' : 'Confirm Withdraw'}
                 </button>
               </div>
             </div>

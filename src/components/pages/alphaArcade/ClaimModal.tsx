@@ -25,13 +25,15 @@ const ClaimModal: React.FC<ClaimModalProps> = ({ visible, position, marketQuesti
   const [error, setError] = useState('')
   const [txId, setTxId] = useState('')
   const [outcome, setOutcome] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const algod = getAlgodClient()
 
   const depositedUsdc = position ? (position.usdcDeposited / 1_000_000).toFixed(2) : '0'
 
   const handleClaim = useCallback(async () => {
-    if (!activeAddress || !position || !signTransactions) return
+    if (!activeAddress || !position || !signTransactions || isSubmitting) return
+    setIsSubmitting(true)
 
     setError('')
 
@@ -96,14 +98,17 @@ const ClaimModal: React.FC<ClaimModalProps> = ({ visible, position, marketQuesti
         setError(msg)
       }
       setStep('error')
+    } finally {
+      setIsSubmitting(false)
     }
-  }, [activeAddress, position, signTransactions, ensureAuth, algod])
+  }, [activeAddress, position, signTransactions, isSubmitting, ensureAuth, algod])
 
   const handleClose = () => {
     setStep('confirm')
     setError('')
     setTxId('')
     setOutcome(null)
+    setIsSubmitting(false)
     onClose()
   }
 
@@ -169,9 +174,10 @@ const ClaimModal: React.FC<ClaimModalProps> = ({ visible, position, marketQuesti
                 </button>
                 <button
                   onClick={handleClaim}
-                  className="flex-1 py-3 rounded-lg font-bold text-white bg-green-600 hover:bg-green-700 transition-colors"
+                  disabled={isSubmitting}
+                  className="flex-1 py-3 rounded-lg font-bold text-white bg-green-600 hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Claim Winnings
+                  {isSubmitting ? 'Processing...' : 'Claim Winnings'}
                 </button>
               </div>
             </div>

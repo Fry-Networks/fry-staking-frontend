@@ -56,6 +56,10 @@ export interface AlphaArcadePosition {
   usdcRecovered: number
   remainingYesTokens: number
   remainingNoTokens: number
+  feesPaid?: {
+    depositFee?: number
+    withdrawFee?: number
+  }
   createdAt: string
   updatedAt: string
 }
