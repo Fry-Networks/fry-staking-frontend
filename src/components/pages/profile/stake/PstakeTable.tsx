@@ -218,14 +218,14 @@ const PstakeTable: React.FC = () => {
     <div className="w-full m-auto flex flex-col gap-[16px]">
       {/* Sub-tab pills */}
       <div className="flex justify-center">
-        <div className="switcher flex justify-center items-center gap-[3px] w-fit p-[3px] bg-white rounded-[12px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]">
+        <div className="switcher flex justify-center items-center gap-[3px] w-fit max-sm:w-full overflow-x-auto p-[3px] bg-white rounded-[12px] shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]">
           {FILTER_LABELS.map(({ key, label }) => (
             <p
               key={key}
               onClick={() => setActiveFilter(key)}
               className={`${
                 activeFilter === key ? 'text-white linearGradient shadow-[0px_4px_24.2px_0px_rgba(0,60,82,0.10)]' : 'text-black'
-              } flex items-center justify-center text-center cursor-pointer tracking-[0.09px] rounded-[10px] w-[117px] h-[38px] text-[14px]`}
+              } flex items-center justify-center text-center cursor-pointer tracking-[0.09px] rounded-[10px] w-[117px] max-sm:w-auto max-sm:flex-1 max-sm:min-w-[60px] max-sm:px-2 h-[38px] max-sm:h-[34px] text-[14px] max-sm:text-[12px] whitespace-nowrap`}
             >
               {label}
             </p>
