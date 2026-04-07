@@ -6,18 +6,19 @@ import algosdk from 'algosdk'
 import { useAuth } from '../../../hooks/useAuth'
 import { buildDeposit, recordDeposit } from '../../../services/alphaArcadeApi'
 import { getAlgodClient } from '../../../farming_func'
-import type { AlphaArcadeMarket } from '../../../types/alphaArcade'
+import type { AlphaArcadeMarket, AlphaArcadePool } from '../../../types/alphaArcade'
 
 interface DepositModalProps {
   visible: boolean
   market: AlphaArcadeMarket | null
+  pool?: AlphaArcadePool
   onClose: () => void
   onSuccess: () => void
 }
 
 type DepositStep = 'input' | 'confirm' | 'signing' | 'submitting' | 'recording' | 'success' | 'error'
 
-const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, onSuccess }) => {
+const DepositModal: React.FC<DepositModalProps> = ({ visible, market, pool, onClose, onSuccess }) => {
   const { activeAddress, signTransactions } = useWallet()
   const { ensureAuth } = useAuth()
 
@@ -225,6 +226,24 @@ const DepositModal: React.FC<DepositModalProps> = ({ visible, market, onClose, o
                   <span className="text-[var(--text-primary)]">0.5%</span>
                 </div>
               </div>
+
+              {/* Reward market qualification info */}
+              {pool?.aprDisplay?.isRewardMarket && pool?.aprMeta && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                  <p className="text-xs font-medium text-amber-500 flex items-center gap-1 mb-1">
+                    <Icon icon="mdi:star" width={14} />
+                    Reward Market — additional LP rewards available
+                  </p>
+                  <div className="text-xs text-[var(--text-secondary)] flex flex-col gap-0.5">
+                    <p>Required spread: {(pool.aprMeta.rewardsSpreadDistance / 10000).toFixed(1)}%</p>
+                    <p>Min order: {(pool.aprMeta.rewardsMinContracts / 1e6).toFixed(0)} contracts</p>
+                    <p>Current rate: ~${(pool.aprMeta.lastRewardAmount / 1e6).toFixed(2)}/hour</p>
+                  </div>
+                  <p className="text-[10px] text-amber-500/70 mt-1">
+                    Rewards not guaranteed if orders fall outside required spread range
+                  </p>
+                </div>
+              )}
 
               {/* Confirm button */}
               <button

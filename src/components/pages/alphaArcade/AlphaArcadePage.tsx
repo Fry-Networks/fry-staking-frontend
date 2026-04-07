@@ -26,6 +26,7 @@ const AlphaArcadePage: React.FC = () => {
   const [positionsLoading, setPositionsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [rewardOnly, setRewardOnly] = useState(false)
   const [sortBy, setSortBy] = useState<string>('volume-desc')
   const [activeTab, setActiveTab] = useState<string>('markets')
 
@@ -122,14 +123,19 @@ const AlphaArcadePage: React.FC = () => {
   }, [markets])
 
   // Filter markets
+  const rewardMarketCount = useMemo(() => {
+    return pools.filter(p => p.aprDisplay?.isRewardMarket).length
+  }, [pools])
+
   const filteredMarkets = useMemo(() => {
     return markets.filter((m) => {
       const matchesSearch = !searchQuery ||
         (m.title || '').toLowerCase().includes(searchQuery.toLowerCase())
       const matchesCategory = categoryFilter === 'all' || (m.categories || []).includes(categoryFilter)
-      return matchesSearch && matchesCategory
+      const matchesReward = !rewardOnly || poolMap.get(m.marketAppId)?.aprDisplay?.isRewardMarket
+      return matchesSearch && matchesCategory && matchesReward
     })
-  }, [markets, searchQuery, categoryFilter])
+  }, [markets, searchQuery, categoryFilter, rewardOnly, poolMap])
 
   // Sort filtered markets
   const sortedMarkets = useMemo(() => {
@@ -139,9 +145,14 @@ const AlphaArcadePage: React.FC = () => {
       const poolB = poolMap.get(b.marketAppId)
       switch (sortBy) {
         case 'apr-desc': {
-          const aprA = (poolA as any)?.aprEstimate?.estimatedApr ?? 0
-          const aprB = (poolB as any)?.aprEstimate?.estimatedApr ?? 0
+          const aprA = poolA?.aprDisplay?.combinedApr ?? 0
+          const aprB = poolB?.aprDisplay?.combinedApr ?? 0
           return aprB - aprA
+        }
+        case 'reward-apr-desc': {
+          const rA = poolA?.aprDisplay?.rewardApr ?? 0
+          const rB = poolB?.aprDisplay?.rewardApr ?? 0
+          return rB - rA
         }
         case 'tvl-desc': {
           const tvlA = poolA?.totalUsdcDeposited ?? 0
@@ -238,7 +249,8 @@ const AlphaArcadePage: React.FC = () => {
         market: pool.marketQuestion || market?.title || `Market #${pool.marketAppId}`,
         tvl: pool.totalUsdcDeposited || 0,
         providers: pool.totalProviders || 0,
-        aprEstimate: (pool as any).aprEstimate?.estimatedApr || 0,
+        combinedApr: pool.aprDisplay?.combinedApr ?? 0,
+        isRewardMarket: pool.aprDisplay?.isRewardMarket || false,
         userPosition: userPos?.usdcDeposited || 0,
         resolutionTime: resTime,
         marketAppId: pool.marketAppId,
@@ -272,6 +284,14 @@ const AlphaArcadePage: React.FC = () => {
               {loading ? '...' : stats?.activePools ?? markets.length}
             </h3>
           </div>
+          {!isSimpleMode && (
+          <div className="flex flex-col items-center gap-[6px]">
+            <p className="text-text_clr tracking-[0.54px] large">Reward Markets</p>
+            <h3 className="small text-[var(--text-heading)] font-medium tracking-[1.08px]">
+              {loading ? '...' : rewardMarketCount}
+            </h3>
+          </div>
+          )}
           {!isSimpleMode && (
             <div className="flex flex-col items-center gap-[6px]">
               <p className="text-text_clr tracking-[0.54px] large">Total TVL</p>
@@ -367,6 +387,17 @@ const AlphaArcadePage: React.FC = () => {
                       className="min-w-[160px]"
                     />
                   )}
+                  {!isSimpleMode && (
+                    <label className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)] cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={rewardOnly}
+                        onChange={(e) => setRewardOnly(e.target.checked)}
+                        className="accent-amber-500"
+                      />
+                      Reward Markets Only
+                    </label>
+                  )}
                   <Select
                     value={sortBy}
                     onChange={setSortBy}
@@ -379,6 +410,7 @@ const AlphaArcadePage: React.FC = () => {
                       { value: 'popular', label: 'Most Popular' },
                       { value: 'volume-desc', label: 'Highest 24h Volume' },
                       { value: 'apr-desc', label: 'Highest APR' },
+                      { value: 'reward-apr-desc', label: 'Highest Reward APR' },
                       { value: 'tvl-desc', label: 'Highest TVL' },
                       { value: 'resolution-asc', label: 'Soonest Resolution' },
                       { value: 'newest', label: 'Newest' },
@@ -402,22 +434,14 @@ const AlphaArcadePage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {sortedMarkets.map((market) => {
-                      const pool = poolMap.get(market.marketAppId)
-                      return (
-                        <MarketCard
-                          key={market.marketAppId}
-                          market={market}
-                          aprEstimate={
-                            (pool as any)?.aprEstimate?.estimatedApr ??
-                            (market.twentyFourHrVolume > 0
-                              ? (market.twentyFourHrVolume / 100) * (50 / 10000) * 365 * 100
-                              : 0.1 * (50 / 10000) * 365 * 100)
-                          }
-                          onDeposit={(m) => setDepositModal({ visible: true, market: m })}
-                        />
-                      )
-                    })}
+                    {sortedMarkets.map((market) => (
+                      <MarketCard
+                        key={market.marketAppId}
+                        market={market}
+                        pool={poolMap.get(market.marketAppId)}
+                        onDeposit={(m) => setDepositModal({ visible: true, market: m })}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
@@ -434,7 +458,8 @@ const AlphaArcadePage: React.FC = () => {
                 columns={[
                   { title: 'MARKET', dataIndex: 'market', render: (v: string) => <span className="text-[var(--text-primary)] font-medium text-sm">{v}</span> },
                   { title: isSimpleMode ? 'POOL SIZE' : 'TVL', dataIndex: 'tvl', sorter: (a: any, b: any) => a.tvl - b.tvl, defaultSortOrder: 'descend' as const, render: (v: number) => `$${(v / 1e6).toFixed(2)}` },
-                  ...(!isSimpleMode ? [{ title: () => <span className="flex items-center gap-1">EST. APR <Tooltip title="Estimated annual return from spread fees. Based on real 24h trading volume when available, otherwise assumes 10% daily TVL turnover. Actual returns vary with market activity."><Icon icon="mdi:information-outline" width={14} className="cursor-help text-[var(--text-secondary)]" /></Tooltip></span>, dataIndex: 'aprEstimate', sorter: (a: any, b: any) => a.aprEstimate - b.aprEstimate, render: (v: number) => v > 0 ? <span className="text-green-500 font-medium">{v.toFixed(1)}%</span> : <span className="text-[var(--text-secondary)]">N/A</span> }] : []),
+                  ...(!isSimpleMode ? [{ title: () => <span className="flex items-center gap-1">EST. APR <Tooltip title="Estimated annual return from spread fees and LP rewards. Based on real 24h trading volume and reward payout data. Actual returns vary with market activity."><Icon icon="mdi:information-outline" width={14} className="cursor-help text-[var(--text-secondary)]" /></Tooltip></span>, dataIndex: 'combinedApr', sorter: (a: any, b: any) => a.combinedApr - b.combinedApr, render: (v: number) => v > 0 ? <span className="text-green-500 font-medium">{v.toFixed(1)}%</span> : <span className="text-[var(--text-secondary)]">N/A</span> }] : []),
+                  ...(!isSimpleMode ? [{ title: 'REWARDS', dataIndex: 'isRewardMarket', render: (v: boolean) => v ? <span className="text-amber-500 font-medium text-xs">Reward Market</span> : <span className="text-[var(--text-secondary)] text-xs">Spread only</span> }] : []),
                   ...(!isSimpleMode ? [{ title: 'PROVIDERS', dataIndex: 'providers', sorter: (a: any, b: any) => a.providers - b.providers, render: (v: number) => v }] : []),
                   { title: isSimpleMode ? 'YOUR INVESTMENT' : 'YOUR POSITION', dataIndex: 'userPosition', render: (v: number) => v > 0 ? `$${(v / 1e6).toFixed(2)}` : '—' },
                   { title: 'RESOLUTION', dataIndex: 'resolutionTime', render: (v: number) => v > 0 ? new Date(v * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' },
@@ -473,6 +498,7 @@ const AlphaArcadePage: React.FC = () => {
                         position={pos}
                         marketQuestion={getMarketQuestion(pos)}
                         resolutionTime={getResolutionTime(pos)}
+                        isRewardMarket={poolMap.get(pos.marketAppId)?.aprDisplay?.isRewardMarket}
                         onWithdraw={(p) => setWithdrawModal({ visible: true, position: p })}
                         onClaim={(p) => setClaimModal({ visible: true, position: p })}
                       />
@@ -489,6 +515,7 @@ const AlphaArcadePage: React.FC = () => {
       <DepositModal
         visible={depositModal.visible}
         market={depositModal.market}
+        pool={depositModal.market ? poolMap.get(depositModal.market.marketAppId) : undefined}
         onClose={() => setDepositModal({ visible: false, market: null })}
         onSuccess={() => {
           setDepositModal({ visible: false, market: null })

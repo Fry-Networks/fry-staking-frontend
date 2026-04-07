@@ -1,16 +1,16 @@
 import React from 'react'
 import { Icon } from '@iconify/react'
-import type { AlphaArcadeMarket } from '../../../types/alphaArcade'
+import type { AlphaArcadeMarket, AlphaArcadePool } from '../../../types/alphaArcade'
 import { usePreferences } from '../../../contexts/PreferencesContext'
 import { friendlyApr, friendlyVolume, friendlyProbability } from '../../../utils/grandmaLabels'
 
 interface MarketCardProps {
   market: AlphaArcadeMarket
   onDeposit: (market: AlphaArcadeMarket) => void
-  aprEstimate?: number
+  pool?: AlphaArcadePool
 }
 
-const MarketCard: React.FC<MarketCardProps> = ({ market, onDeposit, aprEstimate }) => {
+const MarketCard: React.FC<MarketCardProps> = ({ market, onDeposit, pool }) => {
   const { isSimpleMode } = usePreferences()
   const yesPercent = Math.round(market.yesProb ?? 50)
   const noPercent = 100 - yesPercent
@@ -91,6 +91,13 @@ const MarketCard: React.FC<MarketCardProps> = ({ market, onDeposit, aprEstimate 
         )}
         {/* Resolution urgency badge */}
         {getUrgencyBadge()}
+        {/* Reward market badge — show when no urgency badge */}
+        {!getUrgencyBadge() && pool?.aprDisplay?.isRewardMarket && (
+          <span className="absolute top-2 right-2 bg-amber-500/90 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+            <Icon icon="mdi:star" width={12} />
+            Reward Market
+          </span>
+        )}
       </div>
 
       {/* Content */}
@@ -136,10 +143,46 @@ const MarketCard: React.FC<MarketCardProps> = ({ market, onDeposit, aprEstimate 
           </div>
         )}
 
-        {aprEstimate != null && aprEstimate > 0 && (
-          <p className="text-xs font-medium text-green-500">
-            {isSimpleMode ? friendlyApr(aprEstimate) : `Est. APR: ${aprEstimate.toFixed(1)}%`}
-          </p>
+        {/* APR display */}
+        {pool?.aprDisplay?.isRewardMarket ? (
+          isSimpleMode ? (
+            <div>
+              <p className="text-xs font-medium text-green-500">{friendlyApr(pool.aprDisplay.combinedApr)}</p>
+              <p className="text-[10px] text-amber-500 font-medium">Bonus earnings available</p>
+            </div>
+          ) : (
+            <div className="text-xs flex flex-col gap-0.5">
+              <p className="text-green-500 font-medium">
+                Spread: {pool.aprDisplay.spreadApr != null ? `${pool.aprDisplay.spreadApr.toFixed(1)}%` : 'N/A'}
+                {' + '}Rewards: {pool.aprDisplay.rewardApr != null ? `${pool.aprDisplay.rewardApr.toFixed(1)}%` : 'N/A'}
+              </p>
+              {pool.aprDisplay.combinedApr != null && (
+                <p className="text-green-400 font-medium">Total Est. APR: {pool.aprDisplay.combinedApr.toFixed(1)}%</p>
+              )}
+            </div>
+          )
+        ) : (
+          <div>
+            <p className="text-xs font-medium text-green-500">
+              {isSimpleMode
+                ? friendlyApr(pool?.aprDisplay?.spreadApr)
+                : pool?.aprDisplay?.spreadApr != null
+                  ? `Est. APR: ${pool.aprDisplay.spreadApr.toFixed(1)}%`
+                  : 'APR: N/A'}
+            </p>
+            {!isSimpleMode && (
+              <p className="text-[10px] text-[var(--text-secondary)]">Spread profit only — no LP rewards</p>
+            )}
+          </div>
+        )}
+
+        {/* Reward qualification (on card face, reward markets only) */}
+        {!isSimpleMode && pool?.aprDisplay?.isRewardMarket && pool?.aprMeta && (
+          <div className="text-xs text-[var(--text-secondary)] bg-[var(--bg-secondary)] rounded px-2 py-1.5">
+            <p>Max spread: {(pool.aprMeta.rewardsSpreadDistance / 10000).toFixed(1)}%</p>
+            <p>Min order: {(pool.aprMeta.rewardsMinContracts / 1e6).toFixed(0)} contracts</p>
+            <p className="text-[10px] mt-0.5 opacity-70">Must maintain orders within spread range to qualify</p>
+          </div>
         )}
 
         {/* Resolution date */}

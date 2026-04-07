@@ -1,5 +1,5 @@
-export function friendlyApr(apr: number): string {
-  if (apr <= 0) return 'Low earnings'
+export function friendlyApr(apr: number | null | undefined): string {
+  if (apr == null || apr <= 0) return 'Low activity'
   if (apr < 5) return 'Modest earnings'
   if (apr < 20) return 'Good earnings'
   if (apr < 50) return 'Great earnings'

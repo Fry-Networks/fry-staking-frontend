@@ -15,6 +15,13 @@ export interface AlphaArcadeMarket {
   featured: boolean
   source: string
   createdAt: number
+  rewardsSpreadDistance?: number
+  fees?: number
+  totalPregameRewards?: number
+  lpRewardCompetitionWalletCount?: number
+  lastRewardAmount?: number
+  lastRewardTs?: number
+  rewardsMinContracts?: number
 }
 
 export interface AlphaArcadePool {
@@ -38,6 +45,34 @@ export interface AlphaArcadePool {
   isResolved: boolean
   resolutionOutcome: 'yes' | 'no' | null
   createdAt: string
+  isRewardMarket?: boolean
+  rewardData?: {
+    spreadDistance: number
+    fees: number
+    lastRewardAmount: number
+    lastRewardTs: number
+    minContracts: number
+    lpCount: number
+  }
+  aprDisplay?: {
+    spreadApr: number | null
+    rewardApr: number | null
+    combinedApr: number | null
+    dataSource: string
+    isRewardMarket: boolean
+  }
+  aprMeta?: {
+    spreadBps: number
+    totalLiquidityUsdc: number
+    fryFarmTvlUsdc: number
+    daysToResolution: number
+    lastRewardAmount: number
+    lastRewardTs: number
+    rewardLpCount: number
+    rewardsSpreadDistance: number
+    rewardsMinContracts: number
+    fees: number
+  }
 }
 
 export interface AlphaArcadePosition {

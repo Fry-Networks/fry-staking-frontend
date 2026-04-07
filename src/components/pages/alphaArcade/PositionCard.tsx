@@ -7,6 +7,7 @@ interface PositionCardProps {
   position: AlphaArcadePosition
   marketQuestion?: string
   resolutionTime?: number
+  isRewardMarket?: boolean
   onWithdraw: (position: AlphaArcadePosition) => void
   onClaim?: (position: AlphaArcadePosition) => void
 }
@@ -21,7 +22,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: string 
   claimed: { label: 'Claimed', color: 'bg-green-600', icon: 'mdi:check-decagram' },
 }
 
-const PositionCard: React.FC<PositionCardProps> = ({ position, marketQuestion, resolutionTime, onWithdraw, onClaim }) => {
+const PositionCard: React.FC<PositionCardProps> = ({ position, marketQuestion, resolutionTime, isRewardMarket, onWithdraw, onClaim }) => {
   const { isSimpleMode } = usePreferences()
   const status = statusConfig[position.status] || statusConfig.active
   const depositedUsdc = (position.usdcDeposited / 1_000_000).toFixed(2)
@@ -44,10 +45,18 @@ const PositionCard: React.FC<PositionCardProps> = ({ position, marketQuestion, r
         <p className="text-[var(--text-primary)] font-bold text-sm leading-tight flex-1">
           {marketQuestion || `Market #${position.marketAppId}`}
         </p>
-        <span className={`${status.color} text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0`}>
-          <Icon icon={status.icon} width={12} />
-          {status.label}
-        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          {isRewardMarket && (
+            <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+              <Icon icon="mdi:star" width={12} />
+              Reward
+            </span>
+          )}
+          <span className={`${status.color} text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1`}>
+            <Icon icon={status.icon} width={12} />
+            {status.label}
+          </span>
+        </div>
       </div>
 
       {/* Pending withdrawal banner */}
