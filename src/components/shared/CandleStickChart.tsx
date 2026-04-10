@@ -164,6 +164,46 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
     return data
   }, [])
 
+  // Fetch candle data from our own Voi OHLCV backend
+  const fetchVoiTradeData = useCallback(async () => {
+    if (!fromToken || !toToken) { setIsLoading(false); return; }
+    setIsLoading(true)
+    try {
+      const now = Math.floor(Date.now() / 1000)
+      let interval: number, daysBack: number
+      switch (timeframe) {
+        case '1D': interval = 3600; daysBack = 1; break
+        case '7D': interval = 86400; daysBack = 7; break
+        case '1M': interval = 86400; daysBack = 30; break
+        case '3M': interval = 86400; daysBack = 90; break
+        case '6M': interval = 86400; daysBack = 180; break
+        case '1Y': interval = 86400; daysBack = 365; break
+        default: interval = 3600; daysBack = 1
+      }
+      const start = now - daysBack * 86400
+      const res = await axios.get(`/api/voi-candles?from=${fromToken.id}&to=${toToken.id}&interval=${interval}&start=${start}&end=${now}`)
+      const data = res.data
+      if (!data || !Array.isArray(data) || data.length === 0) {
+        throw new Error('No Voi candle data yet')
+      }
+      const candles: CandleData[] = data
+        .sort((a: any, b: any) => a.timestamp - b.timestamp)
+        .map((c: any) => ({ x: new Date(c.timestamp * 1000), y: [c.open, c.high, c.low, c.close] }))
+      setChartData(candles)
+      const latest = candles[candles.length - 1].y[3]
+      const prev = candles[candles.length - 2]?.y[3] ?? latest
+      setCurrentPrice(latest)
+      setPriceChange(latest - prev)
+      setPriceChangePercent(prev ? ((latest - prev) / prev) * 100 : 0)
+      setLastUpdateTime(new Date())
+    } catch {
+      // No candle data available — will fall through to pool info panel
+      setChartData([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [timeframe, fromToken, toToken])
+
   const fetchTradeData = useCallback(async () => {
     // Don't fetch if tokens are not available
     if (!fromToken || !toToken) {
@@ -174,7 +214,7 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
     setIsLoading(true)
     try {
       const apiUrl = getVestigeCandlesUrl(fromToken, toToken, timeframe)
-      
+
       // Fetch candles data from Vestige Labs API
       const response = await axios.get(apiUrl)
       const candlesData = response.data
@@ -227,21 +267,17 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
   }, [generateChartData, timeframe, fromToken, toToken])
 
   useEffect(() => {
-    // Vestige Labs only has Algorand data — skip for Voi
-    if (chainId === 'voi-mainnet') {
-      setIsLoading(false)
-      return
-    }
-    // Only fetch if both tokens are available
     if (!fromToken || !toToken) {
       setIsLoading(false);
       return;
     }
 
-    fetchTradeData()
-    const id = setInterval(fetchTradeData, FETCH_INTERVAL)
+    // Voi: use our own OHLCV backend; Algorand: use Vestige Labs
+    const fetcher = chainId === 'voi-mainnet' ? fetchVoiTradeData : fetchTradeData
+    fetcher()
+    const id = setInterval(fetcher, FETCH_INTERVAL)
     return () => clearInterval(id)
-  }, [fetchTradeData, fromToken, toToken, chainId])
+  }, [fetchTradeData, fetchVoiTradeData, fromToken, toToken, chainId])
 
   // Fetch price data for Humble-only pools (no Nomadex pool available)
   useEffect(() => {
@@ -279,7 +315,7 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
 
     },
     title: {
-      text: fromToken && toToken ? `${fromToken.code}/${toToken.code} Price Chart (Vestige Labs)` : 'Price Chart',
+      text: fromToken && toToken ? `${fromToken.code}/${toToken.code} Price Chart${chainId === 'voi-mainnet' ? '' : ' (Vestige Labs)'}` : 'Price Chart',
       align: 'left',
       style: { fontSize: '16px', fontWeight: 'bold', color: '#333' }
     },
@@ -361,8 +397,9 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
   const formatTime = (date: Date) =>
     date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
-  // Voi price info panel — no OHLCV data source exists, show pool stats instead
-  if (chainId === 'voi-mainnet') {
+  // Voi: if we have candle data from our backend, render the chart (fall through to ApexCharts below).
+  // If no candle data yet, show the pool info panel as a fallback.
+  if (chainId === 'voi-mainnet' && chartData.length === 0) {
     const pool = fromToken && toToken ? findPool(fromToken.id, toToken.id) : null
     const humblePool = fromToken && toToken ? findHumblePool(fromToken.id, toToken.id) : null
     const fromMeta = fromToken ? findToken(fromToken.id) : undefined
@@ -469,6 +506,11 @@ const CandleStickChart: React.FC<CandleStickChartProps> = ({ fromToken, toToken,
               <p className="text-[var(--text-secondary)] text-sm opacity-60">Choose tokens from the swap interface</p>
             </div>
           </div>
+        )}
+        {fromToken && toToken && (
+          <p className="text-text_clr text-xs text-center mt-3 opacity-60">
+            Price chart data accumulating — candlestick chart will appear as history builds
+          </p>
         )}
       </div>
     )

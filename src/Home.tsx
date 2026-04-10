@@ -32,6 +32,7 @@ import DevicePoolStats from './pages/devicePoolStats'
 import DeviceDashboard from './pages/deviceDashboard'
 import P2PSwap from './pages/p2pSwap'
 import P2PMarketDetail from './pages/p2pMarketDetail'
+import GenesisMint from './pages/genesisMint'
 
 const AppLayout = () => {
   return (
@@ -113,6 +114,10 @@ const appRouter = createBrowserRouter([
   {
     path: '/transaction-history',
     element: <TransactionHistory />,
+  },
+  {
+    path: '/genesis-mint',
+    element: <GenesisMint />,
   },
   {
     path: '/admin-login',

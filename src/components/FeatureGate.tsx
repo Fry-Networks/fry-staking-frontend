@@ -56,16 +56,18 @@ export const FeatureGate: React.FC<FeatureGateProps> = ({
         >
           This feature is coming soon. Switch to Algorand to use {featureLabel.toLowerCase()}.
         </p>
-        <button
-          onClick={() => switchChain('algorand-mainnet')}
-          className="px-6 py-2.5 rounded-lg font-medium transition-colors"
-          style={{
-            backgroundColor: '#00C2FF',
-            color: 'white',
-          }}
-        >
-          Switch to Algorand
-        </button>
+        <div className="flex justify-center">
+          <button
+            onClick={() => switchChain('algorand-mainnet')}
+            className="px-6 py-2.5 rounded-lg font-medium transition-colors"
+            style={{
+              backgroundColor: '#00C2FF',
+              color: 'white',
+            }}
+          >
+            Switch to Algorand
+          </button>
+        </div>
       </div>
     </div>
   );

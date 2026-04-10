@@ -1,5 +1,6 @@
 import { NomadexClient, NomadexSwapQuote } from './nomadex';
 import { HumbleClient, HumbleSwapQuote } from './humble';
+import { SnowballClient, SnowballSwapQuote } from './snowball';
 import { Algodv2, Indexer, waitForConfirmation } from 'algosdk';
 import { Buffer } from 'buffer';
 import { VoiSwapProvider } from './types';
@@ -13,6 +14,7 @@ export interface VoiSwapServiceConfig {
 export interface VoiQuoteComparison {
   nomadex?: NomadexSwapQuote;
   humble?: HumbleSwapQuote;
+  snowball?: SnowballSwapQuote;
   bestProvider?: VoiSwapProvider;
 }
 
@@ -21,12 +23,13 @@ export interface VoiSwapResult {
   txId?: string;
   error?: string;
   provider: VoiSwapProvider;
-  quote?: NomadexSwapQuote | HumbleSwapQuote;
+  quote?: NomadexSwapQuote | HumbleSwapQuote | SnowballSwapQuote;
 }
 
 export class VoiSwapService {
   private nomadexClient: NomadexClient;
   private humbleClient: HumbleClient;
+  private snowballClient: SnowballClient;
   private algodClient: Algodv2;
   private indexerClient: Indexer;
   private walletSignTransactions: (txns: Uint8Array[]) => Promise<Uint8Array[]>;
@@ -34,6 +37,7 @@ export class VoiSwapService {
   constructor(config: VoiSwapServiceConfig) {
     this.nomadexClient = new NomadexClient();
     this.humbleClient = new HumbleClient();
+    this.snowballClient = new SnowballClient();
     this.algodClient = config.algodClient;
     this.indexerClient = config.indexerClient;
     this.walletSignTransactions = config.walletSignTransactions;
@@ -45,6 +49,10 @@ export class VoiSwapService {
 
   getHumbleClient(): HumbleClient {
     return this.humbleClient;
+  }
+
+  getSnowballClient(): SnowballClient {
+    return this.snowballClient;
   }
 
   /**
@@ -60,7 +68,7 @@ export class VoiSwapService {
   ): Promise<VoiQuoteComparison> {
     const result: VoiQuoteComparison = {};
 
-    const [nomadexResult, humbleResult] = await Promise.allSettled([
+    const [nomadexResult, humbleResult, snowballResult] = await Promise.allSettled([
       this.nomadexClient.fetchSwapQuote(fromTokenId, toTokenId, amount, slippageBps),
       userAddress
         ? this.humbleClient.fetchSwapQuote(
@@ -68,6 +76,9 @@ export class VoiSwapService {
             userAddress, this.algodClient, this.indexerClient
           )
         : Promise.reject(new Error('No user address for Humble simulate')),
+      userAddress
+        ? this.snowballClient.fetchSwapQuote(fromTokenId, toTokenId, amount, slippageBps, userAddress)
+        : this.snowballClient.fetchSwapQuote(fromTokenId, toTokenId, amount, slippageBps),
     ]);
 
     if (nomadexResult.status === 'fulfilled') {
@@ -82,10 +93,17 @@ export class VoiSwapService {
       console.log('Humble quote failed:', humbleResult.reason?.message);
     }
 
+    if (snowballResult.status === 'fulfilled') {
+      result.snowball = snowballResult.value;
+    } else {
+      console.log('Snowball quote failed:', snowballResult.reason?.message);
+    }
+
     // Pick best provider by highest output amount
     const outputs: { provider: VoiSwapProvider; amount: bigint }[] = [];
     if (result.nomadex) outputs.push({ provider: 'nomadex', amount: result.nomadex.amountOut });
     if (result.humble) outputs.push({ provider: 'humble', amount: result.humble.amountOut });
+    if (result.snowball) outputs.push({ provider: 'snowball', amount: result.snowball.amountOut });
 
     if (outputs.length > 0) {
       outputs.sort((a, b) => (b.amount > a.amount ? 1 : b.amount < a.amount ? -1 : 0));
@@ -126,6 +144,9 @@ export class VoiSwapService {
     slippageBps: number = 50
   ): Promise<VoiSwapResult> {
     try {
+      if (provider === 'snowball') {
+        return await this.executeSnowballSwap(fromTokenId, toTokenId, amount, userAddress, slippageBps);
+      }
       if (provider === 'humble') {
         return await this.executeHumbleSwap(fromTokenId, toTokenId, amount, userAddress, slippageBps);
       }
@@ -193,17 +214,42 @@ export class VoiSwapService {
     return { success: true, txId: result.txId, provider: 'humble', quote };
   }
 
+  private async executeSnowballSwap(
+    fromTokenId: number,
+    toTokenId: number,
+    amount: bigint,
+    userAddress: string,
+    slippageBps: number
+  ): Promise<VoiSwapResult> {
+    const quote = await this.snowballClient.fetchSwapQuote(
+      fromTokenId, toTokenId, amount, slippageBps, userAddress
+    );
+    const base64Txns = this.snowballClient.prepareSwapTransactions(quote);
+    const unsignedTxns = base64Txns.map((b64) => new Uint8Array(Buffer.from(b64, 'base64')));
+    console.log(`[Snowball] Unsigned ${unsignedTxns.length} txns, sizes: ${unsignedTxns.map(t => t.length)}`);
+    const signedTxns = await this.walletSignTransactions(unsignedTxns);
+    console.log(`[Snowball] Signed ${signedTxns.length} txns, sizes: ${signedTxns.map(t => t.length)}`);
+    const result = await this.algodClient.sendRawTransaction(signedTxns).do();
+    console.log(`[Snowball] Submitted, txId: ${result.txId}`);
+    const confirmed = await waitForConfirmation(this.algodClient, result.txId, 4);
+    console.log(`[Snowball] Confirmed in round ${confirmed['confirmed-round']}`);
+
+    return { success: true, txId: result.txId, provider: 'snowball', quote };
+  }
+
   /**
    * Check if a token pair is supported on any Voi DEX.
    */
   async isAssetPairSupported(fromTokenId: number, toTokenId: number): Promise<boolean> {
-    const [nomadex, humble] = await Promise.allSettled([
+    const [nomadex, humble, snowball] = await Promise.allSettled([
       this.nomadexClient.isAssetPairSupported(fromTokenId, toTokenId),
       this.humbleClient.isAssetPairSupported(fromTokenId, toTokenId),
+      this.snowballClient.isAssetPairSupported(fromTokenId, toTokenId),
     ]);
     return (
       (nomadex.status === 'fulfilled' && nomadex.value) ||
-      (humble.status === 'fulfilled' && humble.value)
+      (humble.status === 'fulfilled' && humble.value) ||
+      (snowball.status === 'fulfilled' && snowball.value)
     );
   }
 }

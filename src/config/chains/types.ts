@@ -27,7 +27,7 @@ export interface NativeAsset {
 /** DEX provider identifiers */
 export type DexProvider =
   | 'folks-router' | 'vestige' | 'deflex' | 'tinyman' | 'pact'  // Algorand
-  | 'nomadex' | 'humble'                                          // Voi
+  | 'nomadex' | 'humble' | 'snowball'                              // Voi
   ;
 
 /** Wallet provider identifiers */

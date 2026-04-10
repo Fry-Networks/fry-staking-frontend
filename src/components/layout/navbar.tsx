@@ -194,6 +194,18 @@ const Navbar: React.FC = () => {
                 )}
               </NavLink>
             </li>
+            {isAlgorand && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/genesis-mint"
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                Genesis
+              </NavLink>
+            </li>
+            )}
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/profile"
@@ -362,6 +374,19 @@ const Navbar: React.FC = () => {
                 )}
               </NavLink>
             </li>
+            {isAlgorand && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/genesis-mint"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                Genesis
+              </NavLink>
+            </li>
+            )}
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/profile"

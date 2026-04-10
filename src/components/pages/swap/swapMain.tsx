@@ -449,10 +449,12 @@ const SwapMain = () => {
 
           if (quoteAbortRef.current) return;
 
-          let bestQuote = quoteComparison.nomadex || quoteComparison.humble;
+          let bestQuote = quoteComparison.nomadex || quoteComparison.humble || quoteComparison.snowball;
           provider = quoteComparison.bestProvider || 'nomadex';
 
-          if (quoteComparison.bestProvider === 'humble' && quoteComparison.humble) {
+          if (quoteComparison.bestProvider === 'snowball' && quoteComparison.snowball) {
+            bestQuote = quoteComparison.snowball;
+          } else if (quoteComparison.bestProvider === 'humble' && quoteComparison.humble) {
             bestQuote = quoteComparison.humble;
           } else if (quoteComparison.nomadex) {
             bestQuote = quoteComparison.nomadex;
@@ -740,7 +742,7 @@ const SwapMain = () => {
       if (result.success) {
         const providerNames = {
           folksrouter: 'FolksRouter', vestige: 'Vestige Labs', deflex: 'Deflex',
-          nomadex: 'Nomadex', humble: 'HumbleSwap',
+          nomadex: 'Fry Router', humble: 'Fry Router', snowball: 'SnowballSwap',
         };
         const providerName = providerNames[result.provider] || result.provider;
         toast.success(`Swap confirmed via ${providerName}! TXID: ${result.txId}`)
@@ -1192,19 +1194,17 @@ const SwapMain = () => {
             <div className="mt-[13px] mb-[8px] flex items-center justify-center">
               <div className="flex items-center gap-[8px] px-[12px] py-[6px] bg-[var(--bg-secondary)] rounded-[8px]">
                 <div className={`w-[8px] h-[8px] rounded-full ${
-                  chainId === 'voi-mainnet' ? 'bg-red-500' :
+                  currentProvider === 'snowball' ? 'bg-blue-400' :
+                  (chainId === 'voi-mainnet' || currentProvider === 'nomadex' || currentProvider === 'humble') ? 'bg-red-500' :
                   currentProvider === 'folksrouter' ? 'bg-blue-500' :
-                  currentProvider === 'vestige' ? 'bg-green-500' :
-                  currentProvider === 'nomadex' ? 'bg-orange-500' :
-                  currentProvider === 'humble' ? 'bg-cyan-500' : 'bg-purple-500'
+                  currentProvider === 'vestige' ? 'bg-green-500' : 'bg-purple-500'
                 }`}></div>
                 <span className="text-[12px] text-[var(--text-secondary)] font-medium">
                   Powered by {
-                    chainId === 'voi-mainnet' ? 'Fry Networks' :
+                    currentProvider === 'snowball' ? 'SnowballSwap' :
+                    chainId === 'voi-mainnet' ? 'Fry Router' :
                     currentProvider === 'folksrouter' ? 'FolksRouter' :
-                    currentProvider === 'vestige' ? 'Vestige Labs' :
-                    currentProvider === 'nomadex' ? 'Nomadex' :
-                    currentProvider === 'humble' ? 'HumbleSwap' : 'Deflex'
+                    currentProvider === 'vestige' ? 'Vestige Labs' : 'Deflex'
                   }
                 </span>
               </div>

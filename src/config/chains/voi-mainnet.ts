@@ -19,7 +19,7 @@ export const voiMainnet: ChainConfig = {
   usdcEquivalent: { id: 395614, symbol: 'aUSDC', decimals: 6 },
   feeRecipient: 'NQA76E235VCMZB4KZQSV6IU64IWF2GGCXK4Y3QA7N7ZMI7MVHUQVV5BUD4',
   explorerBaseUrl: 'https://explorer.voi.network',
-  availableDexProviders: ['nomadex', 'humble'],
+  availableDexProviders: ['nomadex', 'humble', 'snowball'],
   supportedWallets: ['kibisis', 'lute'],
   connection: {
     algodServer: import.meta.env.VITE_VOI_ALGOD_SERVER || 'https://mainnet-api.voi.nodely.dev',
