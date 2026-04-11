@@ -66,6 +66,15 @@ export interface FryEvent {
   fundingFeeTxId?: string
   fundedAt?: string
   isHidden?: boolean
+  vesting?: {
+    enabled: boolean
+    startDate?: string
+    durationDays?: number
+    cliffDays?: number
+    model?: 'linear' | 'cliff-linear'
+    rewardAsaId?: number
+    totalPool?: number // microFRY
+  }
 }
 
 export interface ChallengePointEntry {
@@ -95,6 +104,39 @@ export interface UserPoints {
   airdropAmount?: number
   airdropTxId?: string
   airdropStatus?: string
+}
+
+// Discriminated union mirroring backend vestingController.js:43-59
+export type VestingStatus =
+  | { enabled: false; message?: string }
+  | { enabled: true; qualified: false; message?: string }
+  | {
+      enabled: true
+      qualified: true
+      totalAllocation: number // microFRY
+      vestedAmount: number // microFRY unlocked so far
+      claimedAmount: number // microFRY already claimed
+      claimableAmount: number // microFRY ready to claim now
+      vestingStartDate: string
+      vestingEndDate: string
+      vestingModel: 'linear' | 'cliff-linear'
+      durationDays: number
+      percentVested: number // 0-100
+      percentClaimed: number // 0-100
+      nextUnlockAmount: number // approx microFRY per day
+      isFullyVested: boolean
+      rewardAsaId: number
+      claimCount: number
+      lastClaimAt: string | null
+      lastClaimTxId: string | null
+    }
+
+export interface VestingClaimResult {
+  txId: string
+  claimedAmount: number // microFRY just claimed
+  newClaimedTotal: number
+  remainingAllocation: number
+  isFullyVested: boolean
 }
 
 export async function fetchActiveEvents(): Promise<FryEvent[]> {
@@ -128,6 +170,21 @@ export async function fetchUserPoints(
   wallet: string
 ): Promise<UserPoints> {
   const { data } = await api.get(`/events/${eventId}/points/${wallet}`)
+  return data.data
+}
+
+export async function fetchVestingStatus(
+  eventId: string,
+  wallet: string
+): Promise<VestingStatus> {
+  const { data } = await api.get(`/events/${eventId}/vesting/status`, {
+    params: { wallet },
+  })
+  return data.data
+}
+
+export async function claimVesting(eventId: string): Promise<VestingClaimResult> {
+  const { data } = await authAxios.post(`/events/${eventId}/vesting/claim`)
   return data.data
 }
 
