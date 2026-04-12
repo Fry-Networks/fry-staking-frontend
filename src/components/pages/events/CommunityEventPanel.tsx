@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Icon } from '@iconify/react'
 import { Popconfirm } from 'antd'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { useAuth } from '../../../hooks/useAuth'
 import {
@@ -13,7 +14,6 @@ import FundingModal from './FundingModal'
 interface CommunityEventPanelProps {
   wallet: string
   onRefresh: () => void
-  onSelect: (id: string) => void
 }
 
 const STATUS_LABELS: Record<string, { bg: string; text: string; label: string }> = {
@@ -31,7 +31,8 @@ const FUNDING_LABELS: Record<string, { text: string; color: string }> = {
   refunded:    { text: 'Refunded', color: 'text-gray-400' },
 }
 
-const CommunityEventPanel: React.FC<CommunityEventPanelProps> = ({ wallet, onRefresh, onSelect }) => {
+const CommunityEventPanel: React.FC<CommunityEventPanelProps> = ({ wallet, onRefresh }) => {
+  const navigate = useNavigate()
   const { ensureAuth } = useAuth()
   const [events, setEvents] = useState<FryEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -112,7 +113,7 @@ const CommunityEventPanel: React.FC<CommunityEventPanelProps> = ({ wallet, onRef
                 <div
                   key={event._id}
                   className="flex items-center justify-between bg-[var(--bg-secondary)] rounded-lg px-4 py-3 hover:bg-[var(--bg-card-hover)] transition-colors cursor-pointer"
-                  onClick={() => onSelect(event._id)}
+                  onClick={() => navigate(`/events/${event._id}`)}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -164,7 +165,7 @@ const CommunityEventPanel: React.FC<CommunityEventPanelProps> = ({ wallet, onRef
                     )}
                     {event.status === 'ended' && (
                       <button
-                        onClick={() => onSelect(event._id)}
+                        onClick={() => navigate(`/events/${event._id}`)}
                         className="px-2.5 py-1 rounded-[6px] bg-[var(--bg-card)] text-text_clr text-xs font-medium flex items-center gap-1 hover:text-[var(--text-heading)]"
                       >
                         <Icon icon="mdi:chart-bar" width={12} /> Results

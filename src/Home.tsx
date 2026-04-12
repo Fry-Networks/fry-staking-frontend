@@ -22,6 +22,7 @@ import Profile from './pages/profile'
 import Stake from './pages/stake'
 import StakePoolStats from './pages/stakePoolStats'
 import Events from './pages/events'
+import EventDetail from './pages/eventDetail'
 import NftStake from './pages/nftStake'
 import NftPoolStats from './pages/nftPoolStats'
 import AlphaArcade from './pages/alphaArcade'
@@ -98,6 +99,10 @@ const appRouter = createBrowserRouter([
   {
     path: '/events',
     element: <Events />,
+  },
+  {
+    path: '/events/:eventId',
+    element: <EventDetail />,
   },
   {
     path: '/profile',

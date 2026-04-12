@@ -5,25 +5,17 @@ import { toast } from 'react-toastify'
 import { useAuth } from '../../../hooks/useAuth'
 import {
   fetchAllEvents,
-  fetchEventById,
   fetchCommunityEvents,
-  fetchCommunityEventById,
   activateEvent,
   endEvent,
   cancelEvent,
   deleteEvent,
   type FryEvent,
-  type EventChallenge,
 } from '../../../services/eventService'
-import ChallengeList from './ChallengeList'
-import ChallengeFormModal from './ChallengeFormModal'
 import CommunityEventFormModal from './CommunityEventFormModal'
 import CommunityEventPanel from './CommunityEventPanel'
-import EventAdminPanel from './EventAdminPanel'
 import EventCard from './EventCard'
 import EventFormModal from './EventFormModal'
-import Leaderboard from './Leaderboard'
-import UserStats from './UserStats'
 
 type ScopeKey = 'official' | 'community'
 type TabKey = 'active' | 'upcoming' | 'ended'
@@ -62,14 +54,10 @@ const EventsPage: React.FC = () => {
 
   // Shared state
   const [activeTab, setActiveTab] = useState<TabKey>('active')
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
 
-  // Admin modal state
+  // Admin modal state (create new + card-level edit)
   const [showEventForm, setShowEventForm] = useState(false)
   const [editingEvent, setEditingEvent] = useState<FryEvent | null>(null)
-  const [showChallengeForm, setShowChallengeForm] = useState(false)
-  const [editingChallenge, setEditingChallenge] = useState<EventChallenge | null>(null)
-  const [challengeEventId, setChallengeEventId] = useState('')
 
   // Community modal state
   const [showCommunityForm, setShowCommunityForm] = useState(false)
@@ -77,12 +65,7 @@ const EventsPage: React.FC = () => {
   // Load official events
   const loadEvents = () => {
     fetchAllEvents()
-      .then(data => {
-        setEvents(data)
-        if (selectedEventId && !data.find(e => e._id === selectedEventId)) {
-          setSelectedEventId(null)
-        }
-      })
+      .then(setEvents)
       .catch(() => {})
       .finally(() => setLoading(false))
   }
@@ -106,43 +89,15 @@ const EventsPage: React.FC = () => {
 
   const refetchEvents = () => {
     if (eventScope === 'official') {
-      fetchAllEvents()
-        .then(data => {
-          setEvents(data)
-          if (selectedEventId && data.find(e => e._id === selectedEventId)) {
-            fetchEventById(selectedEventId).then(full => {
-              setEvents(prev => prev.map(e => e._id === full._id ? full : e))
-            }).catch(() => {})
-          }
-        })
-        .catch(() => {})
+      fetchAllEvents().then(setEvents).catch(() => {})
     } else {
       loadCommunityEvents()
-      if (selectedEventId) {
-        fetchCommunityEventById(selectedEventId).then(full => {
-          setCommunityEvents(prev => prev.map(e => e._id === full._id ? full : e))
-        }).catch(() => {})
-      }
     }
   }
 
   const currentEvents = eventScope === 'official' ? events : communityEvents
   const currentLoading = eventScope === 'official' ? loading : communityLoading
   const filtered = filterEvents(currentEvents, activeTab)
-  const selectedEvent = currentEvents.find(e => e._id === selectedEventId)
-
-  const handleSelect = (id: string) => {
-    if (selectedEventId === id) {
-      setSelectedEventId(null)
-    } else {
-      setSelectedEventId(id)
-      const fetcher = eventScope === 'official' ? fetchEventById : fetchCommunityEventById
-      const setter = eventScope === 'official' ? setEvents : setCommunityEvents
-      fetcher(id).then(full => {
-        setter(prev => prev.map(e => e._id === full._id ? full : e))
-      }).catch(() => {})
-    }
-  }
 
   const handleCardAction = async (action: (id: string) => Promise<any>, event: FryEvent, msg: string) => {
     try {
@@ -159,7 +114,6 @@ const EventsPage: React.FC = () => {
 
   const handleScopeChange = (scope: ScopeKey) => {
     setEventScope(scope)
-    setSelectedEventId(null)
     setActiveTab('active')
   }
 
@@ -241,7 +195,6 @@ const EventsPage: React.FC = () => {
         <CommunityEventPanel
           wallet={activeAddress}
           onRefresh={loadCommunityEvents}
-          onSelect={handleSelect}
         />
       )}
 
@@ -250,7 +203,7 @@ const EventsPage: React.FC = () => {
         {TABS.map(tab => (
           <button
             key={tab.key}
-            onClick={() => { setActiveTab(tab.key); setSelectedEventId(null) }}
+            onClick={() => setActiveTab(tab.key)}
             className={`px-5 py-2 rounded-[8px] font-apex font-bold uppercase text-sm transition-colors ${
               activeTab === tab.key
                 ? 'bg-[#DE0308] text-white'
@@ -296,8 +249,6 @@ const EventsPage: React.FC = () => {
             <EventCard
               key={event._id}
               event={event}
-              onSelect={handleSelect}
-              isSelected={selectedEventId === event._id}
               isAdmin={isAdmin && eventScope === 'official'}
               onEdit={e => { setEditingEvent(e); setShowEventForm(true) }}
               onActivate={e => handleCardAction(activateEvent, e, 'Event activated')}
@@ -309,115 +260,14 @@ const EventsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Selected event detail */}
-      {selectedEvent && (
-        <div className="bg-[var(--bg-card)] rounded-[18px] overflow-hidden shadow-[0px_4px_24.2px_0px_var(--shadow-color)]">
-          {selectedEvent.bannerImage && (
-            <img
-              src={selectedEvent.bannerImage}
-              alt=""
-              className="w-full h-[240px] object-cover"
-            />
-          )}
-          <div className="p-6">
-          <h2 className="text-[var(--text-heading)] font-apex font-bold text-2xl uppercase mb-6">
-            {selectedEvent.name}
-          </h2>
-
-          {/* Community event info */}
-          {selectedEvent.eventType === 'community' && (
-            <div className="mb-4">
-              <div className="flex items-center gap-2 bg-yellow-900/20 border border-yellow-600/30 rounded-lg px-3 py-2 mb-4">
-                <Icon icon="mdi:alert-circle" width={16} className="text-yellow-500 shrink-0" />
-                <p className="text-yellow-200/60 text-xs">
-                  This is a community-created event. Not endorsed by Fry Networks.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-4 text-sm text-text_clr mb-4">
-                {selectedEvent.creatorWallet && (
-                  <div className="flex items-center gap-1.5">
-                    <Icon icon="mdi:account" width={16} />
-                    <span>Created by: {selectedEvent.creatorWallet.slice(0, 6)}...{selectedEvent.creatorWallet.slice(-4)}</span>
-                  </div>
-                )}
-                {(selectedEvent.rewardPool ?? 0) > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <Icon icon="mdi:trophy" width={16} color="#DE0308" />
-                    <span>
-                      {(selectedEvent.rewardPool! / Math.pow(10, selectedEvent.rewardAsaDecimals || 6)).toLocaleString()}{' '}
-                      {selectedEvent.rewardAsaName || `ASA #${selectedEvent.rewardAsaId}`}
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center gap-1.5">
-                  <Icon icon="mdi:safe" width={16} />
-                  <span>Escrow: {selectedEvent.fundingStatus === 'funded' ? 'Funded' : selectedEvent.fundingStatus}</span>
-                  {selectedEvent.fundingStatus === 'funded' && (
-                    <Icon icon="mdi:check-circle" width={14} className="text-green" />
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {selectedEvent.description && (
-            <p className="text-text_clr text-sm mb-6 whitespace-pre-wrap">{selectedEvent.description}</p>
-          )}
-
-          {selectedEvent.challenges && selectedEvent.challenges.length > 0 && (
-            <ChallengeList challenges={selectedEvent.challenges} />
-          )}
-
-          <Leaderboard eventId={selectedEvent._id} activeWallet={activeAddress || undefined} />
-
-          {activeAddress ? (
-            <UserStats eventId={selectedEvent._id} wallet={activeAddress} />
-          ) : (
-            <div className="bg-[var(--bg-secondary)] rounded-[12px] p-6 text-center">
-              <p className="text-text_clr">Connect your wallet to see your stats</p>
-            </div>
-          )}
-          </div>
-        </div>
-      )}
-
-      {/* Admin panel for selected official event */}
-      {isAdmin && selectedEvent && eventScope === 'official' && (
-        <EventAdminPanel
-          event={selectedEvent}
-          onRefresh={refetchEvents}
-          onEditEvent={e => { setEditingEvent(e); setShowEventForm(true) }}
-          onEditChallenge={c => {
-            setEditingChallenge(c)
-            setChallengeEventId(selectedEvent._id)
-            setShowChallengeForm(true)
-          }}
-          onAddChallenge={() => {
-            setEditingChallenge(null)
-            setChallengeEventId(selectedEvent._id)
-            setShowChallengeForm(true)
-          }}
-        />
-      )}
-
-      {/* Admin modals (official events) */}
+      {/* Admin modals (event create + card-level edit) */}
       {isAdmin && (
-        <>
-          <EventFormModal
-            open={showEventForm}
-            onClose={() => { setShowEventForm(false); setEditingEvent(null) }}
-            onSuccess={refetchEvents}
-            event={editingEvent}
-          />
-          <ChallengeFormModal
-            open={showChallengeForm}
-            onClose={() => { setShowChallengeForm(false); setEditingChallenge(null) }}
-            onSuccess={refetchEvents}
-            eventId={challengeEventId}
-            challenge={editingChallenge}
-          />
-        </>
+        <EventFormModal
+          open={showEventForm}
+          onClose={() => { setShowEventForm(false); setEditingEvent(null) }}
+          onSuccess={refetchEvents}
+          event={editingEvent}
+        />
       )}
 
       {/* Community event creation modal */}

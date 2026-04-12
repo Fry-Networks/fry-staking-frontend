@@ -1,12 +1,11 @@
 import { Icon } from '@iconify/react'
 import { Popconfirm } from 'antd'
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { FryEvent } from '../../../services/eventService'
 
 interface EventCardProps {
   event: FryEvent
-  onSelect: (id: string) => void
-  isSelected: boolean
   isAdmin?: boolean
   onEdit?: (event: FryEvent) => void
   onActivate?: (event: FryEvent) => void
@@ -42,8 +41,9 @@ const ADMIN_STATUS_STYLES: Record<string, { bg: string; text: string; label: str
 }
 
 const EventCard: React.FC<EventCardProps> = ({
-  event, onSelect, isSelected, isAdmin, onEdit, onActivate, onEnd, onCancel, onDelete,
+  event, isAdmin, onEdit, onActivate, onEnd, onCancel, onDelete,
 }) => {
+  const navigate = useNavigate()
   const [countdown, setCountdown] = useState(() => event.endDate ? getTimeRemaining(event.endDate) : null)
 
   useEffect(() => {
@@ -59,10 +59,8 @@ const EventCard: React.FC<EventCardProps> = ({
 
   return (
     <div
-      onClick={() => onSelect(event._id)}
-      className={`bg-[var(--bg-card)] rounded-[18px] overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.01] shadow-[0px_4px_24.2px_0px_var(--shadow-color)] ${
-        isSelected ? 'border-solid border-2 border-[#DE0308]' : 'border-solid border-2 border-transparent'
-      }`}
+      onClick={() => navigate(`/events/${event._id}`)}
+      className="bg-[var(--bg-card)] rounded-[18px] overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.01] shadow-[0px_4px_24.2px_0px_var(--shadow-color)] border-solid border-2 border-transparent"
     >
       {event.bannerImage && (
         <img
