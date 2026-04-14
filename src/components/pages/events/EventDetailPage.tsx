@@ -146,7 +146,7 @@ const EventDetailPage: React.FC = () => {
           <Leaderboard eventId={event._id} activeWallet={activeAddress || undefined} />
 
           {activeAddress ? (
-            <UserStats eventId={event._id} wallet={activeAddress} />
+            <UserStats eventId={event._id} wallet={activeAddress} vestingConfig={event.vesting} />
           ) : (
             <div className="bg-[var(--bg-secondary)] rounded-[12px] p-6 text-center">
               <p className="text-text_clr">Connect your wallet to see your stats</p>

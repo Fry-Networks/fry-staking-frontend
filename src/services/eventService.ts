@@ -74,6 +74,8 @@ export interface FryEvent {
     model?: 'linear' | 'cliff-linear'
     rewardAsaId?: number
     totalPool?: number // microFRY
+    vestingType?: 'off-chain' | 'on-chain'
+    appId?: number // Algorand app ID for on-chain vesting
   }
 }
 

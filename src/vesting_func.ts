@@ -237,14 +237,17 @@ export const claimVesting = async (
   sender: string,
   signer: TransactionSigner,
   algodConfigOverride?: AlgodConfigOverride,
-): Promise<bigint> => {
+): Promise<{ claimedAmount: bigint; txId: string }> => {
   try {
     const { client } = await createEventVestingClient(signer, sender, appId, algodConfigOverride)
     const result = await client.claim(
       {},
       { sendParams: { fee: algokit.algos(0.002) } },
     )
-    return result.return?.valueOf() as bigint
+    return {
+      claimedAmount: result.return?.valueOf() as bigint,
+      txId: result.transaction.txID(),
+    }
   } catch (e) {
     console.error('Error in claimVesting:', e)
     throw e

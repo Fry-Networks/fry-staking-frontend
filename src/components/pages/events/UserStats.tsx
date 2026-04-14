@@ -3,14 +3,17 @@ import { useEffect, useState } from 'react'
 import { fetchUserPoints } from '../../../services/eventService'
 import type { UserPoints } from '../../../services/eventService'
 import { getChallengeConfig } from '../../../utils/challengeUtils'
+import type { FryEvent } from '../../../services/eventService'
+import OnChainVestingStatus from './OnChainVestingStatus'
 import VestingStatus from './VestingStatus'
 
 interface UserStatsProps {
   eventId: string
   wallet: string
+  vestingConfig?: FryEvent['vesting']
 }
 
-const UserStats: React.FC<UserStatsProps> = ({ eventId, wallet }) => {
+const UserStats: React.FC<UserStatsProps> = ({ eventId, wallet, vestingConfig }) => {
   const [points, setPoints] = useState<UserPoints | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -108,7 +111,11 @@ const UserStats: React.FC<UserStatsProps> = ({ eventId, wallet }) => {
         )}
       </div>
 
-      <VestingStatus eventId={eventId} wallet={wallet} />
+      {vestingConfig?.enabled && vestingConfig.vestingType === 'on-chain' && vestingConfig.appId != null ? (
+        <OnChainVestingStatus appId={vestingConfig.appId} wallet={wallet} />
+      ) : (
+        <VestingStatus eventId={eventId} wallet={wallet} />
+      )}
     </>
   )
 }
