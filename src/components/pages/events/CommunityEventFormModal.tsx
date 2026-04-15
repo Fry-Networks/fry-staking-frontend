@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import { Icon } from '@iconify/react'
 import { useWallet } from '@txnlab/use-wallet'
-import { Select } from 'antd'
+import { Select, Switch } from 'antd'
 import { toast } from 'react-toastify'
 import algosdk from 'algosdk'
 import { useAuth } from '../../../hooks/useAuth'
@@ -17,6 +17,7 @@ import {
   type CreateChallengePayload,
   type FundingResult,
 } from '../../../services/eventService'
+import CreateVestingWizard from '../../../Modals/website/CreateVestingWizard'
 
 const CHALLENGE_TYPES = [
   'staking_volume', 'farming_volume', 'trading_volume', 'staking_profit',
@@ -74,6 +75,14 @@ const CommunityEventFormModal: React.FC<CommunityEventFormModalProps> = ({ visib
   const [feeInfo, setFeeInfo] = useState<{ feeAmount: number; netAmount: number; grossAmount: number } | null>(null)
   const [error, setError] = useState('')
   const [txId, setTxId] = useState('')
+
+  // On-chain vesting
+  const [vestingEnabled, setVestingEnabled] = useState(false)
+  const [vestingAsaId, setVestingAsaId] = useState<number>(0)
+  const [vestingDurationDays, setVestingDurationDays] = useState<number>(30)
+  const [vestingCliffDays, setVestingCliffDays] = useState<number>(0)
+  const [vestingTotalPool, setVestingTotalPool] = useState<number>(0)
+  const [showVestingWizard, setShowVestingWizard] = useState(false)
 
   // Validate ASA on Algorand
   const validateAsa = useCallback(async (id: string) => {
@@ -229,7 +238,11 @@ const CommunityEventFormModal: React.FC<CommunityEventFormModalProps> = ({ visib
       }
 
       toast.success('Event created!')
-      setStep('review')
+      if (vestingEnabled) {
+        setShowVestingWizard(true)
+      } else {
+        setStep('review')
+      }
     } catch (err: any) {
       if (!err.message?.includes('cancelled') && !err.message?.includes('CANCELLED')) {
         toast.error(err.response?.data?.message || err.message || 'Failed to create event')
@@ -341,6 +354,7 @@ const CommunityEventFormModal: React.FC<CommunityEventFormModalProps> = ({ visib
   const canClose = step === 'form' || step === 'review' || step === 'success' || step === 'error'
 
   return (
+    <>
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60" onClick={canClose ? handleClose : undefined} />
 
@@ -596,6 +610,73 @@ const CommunityEventFormModal: React.FC<CommunityEventFormModalProps> = ({ visib
                 </button>
               </div>
 
+              {/* On-Chain Vesting */}
+              <details className="bg-[var(--bg-secondary)] rounded-[12px] p-4">
+                <summary className="text-[var(--text-heading)] font-apex text-sm uppercase cursor-pointer">
+                  On-Chain Vesting
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-text_clr text-sm">Enable On-Chain Vesting</label>
+                    <Switch checked={vestingEnabled} onChange={setVestingEnabled} />
+                  </div>
+                  {vestingEnabled && (
+                    <>
+                      <div className="input-box">
+                        <label className="text-text_clr text-xs">Reward ASA ID for Vesting</label>
+                        <div className="input-wrapper">
+                          <input
+                            type="number"
+                            value={vestingAsaId || ''}
+                            onChange={e => setVestingAsaId(Number(e.target.value) || 0)}
+                            placeholder="ASA ID"
+                            min={0}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="input-box">
+                          <label className="text-text_clr text-xs">Duration (days)</label>
+                          <div className="input-wrapper">
+                            <input
+                              type="number"
+                              value={vestingDurationDays || ''}
+                              onChange={e => setVestingDurationDays(Number(e.target.value) || 0)}
+                              placeholder="30"
+                              min={1}
+                            />
+                          </div>
+                        </div>
+                        <div className="input-box">
+                          <label className="text-text_clr text-xs">Cliff (days)</label>
+                          <div className="input-wrapper">
+                            <input
+                              type="number"
+                              value={vestingCliffDays || ''}
+                              onChange={e => setVestingCliffDays(Number(e.target.value) || 0)}
+                              placeholder="0"
+                              min={0}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="input-box">
+                        <label className="text-text_clr text-xs">Total Pool (base units)</label>
+                        <div className="input-wrapper">
+                          <input
+                            type="number"
+                            value={vestingTotalPool || ''}
+                            onChange={e => setVestingTotalPool(Number(e.target.value) || 0)}
+                            placeholder="0"
+                            min={0}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </details>
+
               {/* Submit */}
               <button
                 onClick={handleSubmit}
@@ -740,6 +821,30 @@ const CommunityEventFormModal: React.FC<CommunityEventFormModalProps> = ({ visib
         </div>
       </div>
     </div>
+
+    {showVestingWizard && createdEvent && (
+      <CreateVestingWizard
+        visible={showVestingWizard}
+        eventId={createdEvent._id}
+        rewardAsaId={vestingAsaId}
+        vestingStart={Math.floor(new Date(startDate).getTime() / 1000)}
+        vestingEnd={Math.floor(new Date(startDate).getTime() / 1000) + vestingDurationDays * 86400}
+        cliffDays={vestingCliffDays}
+        totalPool={BigInt(Math.round(vestingTotalPool))}
+        eventType="community"
+        onSuccess={() => {
+          setShowVestingWizard(false)
+          toast.success('Vesting contract deployed!')
+          setStep('review')
+        }}
+        onCancel={() => {
+          setShowVestingWizard(false)
+          toast.warning('Vesting contract was NOT deployed. You can deploy it later.')
+          setStep('review')
+        }}
+      />
+    )}
+    </>
   )
 }
 

@@ -204,6 +204,17 @@ export interface CreateEventPayload {
   autoSchedule?: FryEvent['autoSchedule']
   bannerImage?: string
   status?: 'draft' | 'scheduled'
+  vesting?: {
+    enabled?: boolean
+    startDate?: string
+    durationDays?: number
+    cliffDays?: number
+    model?: 'linear' | 'cliff-linear'
+    rewardAsaId?: number
+    totalPool?: number
+    vestingType?: 'off-chain' | 'on-chain'
+    appId?: number
+  }
 }
 
 export interface CreateChallengePayload {
@@ -291,6 +302,17 @@ export interface CreateCommunityEventPayload {
   minPointsToQualify?: number
   bannerImage?: string
   challenges: CreateChallengePayload[]
+  vesting?: {
+    enabled?: boolean
+    startDate?: string
+    durationDays?: number
+    cliffDays?: number
+    model?: 'linear' | 'cliff-linear'
+    rewardAsaId?: number
+    totalPool?: number
+    vestingType?: 'off-chain' | 'on-chain'
+    appId?: number
+  }
 }
 
 export interface FundingResult {

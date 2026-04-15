@@ -12,6 +12,7 @@ import {
   type AirdropTier,
   type CreateEventPayload,
 } from '../../../services/eventService'
+import CreateVestingWizard from '../../../Modals/website/CreateVestingWizard'
 
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const MAX_BANNER_MB = 5
@@ -45,6 +46,15 @@ const EventFormModal: React.FC<EventFormModalProps> = ({ open, onClose, onSucces
   const [recurrence, setRecurrence] = useState<'daily' | 'weekly' | 'biweekly' | 'monthly'>('weekly')
   const [submitting, setSubmitting] = useState(false)
 
+  // On-chain vesting
+  const [vestingEnabled, setVestingEnabled] = useState(false)
+  const [vestingAsaId, setVestingAsaId] = useState<number>(0)
+  const [vestingDurationDays, setVestingDurationDays] = useState<number>(30)
+  const [vestingCliffDays, setVestingCliffDays] = useState<number>(0)
+  const [vestingTotalPool, setVestingTotalPool] = useState<number>(0)
+  const [showVestingWizard, setShowVestingWizard] = useState(false)
+  const [savedEventId, setSavedEventId] = useState<string | null>(null)
+
   useEffect(() => {
     if (open && event) {
       setName(event.name)
@@ -76,6 +86,13 @@ const EventFormModal: React.FC<EventFormModalProps> = ({ open, onClose, onSucces
       setAutoEnabled(false)
       setTemplateName('')
       setRecurrence('weekly')
+      setVestingEnabled(false)
+      setVestingAsaId(0)
+      setVestingDurationDays(30)
+      setVestingCliffDays(0)
+      setVestingTotalPool(0)
+      setShowVestingWizard(false)
+      setSavedEventId(null)
     }
   }, [open, event])
 
@@ -146,6 +163,18 @@ const EventFormModal: React.FC<EventFormModalProps> = ({ open, onClose, onSucces
           ? { enabled: true, templateName: templateName.trim() || undefined, recurrence }
           : undefined,
         status: submitStatus,
+        ...(vestingEnabled ? {
+          vesting: {
+            enabled: true,
+            vestingType: 'on-chain' as const,
+            rewardAsaId: vestingAsaId,
+            durationDays: vestingDurationDays,
+            cliffDays: vestingCliffDays,
+            totalPool: vestingTotalPool,
+            model: 'linear' as const,
+            startDate: startDate?.toISOString(),
+          },
+        } : {}),
       }
 
       if (isEditing) {
@@ -170,13 +199,21 @@ const EventFormModal: React.FC<EventFormModalProps> = ({ open, onClose, onSucces
       }
     }
 
-    toast.success(submitStatus === 'draft' ? 'Draft saved' : `Event ${isEditing ? 'updated' : 'created'}`)
-    onSuccess()
-    onClose()
-    setSubmitting(false)
+    if (vestingEnabled) {
+      setSavedEventId(savedEvent._id)
+      setShowVestingWizard(true)
+      setSubmitting(false)
+      toast.info('Event saved. Complete the on-chain vesting setup.')
+    } else {
+      toast.success(submitStatus === 'draft' ? 'Draft saved' : `Event ${isEditing ? 'updated' : 'created'}`)
+      onSuccess()
+      onClose()
+      setSubmitting(false)
+    }
   }
 
   return (
+    <>
     <Modal
       open={open}
       onCancel={() => { if (!submitting) onClose() }}
@@ -414,6 +451,73 @@ const EventFormModal: React.FC<EventFormModalProps> = ({ open, onClose, onSucces
               )}
             </div>
           </details>
+
+          {/* On-Chain Vesting */}
+          <details className="bg-[var(--bg-secondary)] rounded-[12px] p-4">
+            <summary className="text-[var(--text-heading)] font-apex text-sm uppercase cursor-pointer">
+              On-Chain Vesting
+            </summary>
+            <div className="mt-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-text_clr text-sm">Enable On-Chain Vesting</label>
+                <Switch checked={vestingEnabled} onChange={setVestingEnabled} />
+              </div>
+              {vestingEnabled && (
+                <>
+                  <div className="input-box">
+                    <label>Reward ASA ID</label>
+                    <div className="input-wrapper">
+                      <input
+                        type="number"
+                        value={vestingAsaId || ''}
+                        onChange={e => setVestingAsaId(Number(e.target.value) || 0)}
+                        placeholder="ASA ID"
+                        min={0}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="input-box">
+                      <label>Duration (days)</label>
+                      <div className="input-wrapper">
+                        <input
+                          type="number"
+                          value={vestingDurationDays || ''}
+                          onChange={e => setVestingDurationDays(Number(e.target.value) || 0)}
+                          placeholder="30"
+                          min={1}
+                        />
+                      </div>
+                    </div>
+                    <div className="input-box">
+                      <label>Cliff (days)</label>
+                      <div className="input-wrapper">
+                        <input
+                          type="number"
+                          value={vestingCliffDays || ''}
+                          onChange={e => setVestingCliffDays(Number(e.target.value) || 0)}
+                          placeholder="0"
+                          min={0}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="input-box">
+                    <label>Total Pool (base units)</label>
+                    <div className="input-wrapper">
+                      <input
+                        type="number"
+                        value={vestingTotalPool || ''}
+                        onChange={e => setVestingTotalPool(Number(e.target.value) || 0)}
+                        placeholder="0"
+                        min={0}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </details>
         </div>
 
         {/* Submit */}
@@ -446,6 +550,32 @@ const EventFormModal: React.FC<EventFormModalProps> = ({ open, onClose, onSucces
         </div>
       </div>
     </Modal>
+
+    {showVestingWizard && savedEventId && startDate && (
+      <CreateVestingWizard
+        visible={showVestingWizard}
+        eventId={savedEventId}
+        rewardAsaId={vestingAsaId}
+        vestingStart={Math.floor(startDate.valueOf() / 1000)}
+        vestingEnd={Math.floor(startDate.valueOf() / 1000) + vestingDurationDays * 86400}
+        cliffDays={vestingCliffDays}
+        totalPool={BigInt(Math.round(vestingTotalPool))}
+        eventType="official"
+        onSuccess={(appId) => {
+          setShowVestingWizard(false)
+          toast.success('Vesting contract deployed \u2014 App ID: ' + appId)
+          onSuccess()
+          onClose()
+        }}
+        onCancel={() => {
+          setShowVestingWizard(false)
+          toast.warning('Event saved but vesting contract was NOT deployed. You can deploy it later.')
+          onSuccess()
+          onClose()
+        }}
+      />
+    )}
+    </>
   )
 }
 
