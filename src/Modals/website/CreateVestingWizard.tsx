@@ -6,6 +6,9 @@ import { useAuth } from '../../hooks/useAuth';
 import { initVesting, optInAsset, fundPool } from '../../vesting_func';
 import { updateEvent, updateCommunityEvent } from '../../services/eventService';
 
+
+// Fry Networks operational wallet for automated post-event seeding
+const FRY_SEEDER_ADDRESS = 'PLACEHOLDER_SEEDER_ADDRESS'; // TODO: replace with real wallet
 interface CreateVestingWizardProps {
   visible: boolean;
   eventId: string;
@@ -58,6 +61,7 @@ const CreateVestingWizard: React.FC<CreateVestingWizardProps> = ({
     try {
       const appId = await initVesting(
         activeAddress,
+        FRY_SEEDER_ADDRESS,
         rewardAsaId,
         vestingStart,
         vestingEnd,
