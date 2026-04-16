@@ -829,6 +829,7 @@ const CommunityEventFormModal: React.FC<CommunityEventFormModalProps> = ({ visib
         rewardAsaId={vestingAsaId}
         vestingStart={Math.floor(new Date(startDate).getTime() / 1000)}
         vestingEnd={Math.floor(new Date(startDate).getTime() / 1000) + vestingDurationDays * 86400}
+        eventEnd={Math.floor(new Date(endDate).getTime() / 1000)}
         cliffDays={vestingCliffDays}
         totalPool={BigInt(Math.round(vestingTotalPool))}
         eventType="community"

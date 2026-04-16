@@ -49,7 +49,8 @@ const createEventVestingClient = async (
 
 export const initVesting = async (
   authority: string,
-  seeder: string,
+  eventCaller: string,
+  eventEnd: number,
   rewardTokenId: number,
   vestingStart: number,
   vestingEnd: number,
@@ -79,7 +80,8 @@ export const initVesting = async (
       method: initMethod,
       methodArgs: [
         authority,
-        seeder,
+        eventCaller,
+        BigInt(eventEnd),
         rewardTokenId,
         BigInt(vestingStart),
         BigInt(vestingEnd),
@@ -87,7 +89,7 @@ export const initVesting = async (
       ],
       approvalProgram: COMPILED_APPROVAL,
       clearProgram: COMPILED_CLEAR,
-      numGlobalInts: 10,
+      numGlobalInts: 11,
       numGlobalByteSlices: 2,
       numLocalInts: 0,
       numLocalByteSlices: 0,

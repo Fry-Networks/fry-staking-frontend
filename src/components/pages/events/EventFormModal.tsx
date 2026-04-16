@@ -558,6 +558,7 @@ const EventFormModal: React.FC<EventFormModalProps> = ({ open, onClose, onSucces
         rewardAsaId={vestingAsaId}
         vestingStart={Math.floor(startDate.valueOf() / 1000)}
         vestingEnd={Math.floor(startDate.valueOf() / 1000) + vestingDurationDays * 86400}
+        eventEnd={Math.floor(endDate!.valueOf() / 1000)}
         cliffDays={vestingCliffDays}
         totalPool={BigInt(Math.round(vestingTotalPool))}
         eventType="official"

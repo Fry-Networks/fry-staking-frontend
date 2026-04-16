@@ -6,15 +6,13 @@ import { useAuth } from '../../hooks/useAuth';
 import { initVesting, optInAsset, fundPool } from '../../vesting_func';
 import { updateEvent, updateCommunityEvent } from '../../services/eventService';
 
-
-// Fry Networks operational wallet for automated post-event seeding
-const FRY_SEEDER_ADDRESS = 'PLACEHOLDER_SEEDER_ADDRESS'; // TODO: replace with real wallet
 interface CreateVestingWizardProps {
   visible: boolean;
   eventId: string;
   rewardAsaId: number;
   vestingStart: number;      // Unix seconds
   vestingEnd: number;        // Unix seconds
+  eventEnd: number;          // Unix seconds - when the event ends (for seeding time gate)
   cliffDays: number;
   totalPool: bigint;         // base units — MUST stay bigint until fundPool()
   eventType: 'official' | 'community';
@@ -34,6 +32,7 @@ const CreateVestingWizard: React.FC<CreateVestingWizardProps> = ({
   rewardAsaId,
   vestingStart,
   vestingEnd,
+  eventEnd,
   cliffDays,
   totalPool,
   eventType,
@@ -59,9 +58,15 @@ const CreateVestingWizard: React.FC<CreateVestingWizardProps> = ({
     setIsDeploying(true);
     setStepError(null);
     try {
+      // TODO: Replace with backend API call that generates event caller keypair
+      // Backend will return { eventCallerAddress: string } after creating the keypair
+      // For now, use a placeholder to keep the contract call structure correct
+      const eventCallerAddress = 'PLACEHOLDER_EVENT_CALLER'; // Task B will replace this
+
       const appId = await initVesting(
         activeAddress,
-        FRY_SEEDER_ADDRESS,
+        eventCallerAddress,
+        eventEnd,
         rewardAsaId,
         vestingStart,
         vestingEnd,
