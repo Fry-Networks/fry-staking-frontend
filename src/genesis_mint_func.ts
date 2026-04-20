@@ -161,11 +161,16 @@ export async function getUserGenesisNfts(address: string): Promise<number[]> {
   try {
     const box = await algod.getApplicationBoxByName(GENESIS_NFT_APP_ID, balanceBoxName).do()
     balance = Number(new DataView(new Uint8Array(box.value).buffer).getBigUint64(0))
-  } catch {
-    return [] // box not found → user owns 0
+  } catch (err: any) {
+    if (err?.status === 404 || err?.message?.includes('box not found')) {
+      return [] // box not found → user owns 0
+    }
+    console.error('[GenesisNFT] balance box read failed for', address, err)
+    return []
   }
   if (balance === 0) return []
 
+  try {
   // Scan owners boxes in parallel batches to find which token IDs belong to this user
   const state = await getGenesisNftState()
   const owned: number[] = []
@@ -173,22 +178,37 @@ export async function getUserGenesisNfts(address: string): Promise<number[]> {
 
   for (let start = 1; start <= state.totalMinted && owned.length < balance; start += BATCH) {
     const end = Math.min(start + BATCH - 1, state.totalMinted)
-    const batch: Promise<void>[] = []
-
-    for (let id = start; id <= end; id++) {
-      const boxName = new Uint8Array([0x6f, ...uint64ToBytes(id)]) // "o" + tokenId
-      batch.push(
-        algod.getApplicationBoxByName(GENESIS_NFT_APP_ID, boxName).do()
-          .then((box) => {
-            if (algosdk.encodeAddress(new Uint8Array(box.value)) === address) {
-              owned.push(id)
-            }
+    let attempt = 0
+    while (true) {
+      try {
+        await Promise.all(
+          Array.from({ length: end - start + 1 }, (_, i) => {
+            const id = start + i
+            const boxName = new Uint8Array([0x6f, ...uint64ToBytes(id)]) // "o" + tokenId
+            return algod.getApplicationBoxByName(GENESIS_NFT_APP_ID, boxName).do()
+              .then((box) => {
+                if (algosdk.encodeAddress(new Uint8Array(box.value)) === address) {
+                  owned.push(id)
+                }
+              })
+              .catch(() => {}) // individual box may not exist
           })
-          .catch(() => {})
-      )
+        )
+        break
+      } catch (e) {
+        attempt++
+        if (attempt >= 2) {
+          console.error('[GenesisNFT] batch failed after retry', { start, end, err: e })
+          throw e // outer catch will handle
+        }
+        await new Promise(r => setTimeout(r, 400 * attempt))
+      }
     }
-    await Promise.all(batch)
   }
 
   return owned.sort((a, b) => a - b)
+  } catch (err) {
+    console.error('[GenesisNFT] getUserGenesisNfts scan failed for', address, err)
+    return []
+  }
 }

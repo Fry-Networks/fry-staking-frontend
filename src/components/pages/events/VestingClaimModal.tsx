@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import { Icon } from '@iconify/react'
 import { claimVesting } from '../../../services/eventService'
+import { useAuth } from '../../../hooks/useAuth'
 
 interface VestingClaimModalProps {
   isOpen: boolean
@@ -30,14 +31,24 @@ const VestingClaimModal: React.FC<VestingClaimModalProps> = ({
   const [txId, setTxId] = useState('')
   const [claimedAmount, setClaimedAmount] = useState(0)
 
+  const { ensureAuth } = useAuth()
+
   const handleClaim = useCallback(async () => {
     setStep('submitting')
     setError('')
     try {
+      try {
+        await ensureAuth()
+      } catch {
+        setError('Please sign in to claim (wallet signature required).')
+        setStep('error')
+        return
+      }
       const result = await claimVesting(eventId)
       setTxId(result.txId)
       setClaimedAmount(result.claimedAmount)
       setStep('success')
+      onSuccess()
     } catch (e: any) {
       const msg =
         e?.response?.data?.message || e?.message || 'Claim failed'
