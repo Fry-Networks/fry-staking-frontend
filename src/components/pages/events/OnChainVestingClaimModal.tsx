@@ -47,6 +47,7 @@ const OnChainVestingClaimModal: React.FC<OnChainVestingClaimModalProps> = ({
       setTxId(result.txId)
       setClaimedAmount(Number(result.claimedAmount))
       setStep('success')
+      onSuccess()
     } catch (e: any) {
       const msg = e?.message || 'Claim failed'
       setError(msg)
