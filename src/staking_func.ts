@@ -9,6 +9,7 @@ import { APP_SPEC as V3_APP_SPEC } from './contracts/FryStakingV3'
 import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryStakingV2Compiled'
 import { COMPILED_APPROVAL as V3_COMPILED_APPROVAL, COMPILED_CLEAR as V3_COMPILED_CLEAR } from './contracts/FryStakingV3Compiled'
 import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
+import { routeFeeViaRouter } from './services/FeeService'
 
 export const getAlgodClient = async (): Promise<algosdk.Algodv2> => {
   const algodConfig = getAlgodConfigFromViteEnvironment()
@@ -406,24 +407,8 @@ export const stakeTokens = async (stakingId: number, stakeAmount: number, sender
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        let feeResult
-        if (feeTokenId === 0) {
-          feeResult = await algorandClient.send.payment({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-        } else {
-          feeResult = await algorandClient.send.assetTransfer({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-        }
-        feeTxId = (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful stake:', feeErr);
       }
@@ -492,24 +477,8 @@ export const unstakeTokens = async (
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        let feeResult
-        if (feeTokenId === 0) {
-          feeResult = await algorandClient.send.payment({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-        } else {
-          feeResult = await algorandClient.send.assetTransfer({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-        }
-        feeTxId = (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful unstake:', feeErr);
       }
@@ -592,24 +561,8 @@ export const claimTokens = async (
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        let feeResult
-        if (feeTokenId === 0) {
-          feeResult = await algorandClient.send.payment({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-        } else {
-          feeResult = await algorandClient.send.assetTransfer({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-        }
-        feeTxId = (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful claim:', feeErr);
       }
