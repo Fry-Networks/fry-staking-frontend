@@ -5,6 +5,7 @@ import { useChain } from '../context/ChainContext'
 import { useVoiWallet } from '../context/VoiWalletContext'
 import { fetchVoiUsd } from '../contracts/nomadex/NomadexPriceService'
 import { isAvmChain } from '../config/chains/types'
+import { routeFeeViaRouter } from '../services/FeeService'
 
 const FRY_ASA_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946
 const ADMIN_WALLET = 'E2F2LT2INE75DBOYHQXTCTOP2PAP5MHAXQRXTTCCXFKHQTVG36DJONBQZE'
@@ -63,22 +64,11 @@ const useAiPayment = () => {
 
         return txId
       } else {
-        // Algorand: charge FRY (existing behavior)
+        // Algorand: charge FRY via FeeRouter
         const algod = new algosdk.Algodv2('', ALGOD_SERVER, '')
-        const params = await algod.getTransactionParams().do()
-
         const microAmount = fryAmount * 1_000_000
 
-        const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-          from: activeAddress,
-          to: ADMIN_WALLET,
-          assetIndex: FRY_ASA_ID,
-          amount: microAmount,
-          suggestedParams: params,
-        })
-
-        const signedTxns: any = await signer([txn], [0])
-        const { txId } = await algod.sendRawTransaction(signedTxns).do()
+        const { txId } = await routeFeeViaRouter(activeAddress, signer, microAmount, FRY_ASA_ID, algod)
         await algosdk.waitForConfirmation(algod, txId, 4)
 
         return txId

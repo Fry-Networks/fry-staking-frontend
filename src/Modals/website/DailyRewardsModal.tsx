@@ -12,9 +12,12 @@ import {
   fetchRewardsConfig,
   fetchRewardsStatus,
   claimReward,
+  fetchVaultStatus,
+  claimVaultReward,
   LeaderboardEntry,
   RewardsConfig,
   RewardsStatus,
+  VaultStatus,
 } from '../../services/rewardsApi'
 
 interface DailyRewardsModalProps {
@@ -59,11 +62,15 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const [eligibilityExpanded, setEligibilityExpanded] = useState(false)
   const [leaderboardLoading, setLeaderboardLoading] = useState(false)
+  const [vaultStatus, setVaultStatus] = useState<VaultStatus | null>(null)
+  const [vaultClaiming, setVaultClaiming] = useState(false)
 
   const turnstileRef = useRef<HTMLDivElement | null>(null)
   const turnstileWidgetId = useRef<string | null>(null)
   const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const claimingRef = useRef(false)
+
+  const isCappedHybrid = config?.cappedHybridEnabled ?? false
 
   // Fetch config + status on open
   useEffect(() => {
@@ -80,6 +87,10 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
           setCooldownSeconds(Math.ceil(sts.cooldownMinutes * 60))
         } else {
           setCooldownSeconds(0)
+        }
+        // Fetch vault status if capped-hybrid
+        if (cfg.cappedHybridEnabled) {
+          fetchVaultStatus(activeAddress).then(setVaultStatus).catch(() => {})
         }
       })
       .catch((err) => {
@@ -98,7 +109,6 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
       setCooldownSeconds((prev) => {
         if (prev <= 1) {
           if (cooldownTimer.current) clearInterval(cooldownTimer.current)
-          // Refetch status when countdown hits 0
           if (activeAddress) {
             fetchRewardsStatus(activeAddress)
               .then((sts) => {
@@ -120,9 +130,8 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
     }
   }, [cooldownSeconds > 0, activeAddress])
 
-  // Turnstile callback ref — ties widget lifecycle to DOM mount/unmount
+  // Turnstile callback ref
   const turnstileCallbackRef = useCallback((node: HTMLDivElement | null) => {
-    // Cleanup previous widget
     if (turnstileWidgetId.current && (window as any).turnstile) {
       try {
         ;(window as any).turnstile.remove(turnstileWidgetId.current)
@@ -136,7 +145,6 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
 
     const doRender = () => {
       if (!turnstileRef.current || !(window as any).turnstile) return
-      // Remove stale widget before re-rendering
       if (turnstileWidgetId.current) {
         try { ;(window as any).turnstile.remove(turnstileWidgetId.current) } catch (_) {}
         turnstileWidgetId.current = null
@@ -147,7 +155,6 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
         callback: (token: string) => setTurnstileToken(token),
         'expired-callback': () => {
           setTurnstileToken(null)
-          // Auto-reset on expiry so user doesn't get stuck
           if (turnstileWidgetId.current && (window as any).turnstile) {
             try { ;(window as any).turnstile.reset(turnstileWidgetId.current) } catch (_) {}
           }
@@ -159,7 +166,6 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
     if ((window as any).turnstile) {
       doRender()
     } else {
-      // Poll for turnstile availability instead of relying on one-time load event
       let attempts = 0
       const poll = setInterval(() => {
         attempts++
@@ -171,7 +177,6 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
         }
       }, 100)
 
-      // Also load the script if not already present
       const existing = document.querySelector(
         'script[src*="challenges.cloudflare.com/turnstile"]'
       ) as HTMLScriptElement | null
@@ -214,16 +219,22 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
         turnstileToken || undefined
       )
       setClaimResult(result)
-      toast.success(`Claimed ${result.actualReward} FRY!`)
+      if (isCappedHybrid && result.grossReward) {
+        toast.success(`Claimed ${result.grossReward} FRY (${result.liquidReward} liquid + ${result.vaultReward} vault)!`)
+      } else {
+        toast.success(`Claimed ${result.actualReward} FRY!`)
+      }
 
-      // Refetch status
       const sts = await fetchRewardsStatus(activeAddress)
       setStatus(sts)
       if (!sts.canClaim && sts.cooldownMinutes > 0) {
         setCooldownSeconds(Math.ceil(sts.cooldownMinutes * 60))
       }
+      // Refresh vault status after claim
+      if (isCappedHybrid) {
+        fetchVaultStatus(activeAddress).then(setVaultStatus).catch(() => {})
+      }
 
-      // Reset turnstile
       setTurnstileToken(null)
       if (turnstileWidgetId.current && (window as any).turnstile) {
         try {
@@ -231,7 +242,6 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
         } catch (_) {}
       }
     } catch (err: any) {
-      // useAuth already toasts on signature cancel
       const msg = err?.response?.data?.message || err.message || 'Failed to claim reward'
       if (!msg.includes('cancelled') && !msg.includes('CANCELLED')) {
         toast.error(msg)
@@ -240,7 +250,33 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
       setClaiming(false)
       claimingRef.current = false
     }
-  }, [activeAddress, status, claiming, turnstileToken, ensureAuth])
+  }, [activeAddress, status, claiming, turnstileToken, ensureAuth, isCappedHybrid])
+
+  const handleVaultClaim = useCallback(async () => {
+    if (!activeAddress || vaultClaiming) return
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      toast.error('Please complete the CAPTCHA verification')
+      return
+    }
+    setVaultClaiming(true)
+    try {
+      await ensureAuth()
+      const fingerprint = await getFingerprint()
+      const result = await claimVaultReward(fingerprint, turnstileToken || undefined)
+      toast.success(`Claimed ${result.amount} FRY from vault!`)
+      const vs = await fetchVaultStatus(activeAddress)
+      setVaultStatus(vs)
+      setTurnstileToken(null)
+      if (turnstileWidgetId.current && (window as any).turnstile) {
+        try { ;(window as any).turnstile.reset(turnstileWidgetId.current) } catch (_) {}
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err.message || 'Failed to claim vault'
+      if (!msg.includes('cancelled') && !msg.includes('CANCELLED')) toast.error(msg)
+    } finally {
+      setVaultClaiming(false)
+    }
+  }, [activeAddress, vaultClaiming, turnstileToken, ensureAuth])
 
   const rewardSchedule = status?.rewardSchedule || config?.rewardSchedule || []
   const tier = TRUST_TIERS[status?.trustTier ?? 0] || TRUST_TIERS[0]
@@ -306,110 +342,157 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
               }`,
             }}
           >
-            {circuitLevel === 'yellow' && 'High activity — rewards may be slower'}
+            {circuitLevel === 'yellow' && 'High activity \u2014 rewards may be slower'}
             {circuitLevel === 'orange' && 'Rewards limited to trusted wallets'}
             {circuitLevel === 'red' && 'Rewards temporarily paused'}
           </div>
         )}
 
-        {/* Streak calendar */}
-        <div className="grid grid-cols-7 gap-2">
-          {rewardSchedule.slice(0, 7).map((amount, i) => {
-            const normalizedStreak = status.currentStreak % (status.maxStreak || 7)
-            const isCompleted = i < normalizedStreak
-            const isCurrent = i === normalizedStreak
-            const isFuture = i > normalizedStreak
+        {/* ── CAPPED-HYBRID MODE ── */}
+        {isCappedHybrid ? (
+          <>
+            {/* Daily budget bar */}
+            {status.dailyBudget && (
+              <div className="rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  <span>Daily Pool</span>
+                  <span>{formatFry(status.dailyBudget.issued)} / {formatFry(status.dailyBudget.limit)} FRY</span>
+                </div>
+                <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--border-color)' }}>
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(100, (status.dailyBudget.issued / status.dailyBudget.limit) * 100)}%`,
+                      backgroundColor: status.dailyBudget.remaining > 0 ? '#22C55E' : '#EF4444',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
-            return (
-              <div
-                key={i}
-                className="relative flex flex-col items-center justify-center rounded-lg p-2 min-h-[72px] transition-all"
-                style={{
-                  border: `2px solid ${
-                    isCompleted
-                      ? '#22C55E'
-                      : isCurrent
-                        ? '#EF4444'
-                        : 'var(--border-color)'
-                  }`,
-                  backgroundColor: isCompleted
-                    ? '#22C55E18'
-                    : isCurrent
-                      ? '#EF444418'
-                      : 'var(--bg-secondary)',
-                  ...(isCurrent
-                    ? {
-                        boxShadow: '0 0 0 2px #EF444444',
-                        animation: 'pulse 2s infinite',
-                      }
-                    : {}),
-                }}
-              >
-                {isCompleted && (
-                  <Icon
-                    icon="mdi:check-circle"
-                    width={14}
-                    className="absolute top-1 right-1"
-                    style={{ color: '#22C55E' }}
-                  />
-                )}
-                <span
-                  className="text-xs font-bold"
-                  style={{
-                    color: isCompleted
-                      ? '#22C55E'
-                      : isCurrent
-                        ? '#EF4444'
-                        : 'var(--text-secondary)',
-                  }}
-                >
-                  {isCurrent ? 'NOW' : `D${i + 1}`}
+            {/* Reward display */}
+            <div className="text-center py-2">
+              <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                Today&apos;s Reward
+              </div>
+              <div className="text-2xl font-bold font-apex" style={{ color: 'var(--text-heading)' }}>
+                {status.estimatedReward} FRY
+              </div>
+              <div className="flex justify-center gap-3 mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <span style={{ color: '#22C55E' }}>
+                  <Icon icon="mdi:water" width={14} className="inline mr-1" />
+                  {status.liquidReward ?? Math.floor(status.estimatedReward * (config?.liquidBps ?? 2000) / 10000)} liquid
                 </span>
-                {isFuture && (
-                  <Icon
-                    icon="mdi:lock"
-                    width={12}
-                    style={{ color: 'var(--text-secondary)', opacity: 0.5 }}
-                  />
-                )}
-                <span
-                  className="text-xs mt-1"
-                  style={{
-                    color: isFuture ? 'var(--text-secondary)' : 'var(--text-primary)',
-                  }}
-                >
-                  {formatFry(amount)}
+                <span style={{ color: '#3B82F6' }}>
+                  <Icon icon="mdi:safe" width={14} className="inline mr-1" />
+                  {status.vaultReward ?? status.estimatedReward - Math.floor(status.estimatedReward * (config?.liquidBps ?? 2000) / 10000)} vault
                 </span>
               </div>
-            )
-          })}
-        </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* ── LEGACY STREAK MODE ── */}
+            {/* Streak calendar */}
+            <div className="grid grid-cols-7 gap-2">
+              {rewardSchedule.slice(0, 7).map((amount, i) => {
+                const normalizedStreak = status.currentStreak % (status.maxStreak || 7)
+                const isCompleted = i < normalizedStreak
+                const isCurrent = i === normalizedStreak
+                const isFuture = i > normalizedStreak
 
-        {/* Trust tier */}
-        <div
-          className="flex items-center gap-2 px-3 py-2 rounded-lg"
-          style={{ backgroundColor: 'var(--bg-secondary)' }}
-        >
-          <Icon icon={tier.icon} width={20} style={{ color: tier.color }} />
-          <span className="text-sm font-medium" style={{ color: tier.color }}>
-            {tier.label}
-          </span>
-          {!isSimpleMode && (
-            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              &middot; {status.multiplier}x multiplier
-            </span>
-          )}
-        </div>
+                return (
+                  <div
+                    key={i}
+                    className="relative flex flex-col items-center justify-center rounded-lg p-2 min-h-[72px] transition-all"
+                    style={{
+                      border: `2px solid ${
+                        isCompleted
+                          ? '#22C55E'
+                          : isCurrent
+                            ? '#EF4444'
+                            : 'var(--border-color)'
+                      }`,
+                      backgroundColor: isCompleted
+                        ? '#22C55E18'
+                        : isCurrent
+                          ? '#EF444418'
+                          : 'var(--bg-secondary)',
+                      ...(isCurrent
+                        ? {
+                            boxShadow: '0 0 0 2px #EF444444',
+                            animation: 'pulse 2s infinite',
+                          }
+                        : {}),
+                    }}
+                  >
+                    {isCompleted && (
+                      <Icon
+                        icon="mdi:check-circle"
+                        width={14}
+                        className="absolute top-1 right-1"
+                        style={{ color: '#22C55E' }}
+                      />
+                    )}
+                    <span
+                      className="text-xs font-bold"
+                      style={{
+                        color: isCompleted
+                          ? '#22C55E'
+                          : isCurrent
+                            ? '#EF4444'
+                            : 'var(--text-secondary)',
+                      }}
+                    >
+                      {isCurrent ? 'NOW' : `D${i + 1}`}
+                    </span>
+                    {isFuture && (
+                      <Icon
+                        icon="mdi:lock"
+                        width={12}
+                        style={{ color: 'var(--text-secondary)', opacity: 0.5 }}
+                      />
+                    )}
+                    <span
+                      className="text-xs mt-1"
+                      style={{
+                        color: isFuture ? 'var(--text-secondary)' : 'var(--text-primary)',
+                      }}
+                    >
+                      {formatFry(amount)}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
 
-        {/* Estimated reward */}
-        <div className="text-center">
-          <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-            Estimated Next Reward
-          </div>
-          <div className="text-2xl font-bold font-apex" style={{ color: 'var(--text-heading)' }}>
-            {status.estimatedReward} FRY
-          </div>
-        </div>
+            {/* Trust tier */}
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-lg"
+              style={{ backgroundColor: 'var(--bg-secondary)' }}
+            >
+              <Icon icon={tier.icon} width={20} style={{ color: tier.color }} />
+              <span className="text-sm font-medium" style={{ color: tier.color }}>
+                {tier.label}
+              </span>
+              {!isSimpleMode && (
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  &middot; {status.multiplier}x multiplier
+                </span>
+              )}
+            </div>
+
+            {/* Estimated reward */}
+            <div className="text-center">
+              <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                Estimated Next Reward
+              </div>
+              <div className="text-2xl font-bold font-apex" style={{ color: 'var(--text-heading)' }}>
+                {status.estimatedReward} FRY
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Eligibility requirements (collapsible) */}
         {config && (
@@ -464,21 +547,35 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
             style={{ backgroundColor: '#22C55E18', border: '1px solid #22C55E44' }}
           >
             <Icon icon="mdi:party-popper" width={32} style={{ color: '#22C55E' }} />
-            <span className="text-lg font-bold" style={{ color: '#22C55E' }}>
-              +{claimResult.actualReward} FRY
-            </span>
+            {isCappedHybrid && claimResult.grossReward ? (
+              <>
+                <span className="text-lg font-bold" style={{ color: '#22C55E' }}>
+                  +{claimResult.grossReward} FRY
+                </span>
+                <div className="flex gap-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  <span style={{ color: '#22C55E' }}>{claimResult.liquidReward} liquid</span>
+                  <span style={{ color: '#3B82F6' }}>{claimResult.vaultReward} vault</span>
+                </div>
+              </>
+            ) : (
+              <span className="text-lg font-bold" style={{ color: '#22C55E' }}>
+                +{claimResult.actualReward} FRY
+              </span>
+            )}
             <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Day {claimResult.streakDay}{!isSimpleMode && <> &middot; {claimResult.multiplier}x multiplier</>}
+              Day {claimResult.streakDay}{!isSimpleMode && !isCappedHybrid && <> &middot; {claimResult.multiplier}x multiplier</>}
             </span>
-            <a
-              href={`https://allo.info/tx/${claimResult.txId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs underline"
-              style={{ color: '#3B82F6' }}
-            >
-              View transaction
-            </a>
+            {claimResult.txId && claimResult.txId !== 'vault-only' && (
+              <a
+                href={`https://allo.info/tx/${claimResult.txId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs underline"
+                style={{ color: '#3B82F6' }}
+              >
+                View transaction
+              </a>
+            )}
           </div>
         ) : cooldownSeconds > 0 ? (
           <div className="text-center py-3">
@@ -531,11 +628,77 @@ const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({ open, onClose }) 
                 Claiming...
               </span>
             ) : status.canClaim ? (
-              `Claim Day ${status.currentStreak + 1} — ${status.estimatedReward} FRY`
+              isCappedHybrid
+                ? `Claim ${status.estimatedReward} FRY`
+                : `Claim Day ${status.currentStreak + 1} \u2014 ${status.estimatedReward} FRY`
             ) : (
               'Cannot claim yet'
             )}
           </button>
+        )}
+
+        {/* ── Vault Section (capped-hybrid only) ── */}
+        {isCappedHybrid && vaultStatus?.enabled && (
+          <div
+            className="rounded-lg p-3 flex flex-col gap-2"
+            style={{ border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}
+          >
+            <div className="flex items-center gap-2">
+              <Icon icon="mdi:safe" width={18} style={{ color: '#3B82F6' }} />
+              <span className="text-sm font-bold" style={{ color: 'var(--text-heading)' }}>
+                Weekly Vault
+              </span>
+            </div>
+
+            {/* Weekly progress */}
+            <div className="flex items-center justify-between text-xs" style={{ color: 'var(--text-secondary)' }}>
+              <span>This week: {vaultStatus.currentWeek.checkIns}/{vaultStatus.currentWeek.requiredForUnlock} check-ins</span>
+              <span>{vaultStatus.currentWeek.checkIns >= vaultStatus.currentWeek.requiredForUnlock ? '✓ Qualified' : `${vaultStatus.currentWeek.requiredForUnlock - vaultStatus.currentWeek.checkIns} more needed`}</span>
+            </div>
+            <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--border-color)' }}>
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${Math.min(100, (vaultStatus.currentWeek.checkIns / vaultStatus.currentWeek.requiredForUnlock) * 100)}%`,
+                  backgroundColor: vaultStatus.currentWeek.checkIns >= vaultStatus.currentWeek.requiredForUnlock ? '#22C55E' : '#3B82F6',
+                }}
+              />
+            </div>
+
+            {/* Vault balances */}
+            <div className="grid grid-cols-3 gap-2 text-center text-xs mt-1">
+              <div>
+                <div style={{ color: 'var(--text-secondary)' }}>Locked</div>
+                <div className="font-bold" style={{ color: '#3B82F6' }}>{formatFry(vaultStatus.totalLocked)}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--text-secondary)' }}>Claimable</div>
+                <div className="font-bold" style={{ color: '#22C55E' }}>{formatFry(vaultStatus.unlockableAmount)}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--text-secondary)' }}>Claimed</div>
+                <div className="font-bold" style={{ color: 'var(--text-primary)' }}>{formatFry(vaultStatus.totalClaimed)}</div>
+              </div>
+            </div>
+
+            {/* Vault claim button */}
+            {vaultStatus.unlockableAmount > 0 && (
+              <button
+                className="w-full py-2 rounded-lg font-bold text-white text-sm transition-all cursor-pointer mt-1"
+                style={{ backgroundColor: vaultClaiming ? '#666' : '#3B82F6', border: 'none' }}
+                disabled={vaultClaiming}
+                onClick={handleVaultClaim}
+              >
+                {vaultClaiming ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Spin size="small" /> Claiming vault...
+                  </span>
+                ) : (
+                  `Claim ${vaultStatus.unlockableAmount} FRY from Vault`
+                )}
+              </button>
+            )}
+          </div>
         )}
 
         {/* Stats footer */}

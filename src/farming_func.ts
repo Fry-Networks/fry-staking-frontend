@@ -359,14 +359,8 @@ export const transferFryTokensToContract = async (
       throw new Error('Invalid FRY token ID: token ID cannot be zero. Check VITE_FRY_TOKEN_ID env var.')
     }
 
-    // Send gas fee as ASA (FRY) to admin wallet
-    await algorandClient.send.assetTransfer({
-      sender,
-      signer,
-      receiver: import.meta.env.VITE_FEE_RECIPIENT,
-      amount: gasFee,
-      assetId: fryTokenId,
-    });
+    // Send gas fee via FeeRouter
+    await routeFeeViaRouter(sender, signer, Number(gasFee), Number(fryTokenId), algorandClient.client.algod);
 
     const isAlgo = rewardToken === 0n;
 

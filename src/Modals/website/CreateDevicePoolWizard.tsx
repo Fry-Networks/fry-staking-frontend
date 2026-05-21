@@ -7,7 +7,8 @@ import { useWallet } from '@txnlab/use-wallet'
 import { useAuth } from '../../hooks/useAuth'
 import { createDevicePool, depositDeviceRewards, depositDeviceRewardsAlgo, optInDeviceContractToAsset } from '../../device_staking_func'
 import { addDevicePool } from '../../services/deviceStakingApi'
-import { fetchFeeConfig, calculateFeeSimple, FEE_RECIPIENT } from '../../services/FeeService'
+import { fetchFeeConfig, calculateFeeSimple, routeFeeViaRouter, FEE_ROUTER_ADDR } from '../../services/FeeService'
+import algosdk from 'algosdk'
 import { getAssetBalance } from '../../services/ZapService'
 import { getNftMetadata } from '../../services/nftCollectionService'
 import { lookupNfd } from '../../services/nfdService'
@@ -423,23 +424,9 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
         const algodConfig = getAlgodConfigFromViteEnvironment()
         const algorandClient = algokit.AlgorandClient.fromConfig({ algodConfig })
         algorandClient.setDefaultSigner(signer)
+        const algodClient = new algosdk.Algodv2(algodConfig.token as string, algodConfig.server, algodConfig.port)
 
-        if (rewardToken.id === 0) {
-          await algorandClient.send.payment({
-            sender: activeAddress,
-            signer,
-            receiver: FEE_RECIPIENT,
-            amount: algokit.microAlgos(feeCalc.feeAmount),
-          })
-        } else {
-          await algorandClient.send.assetTransfer({
-            sender: activeAddress,
-            signer,
-            receiver: FEE_RECIPIENT,
-            amount: BigInt(feeCalc.feeAmount),
-            assetId: BigInt(rewardToken.id),
-          })
-        }
+        await routeFeeViaRouter(activeAddress, signer, feeCalc.feeAmount, rewardToken.id, algodClient)
 
         await logFee({
           appId: 0,
@@ -464,7 +451,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
         Number(valuePerNft) * Math.pow(10, rewardToken.decimals) || 0,
         poolEndTime,
         lockPeriodSeconds,
-        FEE_RECIPIENT,
+        FEE_ROUTER_ADDR,
         Number(depositFeeBps),
         Number(withdrawFeeBps),
         Number(claimFeeBps),

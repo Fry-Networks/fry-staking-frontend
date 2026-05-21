@@ -154,4 +154,4 @@ export async function routeFeeViaRouter(
   return { txId }
 }
 
-export { FEE_RECIPIENT }
+export { FEE_RECIPIENT, FEE_ROUTER_ADDR }
