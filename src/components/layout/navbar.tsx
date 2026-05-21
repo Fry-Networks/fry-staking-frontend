@@ -71,7 +71,7 @@ const Navbar: React.FC = () => {
       .catch(() => {})
   }, [])
 
-  // Rewards notification dot + auto-open (Algorand only — no rewards on Voi)
+  // Rewards notification dot (Algorand only — no rewards on Voi)
   useEffect(() => {
     if (!activeAddress) {
       setRewardsAvailable(false)
@@ -81,12 +81,6 @@ const Navbar: React.FC = () => {
     fetchRewardsStatus(activeAddress)
       .then((s) => {
         setRewardsAvailable(s.canClaim)
-        const key = `fry_rewards_auto_opened_${activeAddress}`
-        const today = new Date().toISOString().slice(0, 10)
-        if (localStorage.getItem(key) !== today) {
-          localStorage.setItem(key, today)
-          setTimeout(() => setOpenRewardsModal(true), 1000)
-        }
       })
       .catch(() => {})
   }, [activeAddress])

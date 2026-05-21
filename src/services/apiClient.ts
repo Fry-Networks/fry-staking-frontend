@@ -30,7 +30,10 @@ authAxios.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      authService.clearAuth();
+      const url = error.config?.url || '';
+      if (url.startsWith('/auth/')) {
+        authService.clearAuth();
+      }
     }
     return Promise.reject(error);
   }
@@ -47,7 +50,10 @@ export async function authFetch(
   });
 
   if (response.status === 401) {
-    authService.clearAuth();
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.startsWith('/auth/')) {
+      authService.clearAuth();
+    }
   }
 
   return response;

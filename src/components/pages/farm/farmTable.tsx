@@ -120,7 +120,7 @@ const FarmTable: React.FC = () => {
           const endsInDays = Math.ceil(endsIn / 86400);
 
           const poolData = farm.totalStaked || 0;
-          const lpHuman = poolData / 1_000_000;
+          const lpHuman = poolData / 1_000_000_000;
           const aId = Number(farm.lpToken?.tokenAId || farm.lpToken?.tokenA || 0);
           const bId = Number(farm.lpToken?.tokenBId || farm.lpToken?.tokenB || 0);
           const pairKey = [aId, bId].sort((a, b) => a - b).join('-');

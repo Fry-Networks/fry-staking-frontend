@@ -49,6 +49,46 @@ const appRouter = createBrowserRouter([
     element: <Swap />,
   },
   {
+    path: '/swap',
+    element: <Navigate to="/" replace />,
+  },
+  {
+    path: '/nftStake',
+    element: <Navigate to="/nft-stake" replace />,
+  },
+  {
+    path: '/transactionHistory',
+    element: <Navigate to="/transaction-history" replace />,
+  },
+  {
+    path: '/adminLogin',
+    element: <Navigate to="/admin-login" replace />,
+  },
+  {
+    path: '/deviceStake',
+    element: <Navigate to="/depin-stake" replace />,
+  },
+  {
+    path: '/stakePoolStats',
+    element: <Navigate to="/stake-pool-stats" replace />,
+  },
+  {
+    path: '/farmPoolStats',
+    element: <Navigate to="/farm-pool-stats" replace />,
+  },
+  {
+    path: '/p2pSwap',
+    element: <Navigate to="/p2p" replace />,
+  },
+  {
+    path: '/alphaArcade',
+    element: <Navigate to="/prediction-lp" replace />,
+  },
+  {
+    path: '/genesisMint',
+    element: <Navigate to="/genesis-mint" replace />,
+  },
+  {
     path: '/p2p',
     element: <P2PSwap />,
   },

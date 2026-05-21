@@ -251,7 +251,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
       render: (value) => <p className="text-text_clr font-medium medium">{isSimpleMode ? friendlyPoolSize(parseFloat(value.replace(/[$,\s]/g, '')) || 0) : value}</p>,
     },
     { title: isSimpleMode ? 'Earnings' : 'APR', dataIndex: 'apr', key: 'apr', sorter: (a, b) => (parseFloat(a.apr) || 0) - (parseFloat(b.apr) || 0), render: (value) => <p className="text-text_clr font-medium medium">{isSimpleMode ? friendlyApr(parseFloat(value) || 0) : value}</p> },
-    { title: isSimpleMode ? 'Pool Size' : 'TVL', dataIndex: 'staked', key: 'staked', sorter: (a, b) => (a.totalAmountStaked || 0) - (b.totalAmountStaked || 0), render: (value) => <p className="text-text_clr font-medium medium">{isSimpleMode ? friendlyPoolSize(parseFloat(String(value).replace(/[$,\s]/g, '')) || 0) : value}</p> },
+    { title: isSimpleMode ? 'Pool Size' : 'Staked', dataIndex: 'staked', key: 'staked', sorter: (a, b) => (a.totalAmountStaked || 0) - (b.totalAmountStaked || 0), render: (value) => <p className="text-text_clr font-medium medium">{isSimpleMode ? friendlyPoolSize(parseFloat(String(value).replace(/[$,\s]/g, '')) || 0) : value}</p> },
     {
       title: 'POOL REWARDS',
       dataIndex: 'reward',
