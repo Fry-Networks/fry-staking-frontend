@@ -9,7 +9,7 @@ import { initStaking } from '../../staking_func';
 import { authAxios } from '../../services/apiClient';
 import { logFee } from '../../utils/logFee';
 import { useAuth } from '../../hooks/useAuth';
-import { fetchFeeConfig, calculateFeeSimple } from '../../services/FeeService';
+import { fetchFeeConfig, calculateFeeSimple, routeFeeViaRouter } from '../../services/FeeService';
 import * as algokit from '@algorandfoundation/algokit-utils';
 import algosdk from 'algosdk';
 import TokenSelector from '../../components/shared/TokenSelector';
@@ -212,23 +212,9 @@ const CreateStakeWizard: React.FC<CreateStakeWizardProps> = ({
           : { server: import.meta.env.VITE_ALGOD_SERVER, port: import.meta.env.VITE_ALGOD_PORT, token: import.meta.env.VITE_ALGOD_TOKEN, network: '' };
         const algorandClient = algokit.AlgorandClient.fromConfig({ algodConfig });
         algorandClient.setDefaultSigner(signer);
+        const algodClient = new algosdk.Algodv2(algodConfig.token, algodConfig.server, algodConfig.port);
 
-        if (rewardToken.id === 0) {
-          await algorandClient.send.payment({
-            sender: activeAddress,
-            signer,
-            receiver: feeCalc.feeRecipient,
-            amount: algokit.microAlgos(feeCalc.feeAmount),
-          });
-        } else {
-          await algorandClient.send.assetTransfer({
-            sender: activeAddress,
-            signer,
-            receiver: feeCalc.feeRecipient,
-            amount: BigInt(feeCalc.feeAmount),
-            assetId: BigInt(rewardToken.id),
-          });
-        }
+        await routeFeeViaRouter(activeAddress, signer, feeCalc.feeAmount, rewardToken.id, algodClient);
 
         await logFee({
           appId: 0,

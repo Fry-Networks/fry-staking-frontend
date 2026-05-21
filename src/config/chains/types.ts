@@ -85,6 +85,10 @@ export interface ChainConfig {
   usdcEquivalent: StablecoinInfo | null;
   /** Fee recipient wallet address (null if not configured) */
   feeRecipient: string | null;
+  /** FeeRouter application ID for on-chain fee routing (null if not configured) */
+  feeRouterAppId?: number | null;
+  /** FeeRouter application address for on-chain fee routing (null if not configured) */
+  feeRouterAddr?: string | null;
   /** Block explorer base URL */
   explorerBaseUrl: string;
   /** Available DEX providers on this chain */

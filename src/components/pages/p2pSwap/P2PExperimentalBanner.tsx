@@ -15,7 +15,7 @@ const P2PExperimentalBanner: React.FC = () => {
         Use at your own risk. Start with small amounts.
       </div>
       <button
-        onClick={() => setDismissed(true)}
+        aria-label="Dismiss warning" onClick={() => setDismissed(true)}
         className="flex-shrink-0 p-1 rounded hover:bg-[var(--bg-secondary)] transition-colors"
       >
         <Icon icon="mdi:close" width={18} className="text-[var(--text-secondary)]" />

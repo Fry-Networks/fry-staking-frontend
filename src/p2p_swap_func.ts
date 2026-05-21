@@ -7,6 +7,7 @@ import { P2P_BOX_MBR, P2P_FEE_CREATE, P2P_FEE_ACCEPT, P2P_FEE_CANCEL, P2P_FEE_UP
 import { ALGO_COMPILED_APPROVAL, ALGO_COMPILED_CLEAR, VOI_COMPILED_APPROVAL, VOI_COMPILED_CLEAR, P2P_EXTRA_PAGES } from './contracts/FryP2PSwapCompiled'
 // @ts-ignore — ARC32 JSON import for ABI method resolution
 import P2P_APP_SPEC from './contracts/FryP2PSwap.arc32.json'
+import { routeFeeViaRouter } from './services/FeeService'
 
 export interface AlgodConfigOverride {
   server: string;
@@ -125,24 +126,10 @@ export const createOfferAsa = async (
 
     // Send platform fee after successful offer creation
     let feeTxId: string | undefined
-    if (feeAmount && feeAmount > 0 && feeRecipient) {
+    if (feeAmount && feeAmount > 0) {
       try {
-        if (feeTokenId && feeTokenId > 0) {
-          const feeResult = await algorandClient.send.assetTransfer({
-            sender, signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
-        } else {
-          const feeResult = await algorandClient.send.payment({
-            sender, signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
-        }
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId || 0, algodClient)
+        feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         throw new Error(
           `Offer created on-chain (ID: ${offerId}) but platform fee payment failed: ${(feeErr as Error).message || feeErr}. Please contact support with your offer ID.`
@@ -217,24 +204,10 @@ export const createOfferAlgo = async (
 
     // Send platform fee after successful offer creation
     let feeTxId: string | undefined
-    if (feeAmount && feeAmount > 0 && feeRecipient) {
+    if (feeAmount && feeAmount > 0) {
       try {
-        if (feeTokenId && feeTokenId > 0) {
-          const feeResult = await algorandClient.send.assetTransfer({
-            sender, signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
-        } else {
-          const feeResult = await algorandClient.send.payment({
-            sender, signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
-        }
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId || 0, algodClient)
+        feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         throw new Error(
           `Offer created on-chain (ID: ${offerId}) but platform fee payment failed: ${(feeErr as Error).message || feeErr}. Please contact support with your offer ID.`
@@ -298,24 +271,10 @@ export const acceptOfferAlgo = async (
 
     // Send platform fee after successful accept
     let feeTxId: string | undefined
-    if (platformFeeAmount && platformFeeAmount > 0 && platformFeeRecipient) {
+    if (platformFeeAmount && platformFeeAmount > 0) {
       try {
-        if (platformFeeTokenId && platformFeeTokenId > 0) {
-          const feeResult = await algorandClient.send.assetTransfer({
-            sender, signer,
-            receiver: platformFeeRecipient,
-            amount: BigInt(platformFeeAmount),
-            assetId: BigInt(platformFeeTokenId),
-          })
-          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
-        } else {
-          const feeResult = await algorandClient.send.payment({
-            sender, signer,
-            receiver: platformFeeRecipient,
-            amount: algokit.microAlgos(platformFeeAmount),
-          })
-          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
-        }
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, platformFeeAmount, platformFeeTokenId || 0, algodClient)
+        feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         throw new Error(
           `Offer accepted on-chain (TxID: ${txId}) but platform fee payment failed: ${(feeErr as Error).message || feeErr}. Please contact support.`
@@ -379,24 +338,10 @@ export const acceptOfferAsa = async (
 
     // Send platform fee after successful accept
     let feeTxId: string | undefined
-    if (platformFeeAmount && platformFeeAmount > 0 && platformFeeRecipient) {
+    if (platformFeeAmount && platformFeeAmount > 0) {
       try {
-        if (platformFeeTokenId && platformFeeTokenId > 0) {
-          const feeResult = await algorandClient.send.assetTransfer({
-            sender, signer,
-            receiver: platformFeeRecipient,
-            amount: BigInt(platformFeeAmount),
-            assetId: BigInt(platformFeeTokenId),
-          })
-          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
-        } else {
-          const feeResult = await algorandClient.send.payment({
-            sender, signer,
-            receiver: platformFeeRecipient,
-            amount: algokit.microAlgos(platformFeeAmount),
-          })
-          feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
-        }
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, platformFeeAmount, platformFeeTokenId || 0, algodClient)
+        feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         throw new Error(
           `Offer accepted on-chain (TxID: ${txId}) but platform fee payment failed: ${(feeErr as Error).message || feeErr}. Please contact support.`

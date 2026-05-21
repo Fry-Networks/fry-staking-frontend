@@ -4,6 +4,8 @@ import { FryDeviceStakingClient, APP_SPEC } from './contracts/FryDeviceStakingCl
 import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryDeviceStakingCompiled'
 import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 import { logFee } from './utils/logFee'
+import { routeFeeViaRouter } from './services/FeeService'
+import { algorandMainnet } from './config/chains/algorand-mainnet'
 
 const BOX_PRICE = 2500 + 400 * 864
 
@@ -89,7 +91,7 @@ export const createDevicePool = async (
         valuePerNft,
         poolEndTime,
         lockPeriod,
-        feeRecipient || sender,
+        algorandMainnet.feeRouterAddr || feeRecipient || sender,
         depositFeeBps,
         withdrawFeeBps,
         claimFeeBps,
@@ -142,7 +144,7 @@ export const optInDeviceContractToAsset = async (
   signer: TransactionSigner,
 ) => {
   try {
-    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const mbrPay = await algorandClient.transactions.payment({
       sender,
@@ -172,7 +174,7 @@ export const depositDeviceRewards = async (
   signer: TransactionSigner,
 ) => {
   try {
-    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const rewardTxn = await algorandClient.transactions.assetTransfer({
       sender,
@@ -200,7 +202,7 @@ export const depositDeviceRewardsAlgo = async (
   signer: TransactionSigner,
 ) => {
   try {
-    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const payment = await algorandClient.transactions.payment({
       sender,
@@ -230,7 +232,7 @@ export const stakeDeviceNft = async (
   feeRecipient: string,
 ) => {
   try {
-    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const nftTransfer = await algorandClient.transactions.assetTransfer({
       sender,
@@ -261,24 +263,8 @@ export const stakeDeviceNft = async (
 
     if (feeAmount > 0) {
       try {
-        let feeResult
-        if (feeTokenId === 0) {
-          feeResult = await algorandClient.send.payment({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-        } else {
-          feeResult = await algorandClient.send.assetTransfer({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-        }
-        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeTxId = feeRouterResult.txId
 
         await logFee({
           appId,
@@ -313,7 +299,7 @@ export const unstakeDeviceNft = async (
   feeRecipient: string,
 ) => {
   try {
-    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const tx = await client
       .unstakeNft(
@@ -329,24 +315,8 @@ export const unstakeDeviceNft = async (
 
     if (feeAmount > 0) {
       try {
-        let feeResult
-        if (feeTokenId === 0) {
-          feeResult = await algorandClient.send.payment({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-        } else {
-          feeResult = await algorandClient.send.assetTransfer({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-        }
-        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeTxId = feeRouterResult.txId
 
         await logFee({
           appId,
@@ -377,7 +347,7 @@ export const registerDeviceHolder = async (
   signer: TransactionSigner,
 ) => {
   try {
-    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const boxPayment = await algorandClient.transactions.payment({
       sender,
@@ -416,7 +386,7 @@ export const unregisterDeviceHolder = async (
   feeRecipient: string,
 ) => {
   try {
-    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const tx = await client
       .unregisterHolder(
@@ -432,24 +402,8 @@ export const unregisterDeviceHolder = async (
 
     if (feeAmount > 0) {
       try {
-        let feeResult
-        if (feeTokenId === 0) {
-          feeResult = await algorandClient.send.payment({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-        } else {
-          feeResult = await algorandClient.send.assetTransfer({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-        }
-        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeTxId = feeRouterResult.txId
 
         await logFee({
           appId,
@@ -483,7 +437,7 @@ export const claimDeviceRewardsOnChain = async (
   feeRecipient: string,
 ) => {
   try {
-    const { client, algorandClient } = await createDeviceStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
     const tx = await client
       .claimRewards(
@@ -499,24 +453,8 @@ export const claimDeviceRewardsOnChain = async (
 
     if (feeAmount > 0) {
       try {
-        let feeResult
-        if (feeTokenId === 0) {
-          feeResult = await algorandClient.send.payment({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-        } else {
-          feeResult = await algorandClient.send.assetTransfer({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-        }
-        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeTxId = feeRouterResult.txId
 
         await logFee({
           appId,

@@ -76,10 +76,11 @@ const Transact = ({ openModal, setModalState }: TransactInterface) => {
           }}
         />
         <div className="modal-action ">
-          <button className="btn" onClick={() => setModalState(!openModal)}>
+          <button type="button" className="btn" onClick={() => setModalState(false)}>
             Close
           </button>
           <button
+            type="button"
             data-test-id="send-algo"
             className={`btn ${receiverAddress.length === 58 ? '' : 'btn-disabled'} lo`}
             onClick={handleSubmitAlgo}

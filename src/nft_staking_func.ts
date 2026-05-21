@@ -5,6 +5,8 @@ import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryNftStakingComp
 import ARC72_SPEC from './contracts/FryArc72Staking.arc32.json'
 import { ARC72_COMPILED_APPROVAL, ARC72_COMPILED_CLEAR } from './contracts/FryArc72StakingCompiled'
 import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
+import { routeFeeViaRouter } from './services/FeeService'
+import { algorandMainnet } from './config/chains/algorand-mainnet'
 import { logFee } from './utils/logFee'
 import type { TransactionSignerAccount } from '@algorandfoundation/algokit-utils/types/account'
 import type { AppDetails } from '@algorandfoundation/algokit-utils/types/app-client'
@@ -114,7 +116,7 @@ export const createNftPool = async (
         valuePerNft,
         poolEndTime,
         lockPeriod,
-        feeRecipient || sender,
+        algorandMainnet.feeRouterAddr || feeRecipient || sender,
         depositFeeBps,
         withdrawFeeBps,
         claimFeeBps,
@@ -212,7 +214,7 @@ export const createArc72NftPool = async (
         valuePerNft,          // value_per_nft: uint64
         poolEndTime,          // pool_end_time: uint64
         lockPeriod,           // lock_period: uint64
-        feeRecipient || sender, // fee_recipient: address
+        algorandMainnet.feeRouterAddr || feeRecipient || sender, // fee_recipient: address
         depositFeeBps,        // deposit_fee_bps: uint64
         withdrawFeeBps,       // withdraw_fee_bps: uint64
         claimFeeBps,          // claim_fee_bps: uint64
@@ -268,7 +270,7 @@ export const optInContractToNft = async (
   signer: TransactionSigner,
 ) => {
   try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createNftStakingClient(signer, sender, appId)
 
     const mbrPay = await algorandClient.transactions.payment({
       sender,
@@ -300,7 +302,7 @@ export const stakeNft = async (
   feeRecipient: string,
 ) => {
   try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createNftStakingClient(signer, sender, appId)
 
     const nftTransfer = await algorandClient.transactions.assetTransfer({
       sender,
@@ -332,24 +334,8 @@ export const stakeNft = async (
     // Send fee after successful contract call
     if (feeAmount > 0) {
       try {
-        let feeResult
-        if (feeTokenId === 0) {
-          feeResult = await algorandClient.send.payment({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-        } else {
-          feeResult = await algorandClient.send.assetTransfer({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-        }
-        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeTxId = feeRouterResult.txId
 
         await logFee({
           appId,
@@ -384,7 +370,7 @@ export const unstakeNft = async (
   feeRecipient: string,
 ) => {
   try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createNftStakingClient(signer, sender, appId)
 
     const tx = await client
       .unstakeNft(
@@ -400,24 +386,8 @@ export const unstakeNft = async (
 
     if (feeAmount > 0) {
       try {
-        let feeResult
-        if (feeTokenId === 0) {
-          feeResult = await algorandClient.send.payment({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-        } else {
-          feeResult = await algorandClient.send.assetTransfer({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-        }
-        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeTxId = feeRouterResult.txId
 
         await logFee({
           appId,
@@ -451,7 +421,7 @@ export const claimRewards = async (
   feeRecipient: string,
 ) => {
   try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createNftStakingClient(signer, sender, appId)
 
     const tx = await client
       .claimRewards(
@@ -467,24 +437,8 @@ export const claimRewards = async (
 
     if (feeAmount > 0) {
       try {
-        let feeResult
-        if (feeTokenId === 0) {
-          feeResult = await algorandClient.send.payment({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: algokit.microAlgos(feeAmount),
-          })
-        } else {
-          feeResult = await algorandClient.send.assetTransfer({
-            sender,
-            signer,
-            receiver: feeRecipient,
-            amount: BigInt(feeAmount),
-            assetId: BigInt(feeTokenId),
-          })
-        }
-        const feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeTxId = feeRouterResult.txId
 
         await logFee({
           appId,
@@ -517,7 +471,7 @@ export const depositRewards = async (
   signer: TransactionSigner,
 ) => {
   try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createNftStakingClient(signer, sender, appId)
 
     const rewardTxn = await algorandClient.transactions.assetTransfer({
       sender,
@@ -545,7 +499,7 @@ export const depositRewardsAlgo = async (
   signer: TransactionSigner,
 ) => {
   try {
-    const { client, algorandClient } = await createNftStakingClient(signer, sender, appId)
+    const { client, algorandClient, algodClient } = await createNftStakingClient(signer, sender, appId)
 
     const payment = await algorandClient.transactions.payment({
       sender,

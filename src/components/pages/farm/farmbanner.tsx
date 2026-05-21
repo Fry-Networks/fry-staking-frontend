@@ -102,7 +102,7 @@ const Farmbanner: React.FC<FarmBannerProps> = ({ wallet }) => {
         let tvlLpTokens = 0
         for (let i = 0; i < farms.length; i++) {
           const f = farms[i]
-          const totalStakedHuman = (f.totalStaked || 0) / 1_000_000
+          const totalStakedHuman = (f.totalStaked || 0) / 1_000_000_000
           const pair = farmPairs[i]
           if (pair.tokenAId > 0 && pair.tokenBId > 0) {
             const key = [pair.tokenAId, pair.tokenBId].sort((a, b) => a - b).join('-')

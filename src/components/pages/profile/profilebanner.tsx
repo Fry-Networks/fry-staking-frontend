@@ -64,10 +64,8 @@ const Profilebanner: React.FC = () => {
         setTokenSymbol('VOI')
       } else {
         // On Algorand: show FRY ASA balance
-        const provider = clients?.pera || clients?.myalgo || clients?.defly
-        if (!provider) return
-
-        const accountInfo = await provider.getAccountInfo(activeAddress)
+        const algodClient = getAlgodClient()
+        const accountInfo = await algodClient.accountInformation(activeAddress).do()
         const fryAssetId = Number(FRY_ASSET_ID)
         const fryAsset = accountInfo.assets?.find((a: any) => a['asset-id'] === fryAssetId)
         const balance = fryAsset ? fryAsset.amount / 1_000_000 : 0

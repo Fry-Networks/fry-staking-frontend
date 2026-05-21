@@ -3,6 +3,7 @@ import { getAlgodConfigFromViteEnvironment } from './utils/network/getAlgoClient
 import * as algokit from '@algorandfoundation/algokit-utils';
 import algosdk, { Transaction, TransactionSigner } from 'algosdk';
 import axios from 'axios';
+import { routeFeeViaRouter } from './services/FeeService'
 
 const BOX_PRICE = 2500 + 400 * 64
 
@@ -358,14 +359,8 @@ export const transferFryTokensToContract = async (
       throw new Error('Invalid FRY token ID: token ID cannot be zero. Check VITE_FRY_TOKEN_ID env var.')
     }
 
-    // Send gas fee as ASA (FRY) to admin wallet
-    await algorandClient.send.assetTransfer({
-      sender,
-      signer,
-      receiver: import.meta.env.VITE_FEE_RECIPIENT,
-      amount: gasFee,
-      assetId: fryTokenId,
-    });
+    // Send gas fee via FeeRouter
+    await routeFeeViaRouter(sender, signer, Number(gasFee), Number(fryTokenId), algorandClient.client.algod);
 
     const isAlgo = rewardToken === 0n;
 
@@ -437,7 +432,7 @@ export const stakeTokens = async (
   feeRecipient: string
 ) => {
   try {
-    const { farmingClient, algorandClient } = await createFryFarmingClient(signer, sender, stakingId);
+    const { farmingClient, algorandClient, algodClient } = await createFryFarmingClient(signer, sender, stakingId);
 
     const globalState = await farmingClient.getGlobalState();
 
@@ -533,14 +528,8 @@ export const stakeTokens = async (
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        const feeResult = await algorandClient.send.assetTransfer({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: BigInt(feeAmount),
-          assetId: BigInt(feeTokenId),
-        });
-        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful farming stake:', feeErr);
       }
@@ -734,14 +723,8 @@ export const unstakeTokens = async (
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        const feeResult = await algorandClient.send.assetTransfer({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: BigInt(feeAmount),
-          assetId: BigInt(feeTokenId),
-        });
-        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful farming unstake:', feeErr);
       }
@@ -845,14 +828,8 @@ export const claimRewards = async (
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        const feeResult = await algorandClient.send.assetTransfer({
-          sender,
-          signer,
-          receiver: feeRecipient,
-          amount: BigInt(feeAmount),
-          assetId: BigInt(feeTokenId),
-        });
-        feeTxId = feeResult.txIds?.[0] || (feeResult as any).transaction?.txID?.()
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful farming claim:', feeErr);
       }
