@@ -11,11 +11,10 @@ import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 import axios from 'axios'
 import { PeraWalletConnect } from '@perawallet/connect'
 import { Buffer } from 'buffer'
-import { DeflexOrderRouterClient } from '@deflex/deflex-sdk-js'
 import { getSwapRoute } from '@tinymanorg/tinyman-js-sdk'
 import { FolksRouterClient, Network, SwapMode, SwapParams, SwapProvider, SwapQuote, SwapService } from '../../../contracts'
 import type { VestigeSwapQuote } from '../../../contracts/VestigeLabsClient'
-import type { DeflexQuote } from '../../../contracts/DeflexClient'
+import type { HaystackQuote } from '../../../contracts/HaystackRouterClient'
 import { VoiSwapService } from '../../../contracts/VoiSwapService'
 import type { VoiQuoteComparison } from '../../../contracts/VoiSwapService'
 import type { VoiSwapProvider } from '../../../contracts/types'
@@ -466,7 +465,7 @@ const SwapMain = () => {
           priceImpactValue = (bestQuote.priceImpact * 100).toFixed(2);
 
         } else {
-          // ── Algorand: existing SwapService with FolksRouter/Vestige/Deflex ──
+          // ── Algorand: existing SwapService with FolksRouter/Vestige/Haystack ──
           const swapService = new SwapService({
             network: Network.MAINNET,
             algodClient: algodMain,
@@ -485,9 +484,9 @@ const SwapMain = () => {
           let quote: SwapQuote | VestigeSwapQuote | DeflexQuote | null = null;
           provider = 'folksrouter';
 
-          if (quoteComparison.bestProvider === 'deflex' && quoteComparison.deflex) {
-            quote = quoteComparison.deflex;
-            provider = 'deflex';
+          if (quoteComparison.bestProvider === 'haystack' && quoteComparison.haystack) {
+            quote = quoteComparison.haystack;
+            provider = 'haystack';
           } else if (quoteComparison.bestProvider === 'vestige' && quoteComparison.vestige) {
             quote = quoteComparison.vestige;
             provider = 'vestige';
@@ -497,9 +496,9 @@ const SwapMain = () => {
           } else if (quoteComparison.vestige) {
             quote = quoteComparison.vestige;
             provider = 'vestige';
-          } else if (quoteComparison.deflex) {
-            quote = quoteComparison.deflex;
-            provider = 'deflex';
+          } else if (quoteComparison.haystack) {
+            quote = quoteComparison.haystack;
+            provider = 'haystack';
           }
 
           if (!quote) throw new Error("Unable to get quote from any provider");
@@ -741,7 +740,7 @@ const SwapMain = () => {
 
       if (result.success) {
         const providerNames = {
-          folksrouter: 'FolksRouter', vestige: 'Vestige Labs', deflex: 'Deflex',
+          folksrouter: 'FolksRouter', vestige: 'Vestige Labs', haystack: 'Haystack Router',
           nomadex: 'Fry Router', humble: 'Fry Router', snowball: 'SnowballSwap',
         };
         const providerName = providerNames[result.provider] || result.provider;
@@ -1204,7 +1203,8 @@ const SwapMain = () => {
                     currentProvider === 'snowball' ? 'SnowballSwap' :
                     chainId === 'voi-mainnet' ? 'Fry Router' :
                     currentProvider === 'folksrouter' ? 'FolksRouter' :
-                    currentProvider === 'vestige' ? 'Vestige Labs' : 'Deflex'
+                    currentProvider === 'vestige' ? 'Vestige Labs' :
+                    currentProvider === 'haystack' ? 'Haystack Router' : 'Deflex'
                   }
                 </span>
               </div>

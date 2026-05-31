@@ -38,7 +38,6 @@
     "@algorandfoundation/algokit-utils": "^6.2.1",
     "@blockshake/defly-connect": "^1.1.6",
     "@daffiwallet/connect": "^1.0.3",
-    "@deflex/deflex-sdk-js": "^2.0.5",
     "@fingerprintjs/fingerprintjs": "^5.1.0",
     "@folks-router/js-sdk": "^0.1.1",
     "@iconify/react": "^5.0.2",

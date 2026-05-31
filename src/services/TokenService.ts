@@ -8,35 +8,15 @@ class TokenService {
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   private searchCache: Map<string, { tokens: Token[], timestamp: number }> = new Map();
   private readonly SEARCH_CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
-  private peraImageCache: Map<number, string | null> = new Map();
 
   constructor() {
     this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://frynodebackend.octalooptechnologies.com';
   }
 
-  /**
-   * Fetch token image from Pera API with caching.
-   * Returns the Pera CDN logo URL, or null if unavailable.
-   */
-  async getPeraTokenImage(tokenId: number): Promise<string | null> {
-    if (this.peraImageCache.has(tokenId)) {
-      return this.peraImageCache.get(tokenId) ?? null;
-    }
-    try {
-      const resp = await axios.get(`https://mainnet.api.perawallet.app/v1/assets/${tokenId}/`, { timeout: 5000 });
-      const logo: string | undefined = resp.data?.logo;
-      const result = logo && typeof logo === 'string' && logo.startsWith('http') ? logo : null;
-      this.peraImageCache.set(tokenId, result);
-      return result;
-    } catch {
-      this.peraImageCache.set(tokenId, null);
-      return null;
-    }
-  }
 
   /**
    * Resolve the best available image for a token.
-   * Priority: DB image (if valid) → Pera API → Tinyman icon.png fallback
+   * Priority: DB image (if valid) → Backend on-demand resolution (server-side Pera/Tinyman probe)
    */
   async resolveTokenImage(tokenId: number, dbImage?: string, chainId?: string): Promise<string> {
     const isValid = dbImage &&
@@ -44,13 +24,16 @@ class TokenService {
        dbImage.includes('.png') || dbImage.includes('.jpg') || dbImage.includes('.jpeg') || dbImage.includes('.svg'));
     if (isValid) return dbImage;
 
-    // Pera API and Tinyman are Algorand-only — skip for Voi
-    if (chainId === 'voi-mainnet') return '';
+    // Call backend endpoint — server-side probe avoids CORS/ORB issues
+    try {
+      const resp = await axios.get(`${this.baseUrl}/token/${tokenId}/image`, { timeout: 8000 });
+      const imageUrl = resp.data?.imageUrl;
+      if (imageUrl && typeof imageUrl === 'string' && imageUrl.startsWith('http')) {
+        return imageUrl;
+      }
+    } catch { /* Backend probe failed, return empty for component fallback */ }
 
-    const peraImage = await this.getPeraTokenImage(tokenId);
-    if (peraImage) return peraImage;
-
-    return `https://asa-list.tinyman.org/assets/${tokenId}/icon.png`;
+    return '';
   }
 
   /**

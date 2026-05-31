@@ -37,8 +37,6 @@ const Navbar: React.FC = () => {
   const isStakeActive = location.pathname === '/token-stake' || location.pathname === '/nft-stake' || location.pathname === '/depin-stake'
   const isFarmActive = location.pathname === '/farm' || (location.pathname === '/prediction-lp' && hasFeature('predictionLp'))
   const isP2PActive = location.pathname === '/p2p' || location.pathname.startsWith('/p2p/')
-  const isDeFiActive = location.pathname === '/' || isStakeActive || isFarmActive || isP2PActive
-  const isLaunchpadActive = location.pathname === '/launches' || location.pathname.startsWith('/launches/') || location.pathname === '/drops' || location.pathname.startsWith('/drops/') || (location.pathname === '/prediction-lp' && hasFeature('predictionLp'))
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -108,77 +106,75 @@ const Navbar: React.FC = () => {
           </div>
 
           <ul className="md:flex space-x-10 max-xxl:space-x-5 max-xxxl:space-x-3 min-w-0">
-            <li className="relative group uppercase large text-[var(--text-primary)] font-bold font-apex">
-              <span className={`cursor-pointer p-[10px] uppercase ${
-                isDeFiActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''
-              }`}>
-                DeFi
-                <Icon icon="mdi:chevron-down" className="w-4 h-4 inline-block ml-1 align-middle" />
-              </span>
-              <ul className="absolute hidden group-hover:block bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-md shadow-lg min-w-[160px] z-50 top-full left-0">
-                <li>
-                  <NavLink to="/" className={({ isActive }) =>
-                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
-                  }>Swap</NavLink>
-                </li>
-                <li>
-                  <NavLink to="/token-stake" className={({ isActive }) =>
-                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive || location.pathname === '/nft-stake' || location.pathname === '/depin-stake' ? 'text-secondary' : 'text-[var(--text-primary)]'}`
-                  }>Stake</NavLink>
-                </li>
-                <li>
-                  <NavLink to="/farm" className={({ isActive }) =>
-                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive || (location.pathname === '/prediction-lp' && hasFeature('predictionLp')) ? 'text-secondary' : 'text-[var(--text-primary)]'}`
-                  }>Farm</NavLink>
-                </li>
-                {hasFeature('p2pSwap') && (
-                <li>
-                  <NavLink to="/p2p" className={({ isActive }) =>
-                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive || location.pathname.startsWith('/p2p/') ? 'text-secondary' : 'text-[var(--text-primary)]'}`
-                  }>P2P</NavLink>
-                </li>
-                )}
-              </ul>
-            </li>
-
-            <li className="relative group uppercase large text-[var(--text-primary)] font-bold font-apex">
-              <span className={`cursor-pointer p-[10px] uppercase ${
-                isLaunchpadActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''
-              }`}>
-                Launchpad
-                <Icon icon="mdi:chevron-down" className="w-4 h-4 inline-block ml-1 align-middle" />
-              </span>
-              <ul className="absolute hidden group-hover:block bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-md shadow-lg min-w-[160px] z-50 top-full left-0">
-                {hasFeature('launches') && (
-                <li>
-                  <NavLink to="/launches" className={({ isActive }) =>
-                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive || location.pathname.startsWith('/launches/') ? 'text-secondary' : 'text-[var(--text-primary)]'}`
-                  }>Token Launches</NavLink>
-                </li>
-                )}
-                {hasFeature('drops') && (
-                <li>
-                  <NavLink to="/drops" className={({ isActive }) =>
-                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive || location.pathname.startsWith('/drops/') ? 'text-secondary' : 'text-[var(--text-primary)]'}`
-                  }>Airdrops</NavLink>
-                </li>
-                )}
-              </ul>
-            </li>
-
-            {isAlgorand && (
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
-                to="/genesis-mint"
+                to="/"
                 className={({ isActive }) =>
                   `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
                 }
               >
-                Genesis
+                Swap
+              </NavLink>
+            </li>
+            <li className="relative group uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <span className={`cursor-pointer p-[10px] uppercase ${
+                isStakeActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''
+              }`}>
+                Stake
+                <Icon icon="mdi:chevron-down" className="w-4 h-4 inline-block ml-1 align-middle" />
+              </span>
+              <ul className="absolute hidden group-hover:block bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-md shadow-lg min-w-[160px] z-50 top-full left-0">
+                <li>
+                  <NavLink to="/token-stake" className={({ isActive }) =>
+                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
+                  }>Token Stake</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/nft-stake" className={({ isActive }) =>
+                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
+                  }>NFT Stake</NavLink>
+                </li>
+                {hasFeature('deviceStaking') && (
+                <li>
+                  <NavLink to="/depin-stake" className={({ isActive }) =>
+                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
+                  }>DePIN Stake</NavLink>
+                </li>
+                )}
+              </ul>
+            </li>
+            <li className="relative group uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <span className={`cursor-pointer p-[10px] uppercase ${
+                isFarmActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''
+              }`}>
+                Farm
+                <Icon icon="mdi:chevron-down" className="w-4 h-4 inline-block ml-1 align-middle" />
+              </span>
+              <ul className="absolute hidden group-hover:block bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-md shadow-lg min-w-[160px] z-50 top-full left-0">
+                <li>
+                  <NavLink to="/farm" className={({ isActive }) =>
+                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
+                  }>LP Farm</NavLink>
+                </li>
+                {hasFeature('predictionLp') && (
+                <li>
+                  <NavLink to="/prediction-lp" className={({ isActive }) =>
+                    `block px-4 py-2 text-sm font-bold hover:bg-[var(--bg-secondary)] ${isActive ? 'text-secondary' : 'text-[var(--text-primary)]'}`
+                  }>Prediction LP</NavLink>
+                </li>
+                )}
+              </ul>
+            </li>
+            {hasFeature('p2pSwap') && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/p2p"
+                className={`cursor-pointer p-[10px] uppercase ${isP2PActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`}
+              >
+                P2P
               </NavLink>
             </li>
             )}
-
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/events"
@@ -192,7 +188,42 @@ const Navbar: React.FC = () => {
                 )}
               </NavLink>
             </li>
-
+            {hasFeature('launches') && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/launches"
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                Launches
+              </NavLink>
+            </li>
+            )}
+            {hasFeature('drops') && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/drops"
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                Drops
+              </NavLink>
+            </li>
+            )}
+            {isAlgorand && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/genesis-mint"
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                Genesis
+              </NavLink>
+            </li>
+            )}
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/profile"
@@ -270,88 +301,83 @@ const Navbar: React.FC = () => {
           </div>
 
           <ul className="flex flex-col space-y-9 p-[20px]">
-            <li className="flex flex-col gap-2">
-              <span className="uppercase large text-[var(--text-secondary)] font-bold font-apex px-[10px]">DeFi</span>
-              <NavLink
-                to="/"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive ? 'text-secondary' : ''}`
-                }
-              >
-                Swap
-              </NavLink>
-              <NavLink
-                to="/token-stake"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive || location.pathname === '/nft-stake' || location.pathname === '/depin-stake' ? 'text-secondary' : ''}`
-                }
-              >
-                Stake
-              </NavLink>
-              <NavLink
-                to="/farm"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive || (location.pathname === '/prediction-lp' && hasFeature('predictionLp')) ? 'text-secondary' : ''}`
-                }
-              >
-                Farm
-              </NavLink>
-              {hasFeature('p2pSwap') && (
-              <NavLink
-                to="/p2p"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive || location.pathname.startsWith('/p2p/') ? 'text-secondary' : ''}`
-                }
-              >
-                P2P
-              </NavLink>
-              )}
-            </li>
-
-            <li className="flex flex-col gap-2">
-              <span className="uppercase large text-[var(--text-secondary)] font-bold font-apex px-[10px]">Launchpad</span>
-              {hasFeature('launches') && (
-              <NavLink
-                to="/launches"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive || location.pathname.startsWith('/launches/') ? 'text-secondary' : ''}`
-                }
-              >
-                Token Launches
-              </NavLink>
-              )}
-              {hasFeature('drops') && (
-              <NavLink
-                to="/drops"
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive || location.pathname.startsWith('/drops/') ? 'text-secondary' : ''}`
-                }
-              >
-                Airdrops
-              </NavLink>
-              )}
-            </li>
-
-            {isAlgorand && (
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
-                to="/genesis-mint"
+                to="/"
                 onClick={onClose}
                 className={({ isActive }) =>
                   `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
                 }
               >
-                Genesis
+                Swap
+              </NavLink>
+            </li>
+            <li className="flex flex-col gap-2">
+              <span className="uppercase large text-[var(--text-secondary)] font-bold font-apex px-[10px]">Stake</span>
+              <NavLink
+                to="/token-stake"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive ? 'text-secondary' : ''}`
+                }
+              >
+                Token Stake
+              </NavLink>
+              <NavLink
+                to="/nft-stake"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive ? 'text-secondary' : ''}`
+                }
+              >
+                NFT Stake
+              </NavLink>
+              {hasFeature('deviceStaking') && (
+              <NavLink
+                to="/depin-stake"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive ? 'text-secondary' : ''}`
+                }
+              >
+                DePIN Stake
+              </NavLink>
+              )}
+            </li>
+            <li className="flex flex-col gap-2">
+              <span className="uppercase large text-[var(--text-secondary)] font-bold font-apex px-[10px]">Farm</span>
+              <NavLink
+                to="/farm"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive ? 'text-secondary' : ''}`
+                }
+              >
+                LP Farm
+              </NavLink>
+              {hasFeature('predictionLp') && (
+              <NavLink
+                to="/prediction-lp"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer pl-[30px] p-[10px] uppercase text-[var(--text-primary)] font-bold font-apex ${isActive ? 'text-secondary' : ''}`
+                }
+              >
+                Prediction LP
+              </NavLink>
+              )}
+            </li>
+            {hasFeature('p2pSwap') && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/p2p"
+                onClick={onClose}
+                className={`cursor-pointer p-[10px] uppercase ${isP2PActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`}
+              >
+                P2P
               </NavLink>
             </li>
             )}
-
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/events"
@@ -366,7 +392,45 @@ const Navbar: React.FC = () => {
                 )}
               </NavLink>
             </li>
-
+            {hasFeature('launches') && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/launches"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                Launches
+              </NavLink>
+            </li>
+            )}
+            {hasFeature('drops') && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/drops"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                Drops
+              </NavLink>
+            </li>
+            )}
+            {isAlgorand && (
+            <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
+              <NavLink
+                to="/genesis-mint"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `cursor-pointer p-[10px] uppercase ${isActive ? 'text-secondary border-solid border-b-2 border-[#DE0308]' : ''}`
+                }
+              >
+                Genesis
+              </NavLink>
+            </li>
+            )}
             <li className="uppercase large text-[var(--text-primary)] font-bold font-apex">
               <NavLink
                 to="/profile"

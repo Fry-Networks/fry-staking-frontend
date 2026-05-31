@@ -10,6 +10,7 @@ import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryStakingV2Compi
 import { COMPILED_APPROVAL as V3_COMPILED_APPROVAL, COMPILED_CLEAR as V3_COMPILED_CLEAR } from './contracts/FryStakingV3Compiled'
 import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 import { routeFeeViaRouter } from './services/FeeService'
+import { HAYSTACK_STAKING_APP_ID, HAYSTACK_ORACLE_APP_ID, HAY_ASA_ID, USDC_ASA_ID, HAYSTACK_SELECTORS, getUserStakeData, getHaystackPoolState, buildHaystackStakeTxns, buildHaystackUnstakeTxns, buildHaystackClaimTxns } from './utils/haystackStaking'
 
 export const getAlgodClient = async (): Promise<algosdk.Algodv2> => {
   const algodConfig = getAlgodConfigFromViteEnvironment()
@@ -297,11 +298,39 @@ export const initStaking = async (
   }
 }
 
-//!Marketplace functions
 const BOX_PRICE = 2500 + 400 * 64
 export const stakeTokens = async (stakingId: number, stakeAmount: number, sender: string, signer: TransactionSigner, feeAmount: number, feeTokenId: number, feeRecipient: string, algodConfig?: AlgodConfigOverride, contractVersion?: number) => {
+//!Marketplace functions
   try {
     const appAddress = algosdk.getApplicationAddress(stakingId)
+    
+    // Check if this is Haystack (external app, contractVersion 4)
+    if (contractVersion === 4) {
+      // Haystack staking - use raw ARC-4 selectors
+      const algodClient = await getAlgodClient()
+      
+      // Build Haystack transactions
+      const txns = await buildHaystackStakeTxns(sender, stakeAmount, algodClient)
+      
+      // Sign transactions
+      const atc = new algosdk.AtomicTransactionComposer()
+      txns.forEach(txn => atc.addTransaction({ txn, signer }))
+      const result = await atc.execute(algodClient, 4)
+      const txId = result.txIDs[0]
+      
+      let feeTxId: string | undefined
+      if (feeAmount > 0) {
+        try {
+          const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+          feeTxId = feeRouterResult.txId
+        } catch (feeErr) {
+          console.warn('Fee transfer failed after successful stake:', feeErr)
+        }
+      }
+      
+      return { tx: { transaction: { txID: () => txId } }, feeTxId, feeTokenId }
+    }
+    
     const isV3 = contractVersion !== undefined && contractVersion >= 3
 
     // Use appropriate client based on contract version
@@ -434,6 +463,32 @@ export const unstakeTokens = async (
   contractVersion?: number,
 ) => {
   try {
+    // Check if this is Haystack (external app, contractVersion 4)
+    if (contractVersion === 4) {
+      const algodClient = await getAlgodClient()
+      
+      // Build Haystack unstake transactions
+      const txns = await buildHaystackUnstakeTxns(sender, unstakeAmount, algodClient)
+      
+      // Sign transactions
+      const atc = new algosdk.AtomicTransactionComposer()
+      txns.forEach(txn => atc.addTransaction({ txn, signer }))
+      const result = await atc.execute(algodClient, 4)
+      const txId = result.txIDs[0]
+      
+      let feeTxId: string | undefined
+      if (feeAmount > 0) {
+        try {
+          const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+          feeTxId = feeRouterResult.txId
+        } catch (feeErr) {
+          console.warn('Fee transfer failed after successful unstake:', feeErr)
+        }
+      }
+      
+      return { tx: { transaction: { txID: () => txId } }, feeTxId, feeTokenId }
+    }
+    
     const isV3 = contractVersion !== undefined && contractVersion >= 3
     const { stakingClient, algorandClient, algodClient } = isV3
       ? await createFryStakingV3Client(signer, sender, stakingId, algodConfig) as any
@@ -503,7 +558,33 @@ export const claimTokens = async (
   contractVersion?: number,
 ) => {
   try {
+    // Check if this is Haystack (external app, contractVersion 4)
+    if (contractVersion === 4) {
+      const algodClient = await getAlgodClient()
+      
+      // Build Haystack claim transactions
+      const txns = await buildHaystackClaimTxns(sender, algodClient)
+      
+      // Sign transactions
+      const atc = new algosdk.AtomicTransactionComposer()
+      txns.forEach(txn => atc.addTransaction({ txn, signer }))
+      const result = await atc.execute(algodClient, 4)
+      const txId = result.txIDs[0]
+      
+      let feeTxId: string | undefined
+      if (feeAmount > 0) {
+        try {
+          const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+          feeTxId = feeRouterResult.txId
+        } catch (feeErr) {
+          console.warn('Fee transfer failed after successful claim:', feeErr)
+        }
+      }
+      
+      return { tx: { transaction: { txID: () => txId } }, feeTxId, feeTokenId, updatedApr: 0, rewardClaimed: 0, stakedAmount: 0, stakedTime: 0 }
+    }
     const isV3 = contractVersion !== undefined && contractVersion >= 3
+    
     const { stakingClient, algorandClient, algodClient } = isV3
       ? await createFryStakingV3Client(signer, sender, stakingId, algodConfig) as any
       : await createFryStakingClient(signer, sender, stakingId, algodConfig)

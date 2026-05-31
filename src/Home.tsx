@@ -34,6 +34,10 @@ import DeviceDashboard from './pages/deviceDashboard'
 import P2PSwap from './pages/p2pSwap'
 import P2PMarketDetail from './pages/p2pMarketDetail'
 import GenesisMint from './pages/genesisMint'
+import Launches from './pages/launches'
+import Drops from './pages/drops'
+import TokenDetailPage from './pages/tokenDetail'
+import DropDetailPage from './pages/dropDetail'
 
 const AppLayout = () => {
   return (
@@ -159,6 +163,22 @@ const appRouter = createBrowserRouter([
   {
     path: '/transaction-history',
     element: <TransactionHistory />,
+  },
+  {
+    path: '/launches',
+    element: <Launches />,
+  },
+  {
+    path: '/launches/token/:asaId',
+    element: <TokenDetailPage />,
+  },
+  {
+    path: '/drops',
+    element: <Drops />,
+  },
+  {
+    path: '/drops/:dropId',
+    element: <DropDetailPage />,
   },
   {
     path: '/genesis-mint',

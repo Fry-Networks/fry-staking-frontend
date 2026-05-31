@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState } from 'react'
 import { Icon } from '@iconify/react'
 import { claimVesting } from '../../../services/eventService'
 import { useAuth } from '../../../hooks/useAuth'
@@ -33,7 +33,7 @@ const VestingClaimModal: React.FC<VestingClaimModalProps> = ({
 
   const { ensureAuth } = useAuth()
 
-  const handleClaim = useCallback(async () => {
+  const handleClaim = async () => {
     setStep('submitting')
     setError('')
     try {
@@ -55,7 +55,7 @@ const VestingClaimModal: React.FC<VestingClaimModalProps> = ({
       setError(msg)
       setStep('error')
     }
-  }, [eventId])
+  }
 
   const handleClose = () => {
     setStep('confirm')

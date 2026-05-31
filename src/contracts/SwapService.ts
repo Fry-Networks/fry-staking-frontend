@@ -1,6 +1,6 @@
 import { FolksRouterClient } from './FolksRouterClient';
 import { VestigeLabsClient, VestigeSwapQuote, VestigeSwapParams } from './VestigeLabsClient';
-import { DeflexClient, DeflexQuote, DeflexTransactionGroup } from './DeflexClient';
+import { HaystackRouterClient, HaystackQuote, HaystackTransactionGroup } from './HaystackRouterClient';
 import { Network, SwapMode, SwapParams, SwapQuote } from './types';
 import algosdk, { Algodv2, decodeUnsignedTransaction } from 'algosdk';
 import { Buffer } from 'buffer';
@@ -12,20 +12,20 @@ export interface SwapServiceConfig {
   walletSignTransactions: (txns: Uint8Array[]) => Promise<Uint8Array[]>;
 }
 
-export type SwapProvider = 'folksrouter' | 'vestige' | 'deflex';
+export type SwapProvider = 'folksrouter' | 'vestige' | 'haystack';
 
 export interface SwapResult {
   success: boolean;
   txId?: string;
   error?: string;
   provider: SwapProvider;
-  quote?: SwapQuote | VestigeSwapQuote | DeflexQuote;
+  quote?: SwapQuote | VestigeSwapQuote | HaystackQuote;
 }
 
 export class SwapService {
   private folksRouterClient: FolksRouterClient;
   private vestigeClient: VestigeLabsClient;
-  private deflexClient: DeflexClient;
+  private haystackClient: HaystackRouterClient;
   private algodClient: Algodv2;
   private walletSignTransactions: (txns: Uint8Array[]) => Promise<Uint8Array[]>;
 
@@ -33,7 +33,7 @@ export class SwapService {
     this.folksRouterClient = new FolksRouterClient(config.network);
     this.vestigeClient = new VestigeLabsClient(config.network === Network.MAINNET ? 'mainnet' : 'testnet');
 
-    this.deflexClient = new DeflexClient();
+    this.haystackClient = new HaystackRouterClient();
 
     this.algodClient = config.algodClient;
     this.walletSignTransactions = config.walletSignTransactions;
@@ -70,8 +70,8 @@ export class SwapService {
         return await this.tryFolksRouterSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
       } else if (provider === 'vestige' && quotes.vestige) {
         return await this.tryVestigeSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
-      } else if (provider === 'deflex' && quotes.deflex) {
-        return await this.tryDeflexSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
+      } else if (provider === 'haystack' && quotes.haystack) {
+        return await this.tryHaystackSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
       }
     } catch (e) {
       return {
@@ -108,8 +108,8 @@ export class SwapService {
         return await this.tryFolksRouterSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
       } else if (provider === 'vestige') {
         return await this.tryVestigeSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
-      } else if (provider === 'deflex') {
-        return { success: false, error: 'Deflex temporarily unavailable', provider: 'deflex' };
+      } else if (provider === 'haystack') {
+        return await this.tryHaystackSwap(numericFromAssetId, numericToAssetId, amount, userAddress, slippageBps);
       }
     } catch (e) {
       return {
@@ -245,17 +245,46 @@ export class SwapService {
   }
 
   /**
-   * Try swap using Deflex SDK
+   * Try swap using Haystack Router
    */
-  private async tryDeflexSwap(
+  private async tryHaystackSwap(
     fromAssetId: number,
     toAssetId: number,
     amount: number,
     userAddress: string,
     slippageBps: number = 10
   ): Promise<SwapResult> {
-    // Deflex API cert expired — skip until renewed
-    return { success: false, error: 'Deflex temporarily unavailable', provider: 'deflex' };
+    try {
+      const quote = await this.haystackClient.fetchSwapQuote(fromAssetId, toAssetId, amount);
+      if (!quote || !quote.success) throw new Error('Haystack quote not available');
+
+      const slippage = slippageBps / 10000;
+      const txnGroup = await this.haystackClient.prepareSwapTransactions(userAddress, quote, slippage);
+
+      // Decode all transactions
+      const allTxns = txnGroup.txns.map(t => new Uint8Array(Buffer.from(t.data, 'base64')));
+
+      // Sign with wallet (sends full group for atomic group display)
+      const signedTxns = await this.walletSignTransactions(allTxns);
+
+      // Replace logic-sig txns with pre-signed versions
+      const finalTxns = txnGroup.txns.map((t, i) => {
+        if (t.hasLogicSig && t.logicSigBlob) {
+          return new Uint8Array(Buffer.from(t.logicSigBlob, 'base64'));
+        }
+        return signedTxns[i];
+      });
+
+      const result = await this.algodClient.sendRawTransaction(finalTxns).do();
+      return { success: true, txId: result.txId, provider: 'haystack', quote };
+    } catch (error) {
+      console.error('Haystack swap failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Haystack swap failed',
+        provider: 'haystack'
+      };
+    }
   }
 
   /**
@@ -268,7 +297,7 @@ export class SwapService {
   ): Promise<{
     folksRouter?: SwapQuote;
     vestige?: VestigeSwapQuote;
-    deflex?: DeflexQuote;
+    haystack?: HaystackQuote;
     bestProvider?: SwapProvider;
   }> {
     const numericFromAssetId = typeof fromAssetId === 'string' ? parseInt(fromAssetId, 10) : fromAssetId;
@@ -277,12 +306,12 @@ export class SwapService {
     const results: {
       folksRouter?: SwapQuote;
       vestige?: VestigeSwapQuote;
-      deflex?: DeflexQuote;
+      haystack?: HaystackQuote;
       bestProvider?: SwapProvider;
     } = {};
 
     // Fetch all quotes in parallel
-    const [folksResult, vestigeResult, deflexResult] = await Promise.allSettled([
+    const [folksResult, vestigeResult, haystackResult] = await Promise.allSettled([
       // FolksRouter quote
       (async () => {
         const swapParams: SwapParams = {
@@ -304,8 +333,8 @@ export class SwapService {
         };
         return this.vestigeClient.fetchSwapQuote(vestigeParams);
       })(),
-      // Deflex quote — skipped: api.deflex.fi SSL cert expired (external issue)
-      Promise.reject(new Error('Deflex temporarily disabled')),
+      // Haystack quote (external issue)
+      this.haystackClient.fetchSwapQuote(numericFromAssetId, numericToAssetId, amount),
     ]);
 
     if (folksResult.status === 'fulfilled') {
@@ -320,10 +349,10 @@ export class SwapService {
       console.log('Vestige quote failed:', vestigeResult.reason?.message || 'Unknown error');
     }
 
-    if (deflexResult.status === 'fulfilled') {
-      results.deflex = deflexResult.value;
+    if (haystackResult.status === 'fulfilled') {
+      results.haystack = haystackResult.value;
     } else {
-      console.log('Deflex quote failed:', deflexResult.reason?.message || 'Unknown error');
+      console.log('Haystack quote failed:', haystackResult.reason?.message || 'Unknown error');
     }
 
     // Determine best provider based on output amount
@@ -335,8 +364,8 @@ export class SwapService {
     if (results.vestige) {
       outputs.push({ provider: 'vestige', amount: results.vestige.amount_out });
     }
-    if (results.deflex) {
-      outputs.push({ provider: 'deflex', amount: Number(results.deflex.quote || 0) });
+    if (results.haystack) {
+      outputs.push({ provider: 'haystack', amount: Number(results.haystack.quote || 0) });
     }
 
     if (outputs.length > 0) {
@@ -353,7 +382,7 @@ export class SwapService {
   async getSupportedProviders(fromAssetId: number | string, toAssetId: number | string): Promise<{
     folksRouter: boolean;
     vestige: boolean;
-    deflex: boolean;
+    haystack: boolean;
   }> {
     const numericFromAssetId = typeof fromAssetId === 'string' ? parseInt(fromAssetId, 10) : fromAssetId;
     const numericToAssetId = typeof toAssetId === 'string' ? parseInt(toAssetId, 10) : toAssetId;
@@ -361,10 +390,10 @@ export class SwapService {
     const results = {
       folksRouter: false,
       vestige: false,
-      deflex: false,
+      haystack: false,
     };
 
-    const [folksResult, vestigeResult, deflexResult] = await Promise.allSettled([
+    const [folksResult, vestigeResult, haystackResult] = await Promise.allSettled([
       (async () => {
         const swapParams: SwapParams = {
           fromAssetId: numericFromAssetId,
@@ -376,12 +405,12 @@ export class SwapService {
         return true;
       })(),
       this.vestigeClient.isAssetPairSupported(numericFromAssetId, numericToAssetId),
-      this.deflexClient.fetchSwapQuote(numericFromAssetId, numericToAssetId, 1000).then(() => true),
+      this.haystackClient.fetchSwapQuote(numericFromAssetId, numericToAssetId, 1000).then(() => true),
     ]);
 
     if (folksResult.status === 'fulfilled') results.folksRouter = folksResult.value;
     if (vestigeResult.status === 'fulfilled') results.vestige = vestigeResult.value;
-    if (deflexResult.status === 'fulfilled') results.deflex = true;
+    if (haystackResult.status === 'fulfilled') results.haystack = true;
 
     return results;
   }

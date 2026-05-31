@@ -37,5 +37,7 @@ export const algorandMainnet: ChainConfig = {
     communityEvents: true,
     zap: true,
     p2pSwap: true,
+    launches: true,
+    drops: true,
   },
 };

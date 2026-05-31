@@ -10,6 +10,8 @@ import Stakebanner from './stakebanner'
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService'
 import { fetchChainPriceMap } from '../../../services/PriceService'
 import { useChain } from '../../../context/ChainContext'
+import { formatUsdAbbreviated } from '../../../utils/formatNumber'
+import TokenImage from '../../shared/TokenImage'
 
 const FRY_ASSET_ID = Number(import.meta.env.VITE_FRY_TOKEN_ID) || 2485314946;
 
@@ -180,43 +182,19 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       pool: (
         <div className="flex items-center gap-[16px] w-[350px]">
           <div className="flex relative">
-            <img 
-              key={`reward-${rewardTokenId}-${rewardtokenImage}`}
-              src={rewardtokenImage} 
-              className="w-[40px] h-[40px] rounded-full drop-shadow-md" 
-              alt={item?.rewardToken?.name || 'Reward token'}
-              loading="lazy"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                // Prevent infinite loop - check if we've already tried to fallback
-                const hasTriedFallback = target.dataset.fallbackAttempted === 'true';
-                if (!hasTriedFallback && !target.src.includes('tinyman.org') && chainId !== 'voi-mainnet') {
-                  target.dataset.fallbackAttempted = 'true';
-                  target.src = `https://asa-list.tinyman.org/assets/${rewardTokenId}/icon.png`;
-                } else {
-                  // If Tinyman also fails or we've already tried, use a placeholder
-                  target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U1RTlFQSIvPjxwYXRoIGQ9Ik0yMCAxMkMxNS41ODIyIDEyIDEyIDE1LjU4MjIgMTIgMjBDMTIgMjQuNDE3OCAxNS41ODIyIDI4IDIwIDI4QzI0LjQxNzggMjggMjggMjQuNDE3OCAyOCAyMEMyOCAxNS41ODIyIDI0LjQxNzggMTIgMjAgMTJaIiBmaWxsPSIjOUI5Q0E1Ii8+PC9zdmc+';
-                }
-              }}
+            <TokenImage
+              tokenId={Number(rewardTokenId)}
+              src={databaseImages[rewardTokenId] || ''}
+              symbol={item?.rewardToken?.name || '?'}
+              size={40}
+              className="drop-shadow-md"
             />
-            <img 
-              key={`stake-${stakeTokenId}-${staketokenImage}`}
-              src={staketokenImage} 
-              className="w-[40px] h-[40px] rounded-full drop-shadow-md z-50 -ml-4" 
-              alt={item?.stakeToken?.name || 'Stake token'}
-              loading="lazy"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                // Prevent infinite loop - check if we've already tried to fallback
-                const hasTriedFallback = target.dataset.fallbackAttempted === 'true';
-                if (!hasTriedFallback && !target.src.includes('tinyman.org') && chainId !== 'voi-mainnet') {
-                  target.dataset.fallbackAttempted = 'true';
-                  target.src = `https://asa-list.tinyman.org/assets/${stakeTokenId}/icon.png`;
-                } else {
-                  // If Tinyman also fails or we've already tried, use a placeholder
-                  target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U1RTlFQSIvPjxwYXRoIGQ9Ik0yMCAxMkMxNS41ODIyIDEyIDEyIDE1LjU4MjIgMTIgMjBDMTIgMjQuNDE3OCAxNS41ODIyIDI4IDIwIDI4QzI0LjQxNzggMjggMjggMjQuNDE3OCAyOCAyMEMyOCAxNS41ODIyIDI0LjQxNzggMTIgMjAgMTJaIiBmaWxsPSIjOUI5Q0E1Ii8+PC9zdmc+';
-                }
-              }}
+            <TokenImage
+              tokenId={Number(stakeTokenId)}
+              src={databaseImages[stakeTokenId] || ''}
+              symbol={item?.stakeToken?.name || '?'}
+              size={40}
+              className="drop-shadow-md z-50 -ml-4"
             />
           </div>
           <div className="flex flex-col">
@@ -238,19 +216,29 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
               {item.contractVersion === 3 && (
                 <span className="px-1.5 py-0.5 bg-blue-900/30 text-blue-400 rounded text-[9px] font-medium">V3</span>
               )}
+              {item.contractVersion === 4 && (
+                <span className="px-1.5 py-0.5 bg-purple-900/30 text-purple-400 rounded text-[9px] font-medium">V4</span>
+              )}
             </div>
             <p className="text-text_clr small">with {item?.lockPeriod / 86400} days lock</p>
           </div>
         </div>
       ),
-      tvl: `$ ${Number(tvlUsd.toFixed(3)).toString().replace(/(\.\d*?)0+$/, '$1')}`,
+      tvl: formatUsdAbbreviated(tvlUsd),
       apr: `${Number(displayApr.toFixed(2))}%`,
       staked: `${Number(item.totalAmountStaked.toFixed(2)).toLocaleString()} ${item?.stakeToken?.name || 'tokens'}`,
       poolTime: item.duration / 86400,
       reward: (
-        <p className="text-text_clr text-[15px] font-medium">
-          {(item.rewardTokenAmount / 1_000_000).toLocaleString()} {item?.rewardToken?.name || 'tokens'}
-        </p>
+        <div>
+          <p className="text-text_clr text-[15px] font-medium">
+            {(item.rewardTokenAmount / 1_000_000).toLocaleString()} {item?.rewardToken?.name || 'tokens'}
+          </p>
+          {item.contractVersion === 4 && item.rewardTokenAmountUsdc > 0 && (
+            <p className="text-text_clr text-[12px] text-[var(--text-secondary)]">
+              + {(item.rewardTokenAmountUsdc / 1_000_000).toLocaleString()} USDC
+            </p>
+          )}
+        </div>
       ),
       rewardTokenAmount: item.rewardTokenAmount,
       ends: (
@@ -298,7 +286,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
 
     return data.filter((item) => {
       const isEnded = item.stakingEndTime <= now
-      const isLive = item.stakingEndTime > now
+      const isLive = item.stakingEndTime > now || item.contractVersion === 4
       const belongsToWallet = item.isCreator || item.hasUserStake
 
       switch (activeTab) {
@@ -418,6 +406,41 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
   }, [chainId])
   
   // Note: removed duplicate tokenImages refetch effect — initial load already passes imageMap directly
+
+
+  // Lazy backend resolution: resolve images for pool tokens not in imageMap
+  useEffect(() => {
+    if (originalData.length === 0 || Object.keys(tokenImages).length === 0) return;
+    
+    const missingIds = new Set<string>();
+    originalData.forEach((pool: any) => {
+      const stId = String(pool.stakeTokenId);
+      const rwId = String(pool.rewardTokenId);
+      if (!tokenImages[stId]) missingIds.add(stId);
+      if (!tokenImages[rwId]) missingIds.add(rwId);
+    });
+    
+    if (missingIds.size === 0) return;
+    
+    const resolveImages = async () => {
+      const updates: { [key: string]: string } = {};
+      await Promise.allSettled(
+        Array.from(missingIds).map(async (id) => {
+          try {
+            const resp = await axios.get(`${api_base_url}/token/${id}/image`, { timeout: 8000 });
+            const url = resp.data?.imageUrl;
+            if (url && typeof url === 'string' && url.startsWith('http')) {
+              updates[id] = url;
+            }
+          } catch { /* skip */ }
+        })
+      );
+      if (Object.keys(updates).length > 0) {
+        setTokenImages(prev => ({ ...prev, ...updates }));
+      }
+    };
+    resolveImages();
+  }, [originalData]);
 
   return (
     <>

@@ -26,7 +26,7 @@ export interface NativeAsset {
 
 /** DEX provider identifiers */
 export type DexProvider =
-  | 'folks-router' | 'vestige' | 'deflex' | 'tinyman' | 'pact'  // Algorand
+  | 'folks-router' | 'vestige' | 'haystack' | 'tinyman' | 'pact'  // Algorand
   | 'nomadex' | 'humble' | 'snowball'                              // Voi
   ;
 
@@ -71,6 +71,8 @@ export interface ChainFeatures {
   communityEvents: boolean;
   zap: boolean;
   p2pSwap: boolean;
+  launches: boolean;
+  drops: boolean;
 }
 
 /** Full chain configuration */

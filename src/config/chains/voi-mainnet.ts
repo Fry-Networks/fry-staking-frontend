@@ -44,5 +44,7 @@ export const voiMainnet: ChainConfig = {
     communityEvents: false,
     zap: false,
     p2pSwap: true,
+    launches: false,
+    drops: false,
   },
 };

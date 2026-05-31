@@ -9,7 +9,7 @@ export * from "./constants/testnetConstants";
 
 export * from "./FolksRouterClient";
 export * from "./VestigeLabsClient";
-export * from "./DeflexClient";
+export * from "./HaystackRouterClient";
 export * from "./SwapService";
 export * from "./nomadex";
 export * from "./humble";
