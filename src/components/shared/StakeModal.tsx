@@ -151,6 +151,20 @@ const StakeModal: React.FC<StakeModalProps> = ({
       .finally(() => setBalanceLoading(false))
   }, [visible, activeAddress, inputAssetId])
 
+  // Reset input state when modal opens to prevent stale max/balance desync
+  useEffect(() => {
+    if (visible) {
+      setInputAmount('')
+      setLpStakeAmount('')
+      setStep('input')
+      setQuote(null)
+      setQuoteError('')
+      setError('')
+      setLpReceived(0)
+      setShowAdvanced(false)
+    }
+  }, [visible])
+
   // Fetch quote when input changes (LP farm ZAP mode only)
   useEffect(() => {
     if (!isLpFarm || showAdvanced || !pool || !inputAmount) {
@@ -468,6 +482,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
             value={inputAmount}
             onChange={(e) => setInputAmount(e.target.value)}
             placeholder="0.00"
+            max={balance > 0n ? Number(balance) / Math.pow(10, inputDecimals) : undefined}
             className="flex-1 bg-transparent focus:outline-none text-[var(--text-primary)] text-lg"
           />
           <button
@@ -573,6 +588,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
             value={inputAmount}
             onChange={(e) => setInputAmount(e.target.value)}
             placeholder="0.00"
+            max={balance > 0n ? Number(balance) / Math.pow(10, inputDecimals) : undefined}
             className="flex-1 bg-transparent focus:outline-none text-[var(--text-primary)] text-lg"
           />
           <button
@@ -698,6 +714,7 @@ const StakeModal: React.FC<StakeModalProps> = ({
                   value={lpStakeAmount}
                   onChange={(e) => setLpStakeAmount(e.target.value)}
                   placeholder="0.00"
+                  max={lpBalance > 0n ? Number(lpBalance) / 1e6 : undefined}
                   className="flex-1 bg-transparent focus:outline-none text-[var(--text-primary)] text-lg"
                 />
                 <button

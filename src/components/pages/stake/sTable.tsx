@@ -1250,6 +1250,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
     {modalTarget && (
       <>
         <StakeModal
+          key={`stake-${modalTarget.appId}`}
           visible={stakeModalOpen}
           onClose={() => { setStakeModalOpen(false); setModalTarget(null) }}
           onSuccess={async () => { setStakeModalOpen(false); setModalTarget(null); await fetchData(); fetchBalance() }}
@@ -1260,6 +1261,7 @@ const STable: React.FC<STableProps> = memo(({ stacks, fetchData, showExpandable,
           contractVersion={modalTarget.contractVersion}
         />
         <WithdrawModal
+          key={`withdraw-${modalTarget.appId}`}
           visible={withdrawModalOpen}
           onClose={() => { setWithdrawModalOpen(false); setModalTarget(null) }}
           onSuccess={async () => { setWithdrawModalOpen(false); setModalTarget(null); await fetchData(); fetchBalance() }}

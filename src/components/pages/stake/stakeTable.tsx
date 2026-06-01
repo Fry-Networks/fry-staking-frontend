@@ -552,7 +552,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
           </div>
         </div>
       </div>
-      <CreateStakeWizard isOpen={isaddStakeOpen} setIsOpen={setisaddStakeOpen} fetchData={fetchAllPools} />
+      {isaddStakeOpen && <CreateStakeWizard isOpen={isaddStakeOpen} setIsOpen={setisaddStakeOpen} fetchData={fetchAllPools} />}
     </>
   )
 }
