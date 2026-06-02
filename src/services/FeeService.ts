@@ -45,6 +45,7 @@ const ACTION_TYPE_MAP: Record<string, keyof FeeConfig> = {
   poolCreation: 'poolCreationFeePercent',
   p2pCreate: 'p2pCreateFeePercent',
   p2pAccept: 'p2pAcceptFeePercent',
+  swap: 'swapFeePercent',
 }
 
 export async function fetchFeeConfig(): Promise<FeeConfig> {
@@ -90,13 +91,15 @@ export async function routeFeeViaRouter(
   signer: TransactionSigner,
   feeAmount: number,
   feeTokenId: number,
-  algodClient: algosdk.Algodv2
+  algodClient: algosdk.Algodv2,
+  feeRouterAppIdOverride?: number | null,
+  feeRouterAddrOverride?: string | null
 ): Promise<{ txId: string }> {
   const sp = await algodClient.getTransactionParams().do()
   const baseFee = Math.max(sp.fee, 1000)
 
-  const feeRouterAddr = FEE_ROUTER_ADDR
-  const feeRouterAppId = FEE_ROUTER_APP_ID
+  const feeRouterAddr = feeRouterAddrOverride ?? FEE_ROUTER_ADDR
+  const feeRouterAppId = feeRouterAppIdOverride ?? FEE_ROUTER_APP_ID
 
   const atc = new algosdk.AtomicTransactionComposer()
 

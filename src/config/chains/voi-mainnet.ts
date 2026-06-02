@@ -18,6 +18,8 @@ export const voiMainnet: ChainConfig = {
   fryTokenId: 48968653, // vFRY ASA on Voi
   usdcEquivalent: { id: 395614, symbol: 'aUSDC', decimals: 6 },
   feeRecipient: 'NQA76E235VCMZB4KZQSV6IU64IWF2GGCXK4Y3QA7N7ZMI7MVHUQVV5BUD4',
+  feeRouterAppId: 49316563,
+  feeRouterAddr: 'QNY6X745DRD5QXORZ2E36VDKFNW3IXUGVQ5VNL3V653LP2GQE3PI2P3OPA',
   explorerBaseUrl: 'https://explorer.voi.network',
   availableDexProviders: ['nomadex', 'humble', 'snowball'],
   supportedWallets: ['kibisis', 'lute'],
@@ -41,7 +43,7 @@ export const voiMainnet: ChainConfig = {
     deviceStaking: false,
     swap: true,
     predictionLp: false,
-    communityEvents: false,
+    communityEvents: true,
     zap: false,
     p2pSwap: true,
     launches: false,

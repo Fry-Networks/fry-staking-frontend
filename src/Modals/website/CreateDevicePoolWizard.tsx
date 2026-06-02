@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 import dayjs from 'dayjs'
 import { useWallet } from '@txnlab/use-wallet'
 import { useAuth } from '../../hooks/useAuth'
+import { useChain } from '../../context/ChainContext'
 import { createDevicePool, depositDeviceRewards, depositDeviceRewardsAlgo, optInDeviceContractToAsset } from '../../device_staking_func'
 import { addDevicePool } from '../../services/deviceStakingApi'
 import { fetchFeeConfig, calculateFeeSimple, routeFeeViaRouter, FEE_ROUTER_ADDR } from '../../services/FeeService'
@@ -111,6 +112,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
 }) => {
   const { signer, activeAddress } = useWallet()
   const { ensureAuth } = useAuth()
+  const { activeChain } = useChain()
   const isWalletConnected = !!activeAddress && !!signer
 
   const PLATFORM_DEPOSIT_FEE_BPS = 50
@@ -426,7 +428,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
         algorandClient.setDefaultSigner(signer)
         const algodClient = new algosdk.Algodv2(algodConfig.token as string, algodConfig.server, algodConfig.port)
 
-        await routeFeeViaRouter(activeAddress, signer, feeCalc.feeAmount, rewardToken.id, algodClient)
+        await routeFeeViaRouter(activeAddress, signer, feeCalc.feeAmount, rewardToken.id, algodClient, activeChain?.feeRouterAppId, activeChain?.feeRouterAddr)
 
         await logFee({
           appId: 0,
@@ -451,7 +453,7 @@ const CreateDevicePoolWizard: React.FC<CreateDevicePoolWizardProps> = ({
         Number(valuePerNft) * Math.pow(10, rewardToken.decimals) || 0,
         poolEndTime,
         lockPeriodSeconds,
-        FEE_ROUTER_ADDR,
+        (activeChain?.feeRouterAddr || FEE_ROUTER_ADDR),
         Number(depositFeeBps),
         Number(withdrawFeeBps),
         Number(claimFeeBps),

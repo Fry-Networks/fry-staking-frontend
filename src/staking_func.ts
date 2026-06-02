@@ -10,6 +10,7 @@ import { COMPILED_APPROVAL, COMPILED_CLEAR } from './contracts/FryStakingV2Compi
 import { COMPILED_APPROVAL as V3_COMPILED_APPROVAL, COMPILED_CLEAR as V3_COMPILED_CLEAR } from './contracts/FryStakingV3Compiled'
 import { getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 import { routeFeeViaRouter } from './services/FeeService'
+import { logFee } from './utils/logFee'
 import { HAYSTACK_STAKING_APP_ID, HAYSTACK_ORACLE_APP_ID, HAY_ASA_ID, USDC_ASA_ID, HAYSTACK_SELECTORS, getUserStakeData, getHaystackPoolState, buildHaystackStakeTxns, buildHaystackUnstakeTxns, buildHaystackClaimTxns } from './utils/haystackStaking'
 
 export const getAlgodClient = async (): Promise<algosdk.Algodv2> => {
@@ -299,7 +300,7 @@ export const initStaking = async (
 }
 
 const BOX_PRICE = 2500 + 400 * 64
-export const stakeTokens = async (stakingId: number, stakeAmount: number, sender: string, signer: TransactionSigner, feeAmount: number, feeTokenId: number, feeRecipient: string, algodConfig?: AlgodConfigOverride, contractVersion?: number) => {
+export const stakeTokens = async (stakingId: number, stakeAmount: number, sender: string, signer: TransactionSigner, feeAmount: number, feeTokenId: number, feeRecipient: string, algodConfig?: AlgodConfigOverride, contractVersion?: number, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
 //!Marketplace functions
   try {
     const appAddress = algosdk.getApplicationAddress(stakingId)
@@ -321,13 +322,19 @@ export const stakeTokens = async (stakingId: number, stakeAmount: number, sender
       let feeTxId: string | undefined
       if (feeAmount > 0) {
         try {
-          const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+          const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
           feeTxId = feeRouterResult.txId
         } catch (feeErr) {
           console.warn('Fee transfer failed after successful stake:', feeErr)
         }
       }
       
+
+      // Log fee for haystack staking
+      if (feeTxId) {
+        logFee({ appId: stakingId, userId: sender, gasAmount: feeAmount, gasType: 'stakingDeposit', feeType: 'percentage', txId: feeTxId }).catch(() => {})
+      }
+
       return { tx: { transaction: { txID: () => txId } }, feeTxId, feeTokenId }
     }
     
@@ -436,7 +443,7 @@ export const stakeTokens = async (stakingId: number, stakeAmount: number, sender
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
         feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful stake:', feeErr);
@@ -460,8 +467,7 @@ export const unstakeTokens = async (
   feeTokenId: number,
   feeRecipient: string,
   algodConfig?: AlgodConfigOverride,
-  contractVersion?: number,
-) => {
+  contractVersion?: number, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     // Check if this is Haystack (external app, contractVersion 4)
     if (contractVersion === 4) {
@@ -479,13 +485,19 @@ export const unstakeTokens = async (
       let feeTxId: string | undefined
       if (feeAmount > 0) {
         try {
-          const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+          const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
           feeTxId = feeRouterResult.txId
         } catch (feeErr) {
           console.warn('Fee transfer failed after successful unstake:', feeErr)
         }
       }
       
+
+      // Log fee for haystack unstaking
+      if (feeTxId) {
+        logFee({ appId: stakingId, userId: sender, gasAmount: feeAmount, gasType: 'stakingWithdraw', feeType: 'percentage', txId: feeTxId }).catch(() => {})
+      }
+
       return { tx: { transaction: { txID: () => txId } }, feeTxId, feeTokenId }
     }
     
@@ -532,7 +544,7 @@ export const unstakeTokens = async (
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
         feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful unstake:', feeErr);
@@ -555,8 +567,7 @@ export const claimTokens = async (
   feeTokenId: number,
   feeRecipient: string,
   algodConfig?: AlgodConfigOverride,
-  contractVersion?: number,
-) => {
+  contractVersion?: number, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     // Check if this is Haystack (external app, contractVersion 4)
     if (contractVersion === 4) {
@@ -574,13 +585,19 @@ export const claimTokens = async (
       let feeTxId: string | undefined
       if (feeAmount > 0) {
         try {
-          const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+          const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
           feeTxId = feeRouterResult.txId
         } catch (feeErr) {
           console.warn('Fee transfer failed after successful claim:', feeErr)
         }
       }
       
+
+      // Log fee for haystack claim
+      if (feeTxId) {
+        logFee({ appId: stakingId, userId: sender, gasAmount: feeAmount, gasType: 'stakingClaim', feeType: 'percentage', txId: feeTxId }).catch(() => {})
+      }
+
       return { tx: { transaction: { txID: () => txId } }, feeTxId, feeTokenId, updatedApr: 0, rewardClaimed: 0, stakedAmount: 0, stakedTime: 0 }
     }
     const isV3 = contractVersion !== undefined && contractVersion >= 3
@@ -642,7 +659,7 @@ export const claimTokens = async (
     let feeTxId: string | undefined
     if (feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
         feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         console.warn('Fee transfer failed after successful claim:', feeErr);

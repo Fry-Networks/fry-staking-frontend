@@ -28,6 +28,10 @@ import { tokenServiceInstance as tokenService } from '../../../services/TokenSer
 import { usePreferences } from '../../../contexts/PreferencesContext'
 import { friendlySlippage, friendlyPriceImpact } from '../../../utils/grandmaLabels'
 import { useAuth } from '../../../hooks/useAuth'
+import { fetchFeeConfig, calculateFeeSimple, routeFeeViaRouter } from '../../../services/FeeService'
+import type { FeeCalculation } from '../../../services/FeeService'
+import FeeConfirmation from '../../shared/FeeConfirmation'
+import { logFee } from '../../../utils/logFee'
 import { useChain } from '../../../context/ChainContext'
 import { authAxios } from '../../../services/apiClient'
 import { Spin } from 'antd'
@@ -223,7 +227,7 @@ const SwapMain = () => {
   }, [chainId]);
 
   const location = useLocation()
-  const { activeAddress, signTransactions: walletSignTransactions } = useMultiChainWallet()
+  const { activeAddress, signTransactions: walletSignTransactions, signer } = useMultiChainWallet()
   const { ensureAuth } = useAuth()
 
   const [selectedRewards, setSelectedRewards] = useState<Currency | undefined>(undefined);
@@ -397,6 +401,15 @@ const SwapMain = () => {
   const quoteTimestampRef = useRef<number>(0);
   const swapServiceRef = useRef<SwapService | null>(null);
   const voiSwapServiceRef = useRef<VoiSwapService | null>(null);
+
+  // Fee confirmation state
+  const [feeModalVisible, setFeeModalVisible] = useState(false)
+  const [feeCalc, setFeeCalc] = useState<FeeCalculation | null>(null)
+  const [feeLoading, setFeeLoading] = useState(false)
+  const [feeActionLabel, setFeeActionLabel] = useState('')
+  const [feeAmountFormatted, setFeeAmountFormatted] = useState('')
+  const [netAmountFormatted, setNetAmountFormatted] = useState('')
+  const pendingSwapResolveRef = useRef<((confirmed: boolean) => void) | null>(null)
 
   // Reset provider badge when switching chains
   useEffect(() => {
@@ -615,6 +628,45 @@ const SwapMain = () => {
     }
   }
 
+  // Fee confirmation: returns a promise that resolves when user confirms or cancels
+  const requestFeeConfirmation = async (inputAmountMicro: number, tokenDecimals: number, tokenName: string): Promise<boolean> => {
+    try {
+      setFeeLoading(true)
+      const config = await fetchFeeConfig()
+      const fee = calculateFeeSimple('swap', inputAmountMicro, config, getChainConfig(chainId).feeRecipient)
+
+      if (fee.feeAmount <= 0) return true // no fee configured
+
+      setFeeCalc(fee)
+      const divisor = Math.pow(10, tokenDecimals)
+      setFeeAmountFormatted(`${(fee.feeAmount / divisor).toFixed(tokenDecimals > 2 ? 4 : 2)} ${tokenName}`)
+      setNetAmountFormatted(`${(fee.netAmount / divisor).toFixed(tokenDecimals > 2 ? 4 : 2)} ${tokenName}`)
+      setFeeActionLabel(`Swap ${(inputAmountMicro / divisor).toFixed(tokenDecimals > 2 ? 4 : 2)} ${tokenName}`)
+      setFeeLoading(false)
+
+      return new Promise<boolean>((resolve) => {
+        pendingSwapResolveRef.current = resolve
+        setFeeModalVisible(true)
+      })
+    } catch (err) {
+      console.warn('Fee config fetch failed, proceeding without fee:', err)
+      setFeeLoading(false)
+      return true // proceed on fee fetch failure
+    }
+  }
+
+  const onFeeConfirm = () => {
+    setFeeModalVisible(false)
+    pendingSwapResolveRef.current?.(true)
+    pendingSwapResolveRef.current = null
+  }
+
+  const onFeeCancel = () => {
+    setFeeModalVisible(false)
+    pendingSwapResolveRef.current?.(false)
+    pendingSwapResolveRef.current = null
+  }
+
   const performSwap = async () => {
     if (isSwappingRef.current) return
     isSwappingRef.current = true
@@ -693,6 +745,16 @@ const SwapMain = () => {
         toast.warning(`High price impact: ${impactPct.toFixed(1)}%`);
       }
 
+      // Fee confirmation gate
+      const multiplierForFee = Math.pow(10, selectedRewards.decimals)
+      const microAmountForFee = Math.floor(parseFloat(swapAmount) * multiplierForFee)
+      const feeConfirmed = await requestFeeConfirmation(microAmountForFee, selectedRewards.decimals, selectedRewards.code)
+      if (!feeConfirmed) {
+        setIsSwapping(false)
+        isSwappingRef.current = false
+        return
+      }
+
       let result;
       const quoteAge = Date.now() - quoteTimestampRef.current;
 
@@ -745,6 +807,23 @@ const SwapMain = () => {
         };
         const providerName = providerNames[result.provider] || result.provider;
         toast.success(`Swap confirmed via ${providerName}! TXID: ${result.txId}`)
+
+        // Platform fee (best-effort, separate transaction)
+        if (feeCalc && feeCalc.feeAmount > 0 && signer && chainId !== 'voi-mainnet') {
+          try {
+            const feeResult = await routeFeeViaRouter(activeAddress, signer, feeCalc.feeAmount, selectedRewards.id, algodMain, activeChain?.feeRouterAppId, activeChain?.feeRouterAddr)
+            logFee({
+              appId: 'swap',
+              userId: activeAddress,
+              gasAmount: feeCalc.feeAmount,
+              gasType: 'swap',
+              feeType: 'percentage',
+              txId: feeResult.txId,
+            }).catch(() => {})
+          } catch (feeErr) {
+            console.warn('Swap fee transfer failed (best-effort):', feeErr)
+          }
+        }
 
         // Record swap for event points tracking (fire-and-forget)
         try {
@@ -1263,6 +1342,17 @@ const SwapMain = () => {
         </div>
         )}
       </div>
+
+            <FeeConfirmation
+              visible={feeModalVisible}
+              onConfirm={onFeeConfirm}
+              onCancel={onFeeCancel}
+              actionLabel={feeActionLabel}
+              feePercent={feeCalc?.feePercent ?? 0}
+              feeAmountFormatted={feeAmountFormatted}
+              netAmountFormatted={netAmountFormatted}
+              loading={feeLoading}
+            />
 
             <ConnectWallet
               openModal={openWalletModal}

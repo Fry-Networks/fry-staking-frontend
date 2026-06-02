@@ -299,8 +299,7 @@ export const stakeNft = async (
   signer: TransactionSigner,
   feeAmount: number,
   feeTokenId: number,
-  feeRecipient: string,
-) => {
+  feeRecipient: string, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     const { client, algorandClient, algodClient } = await createNftStakingClient(signer, sender, appId)
 
@@ -334,7 +333,7 @@ export const stakeNft = async (
     // Send fee after successful contract call
     if (feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
         const feeTxId = feeRouterResult.txId
 
         await logFee({
@@ -367,8 +366,7 @@ export const unstakeNft = async (
   signer: TransactionSigner,
   feeAmount: number,
   feeTokenId: number,
-  feeRecipient: string,
-) => {
+  feeRecipient: string, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     const { client, algorandClient, algodClient } = await createNftStakingClient(signer, sender, appId)
 
@@ -386,7 +384,7 @@ export const unstakeNft = async (
 
     if (feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
         const feeTxId = feeRouterResult.txId
 
         await logFee({
@@ -418,8 +416,7 @@ export const claimRewards = async (
   signer: TransactionSigner,
   feeAmount: number,
   feeTokenId: number,
-  feeRecipient: string,
-) => {
+  feeRecipient: string, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     const { client, algorandClient, algodClient } = await createNftStakingClient(signer, sender, appId)
 
@@ -437,7 +434,7 @@ export const claimRewards = async (
 
     if (feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
         const feeTxId = feeRouterResult.txId
 
         await logFee({

@@ -214,7 +214,7 @@ const CreateStakeWizard: React.FC<CreateStakeWizardProps> = ({
         algorandClient.setDefaultSigner(signer);
         const algodClient = new algosdk.Algodv2(algodConfig.token, algodConfig.server, algodConfig.port);
 
-        await routeFeeViaRouter(activeAddress, signer, feeCalc.feeAmount, rewardToken.id, algodClient);
+        await routeFeeViaRouter(activeAddress, signer, feeCalc.feeAmount, rewardToken.id, algodClient, activeChain?.feeRouterAppId, activeChain?.feeRouterAddr);
 
         await logFee({
           appId: 0,

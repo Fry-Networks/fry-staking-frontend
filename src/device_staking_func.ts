@@ -229,8 +229,7 @@ export const stakeDeviceNft = async (
   signer: TransactionSigner,
   feeAmount: number,
   feeTokenId: number,
-  feeRecipient: string,
-) => {
+  feeRecipient: string, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
@@ -263,7 +262,7 @@ export const stakeDeviceNft = async (
 
     if (feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
         const feeTxId = feeRouterResult.txId
 
         await logFee({
@@ -296,8 +295,7 @@ export const unstakeDeviceNft = async (
   signer: TransactionSigner,
   feeAmount: number,
   feeTokenId: number,
-  feeRecipient: string,
-) => {
+  feeRecipient: string, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
@@ -315,7 +313,7 @@ export const unstakeDeviceNft = async (
 
     if (feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
         const feeTxId = feeRouterResult.txId
 
         await logFee({
@@ -383,8 +381,7 @@ export const unregisterDeviceHolder = async (
   signer: TransactionSigner,
   feeAmount: number,
   feeTokenId: number,
-  feeRecipient: string,
-) => {
+  feeRecipient: string, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
@@ -402,7 +399,7 @@ export const unregisterDeviceHolder = async (
 
     if (feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
         const feeTxId = feeRouterResult.txId
 
         await logFee({
@@ -434,8 +431,7 @@ export const claimDeviceRewardsOnChain = async (
   signer: TransactionSigner,
   feeAmount: number,
   feeTokenId: number,
-  feeRecipient: string,
-) => {
+  feeRecipient: string, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     const { client, algorandClient, algodClient } = await createDeviceStakingClient(signer, sender, appId)
 
@@ -453,7 +449,7 @@ export const claimDeviceRewardsOnChain = async (
 
     if (feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId, algodClient, feeRouterAppId, feeRouterAddr)
         const feeTxId = feeRouterResult.txId
 
         await logFee({

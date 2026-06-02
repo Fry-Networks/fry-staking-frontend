@@ -349,7 +349,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
         algorandClient.setDefaultSigner(signer)
         const algodClient = new algosdk.Algodv2(algodConfig.token, algodConfig.server, algodConfig.port)
 
-        await routeFeeViaRouter(activeAddress, signer, feeCalc.feeAmount, rewardToken.id, algodClient)
+        await routeFeeViaRouter(activeAddress, signer, feeCalc.feeAmount, rewardToken.id, algodClient, activeChain?.feeRouterAppId, activeChain?.feeRouterAddr)
 
         await logFee({
           appId: 0,
@@ -377,7 +377,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
           Number(valuePerNft) * 1_000_000 || 0,
           poolEndTime,
           lockPeriodSeconds,
-          FEE_ROUTER_ADDR,
+          (activeChain?.feeRouterAddr || FEE_ROUTER_ADDR),
           PLATFORM_DEPOSIT_FEE_BPS,
           PLATFORM_WITHDRAW_FEE_BPS,
           PLATFORM_CLAIM_FEE_BPS,
@@ -398,7 +398,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
           Number(valuePerNft) * 1_000_000 || 0,
           poolEndTime,
           lockPeriodSeconds,
-          FEE_ROUTER_ADDR,
+          (activeChain?.feeRouterAddr || FEE_ROUTER_ADDR),
           PLATFORM_DEPOSIT_FEE_BPS,
           PLATFORM_WITHDRAW_FEE_BPS,
           PLATFORM_CLAIM_FEE_BPS,
@@ -441,7 +441,7 @@ const CreateNftPoolWizard: React.FC<CreateNftPoolWizardProps> = ({
         nftValueInRewardToken: Number(nftValue) * 1_000_000 || 0,
         poolEndTime,
         lockPeriod: lockPeriodSeconds,
-        feeRecipient: FEE_ROUTER_ADDR,
+        feeRecipient: (activeChain?.feeRouterAddr || FEE_ROUTER_ADDR),
         depositFeeBps: PLATFORM_DEPOSIT_FEE_BPS,
         withdrawFeeBps: PLATFORM_WITHDRAW_FEE_BPS,
         claimFeeBps: PLATFORM_CLAIM_FEE_BPS,

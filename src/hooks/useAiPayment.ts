@@ -68,7 +68,7 @@ const useAiPayment = () => {
         const algod = new algosdk.Algodv2('', ALGOD_SERVER, '')
         const microAmount = fryAmount * 1_000_000
 
-        const { txId } = await routeFeeViaRouter(activeAddress, signer, microAmount, FRY_ASA_ID, algod)
+        const { txId } = await routeFeeViaRouter(activeAddress, signer, microAmount, FRY_ASA_ID, algod, activeChain?.feeRouterAppId, activeChain?.feeRouterAddr)
         await algosdk.waitForConfirmation(algod, txId, 4)
 
         return txId

@@ -77,8 +77,7 @@ export const createOfferAsa = async (
   algodConfig?: AlgodConfigOverride,
   feeAmount?: number,
   feeTokenId?: number,
-  feeRecipient?: string,
-) => {
+  feeRecipient?: string, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     const appAddress = algosdk.getApplicationAddress(appId)
     const { p2pClient, algorandClient, algodClient } = await createP2PSwapClient(signer, sender, appId, algodConfig)
@@ -128,7 +127,7 @@ export const createOfferAsa = async (
     let feeTxId: string | undefined
     if (feeAmount && feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId || 0, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId || 0, algodClient, feeRouterAppId, feeRouterAddr)
         feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         throw new Error(
@@ -159,8 +158,7 @@ export const createOfferAlgo = async (
   algodConfig?: AlgodConfigOverride,
   feeAmount?: number,
   feeTokenId?: number,
-  feeRecipient?: string,
-) => {
+  feeRecipient?: string, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     const appAddress = algosdk.getApplicationAddress(appId)
     const { p2pClient, algorandClient, algodClient } = await createP2PSwapClient(signer, sender, appId, algodConfig)
@@ -206,7 +204,7 @@ export const createOfferAlgo = async (
     let feeTxId: string | undefined
     if (feeAmount && feeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId || 0, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, feeAmount, feeTokenId || 0, algodClient, feeRouterAppId, feeRouterAddr)
         feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         throw new Error(
@@ -237,8 +235,7 @@ export const acceptOfferAlgo = async (
   algodConfig?: AlgodConfigOverride,
   platformFeeAmount?: number,
   platformFeeTokenId?: number,
-  platformFeeRecipient?: string,
-) => {
+  platformFeeRecipient?: string, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     const appAddress = algosdk.getApplicationAddress(appId)
     const { p2pClient, algorandClient, algodClient } = await createP2PSwapClient(signer, sender, appId, algodConfig)
@@ -273,7 +270,7 @@ export const acceptOfferAlgo = async (
     let feeTxId: string | undefined
     if (platformFeeAmount && platformFeeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, platformFeeAmount, platformFeeTokenId || 0, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, platformFeeAmount, platformFeeTokenId || 0, algodClient, feeRouterAppId, feeRouterAddr)
         feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         throw new Error(
@@ -305,8 +302,7 @@ export const acceptOfferAsa = async (
   algodConfig?: AlgodConfigOverride,
   platformFeeAmount?: number,
   platformFeeTokenId?: number,
-  platformFeeRecipient?: string,
-) => {
+  platformFeeRecipient?: string, feeRouterAppId?: number | null, feeRouterAddr?: string | null) => {
   try {
     const appAddress = algosdk.getApplicationAddress(appId)
     const { p2pClient, algorandClient, algodClient } = await createP2PSwapClient(signer, sender, appId, algodConfig)
@@ -340,7 +336,7 @@ export const acceptOfferAsa = async (
     let feeTxId: string | undefined
     if (platformFeeAmount && platformFeeAmount > 0) {
       try {
-        const feeRouterResult = await routeFeeViaRouter(sender, signer, platformFeeAmount, platformFeeTokenId || 0, algodClient)
+        const feeRouterResult = await routeFeeViaRouter(sender, signer, platformFeeAmount, platformFeeTokenId || 0, algodClient, feeRouterAppId, feeRouterAddr)
         feeTxId = feeRouterResult.txId
       } catch (feeErr) {
         throw new Error(
