@@ -52,9 +52,12 @@ export function useAuth() {
     if (!activeAddress) {
       throw new Error('Please connect your wallet first.');
     }
+    if (!signer) {
+      throw new Error('Wallet not ready — signer unavailable. Wait a moment and retry.');
+    }
 
     try {
-      await authService.authenticate(activeAddress, signer!, chainId);
+      await authService.authenticate(activeAddress, signer, chainId);
       setIsAuthenticated(true);
       setIsAdmin(authService.isAdmin());
     } catch (err: any) {

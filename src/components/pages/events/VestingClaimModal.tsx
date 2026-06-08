@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { Icon } from '@iconify/react'
 import { claimVesting } from '../../../services/eventService'
 import { useAuth } from '../../../hooks/useAuth'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
+import { useChain } from '../../../context/ChainContext'
 
 interface VestingClaimModalProps {
   isOpen: boolean
@@ -32,15 +34,22 @@ const VestingClaimModal: React.FC<VestingClaimModalProps> = ({
   const [claimedAmount, setClaimedAmount] = useState(0)
 
   const { ensureAuth } = useAuth()
+  const { activeChain } = useChain()
+  const { signer } = useMultiChainWallet()
 
   const handleClaim = async () => {
+    if (!signer) {
+      setError('Wallet not ready — signer unavailable. Wait a moment and retry.')
+      setStep('error')
+      return
+    }
     setStep('submitting')
     setError('')
     try {
       try {
         await ensureAuth()
-      } catch {
-        setError('Please sign in to claim (wallet signature required).')
+      } catch (err: any) {
+        setError(err?.message || 'Please sign in to claim (wallet signature required).')
         setStep('error')
         return
       }
@@ -184,7 +193,7 @@ const VestingClaimModal: React.FC<VestingClaimModalProps> = ({
                 </p>
                 {txId && (
                   <a
-                    href={`https://allo.info/tx/${txId}`}
+                    href={`${activeChain.explorerBaseUrl}/tx/${txId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-green-500 text-sm mt-1 inline-flex items-center gap-1 hover:underline"
