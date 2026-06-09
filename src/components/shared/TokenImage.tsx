@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useChain } from '../../context/ChainContext';
 
 const PLACEHOLDER_COLORS = [
@@ -21,19 +21,11 @@ interface TokenImageProps {
 const TokenImage: React.FC<TokenImageProps> = ({ tokenId, src, symbol, size = 40, className = '' }) => {
   const { chainId } = useChain();
   const [fallbackStage, setFallbackStage] = useState(0);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   // 0 = original src, 1 = Tinyman CDN, 2 = colored circle
 
   const tinymanUrl = `https://asa-list.tinyman.org/assets/${tokenId}/icon.png`;
   const nautilusUrl = `https://asset-verification.nautilus.sh/icons/${tokenId}.png`;
-
-  // Reset fallback when props change (prevents stale state when reused for different tokens)
-  useEffect(() => {
-    setFallbackStage(0);
-  }, [src, tokenId]);
-
-  const handleError = () => {
-    setFallbackStage((prev) => prev + 1);
-  };
 
   const sources: string[] = [];
   if (src) sources.push(src);
@@ -43,6 +35,26 @@ const TokenImage: React.FC<TokenImageProps> = ({ tokenId, src, symbol, size = 40
     sources.push(tinymanUrl);
   }
   const currentSrc = fallbackStage < sources.length ? sources[fallbackStage] : null;
+
+  // Reset fallback when props change (prevents stale state when reused for different tokens)
+  useEffect(() => {
+    setFallbackStage(0);
+  }, [src, tokenId]);
+
+  // Force fallback if image hangs for more than 5s
+  useEffect(() => {
+    if (!currentSrc) return;
+    const timer = setTimeout(() => {
+      if (imgRef.current && !imgRef.current.complete) {
+        setFallbackStage((prev) => prev + 1);
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [currentSrc]);
+
+  const handleError = () => {
+    setFallbackStage((prev) => prev + 1);
+  };
 
   if (!currentSrc) {
     const letter = (symbol || '?')[0].toUpperCase();
@@ -59,11 +71,13 @@ const TokenImage: React.FC<TokenImageProps> = ({ tokenId, src, symbol, size = 40
 
   return (
     <img
+      ref={imgRef}
       src={currentSrc}
       alt={symbol || `Token ${tokenId}`}
       className={`rounded-full ${className}`}
-      style={{ width: size, height: size }}
+      style={{ width: size, height: size, objectFit: 'cover' }}
       loading="lazy"
+      decoding="async"
       onError={handleError}
     />
   );

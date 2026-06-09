@@ -1,4 +1,5 @@
 import { Provider, useWallet } from '@txnlab/use-wallet'
+import { useState } from 'react'
 import { Modal } from 'antd'
 import Account from './Account'
 import { useAuth } from '../hooks/useAuth'
@@ -12,6 +13,7 @@ interface ConnectWalletInterface {
 
 const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
   const { providers } = useWallet()
+  const [connectingId, setConnectingId] = useState<string | null>(null)
   const { activeAddress, isKibisisAvailable, connectVoi, connectLute, disconnectVoi } = useMultiChainWallet()
   const { clearAuth } = useAuth()
   const { chainId, activeChain } = useChain()
@@ -21,6 +23,26 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
 
   const handleOk = () => {
     closeModal()
+  }
+
+  const withTimeout = (promise: Promise<any>, ms: number, label: string): Promise<any> => {
+    return Promise.race([
+      promise,
+      new Promise<any>((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+      )
+    ])
+  }
+
+  const handleProviderConnect = async (provider: Provider) => {
+    setConnectingId(provider.metadata.id)
+    try {
+      await withTimeout(provider.connect(), 30000, `Wallet connection (${provider.metadata.name})`)
+    } catch (err: any) {
+      console.error(`Wallet connection failed (${provider.metadata.name}):`, err.message || err)
+    } finally {
+      setConnectingId(null)
+    }
   }
 
   const handleKibisisConnect = async () => {
@@ -72,10 +94,14 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
                   {providers?.map((provider) => (
                     <button
                       data-test-id={`${provider.metadata.id}-connect`}
-                      className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[red]"
+                      className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-transparent"
                       key={`provider-${provider.metadata.id}`}
-                      onClick={() => provider.connect()}
+                      disabled={connectingId === provider.metadata.id}
+                      onClick={() => handleProviderConnect(provider)}
                     >
+                      {connectingId === provider.metadata.id && (
+                        <span className="loading loading-spinner w-[30px] h-[30px]" />
+                      )}
                       {!isKmd(provider) && (
                         <img
                           alt={`wallet_icon_${provider.metadata.id}`}
@@ -88,8 +114,12 @@ const ConnectWallet = ({ openModal, closeModal }: ConnectWalletInterface) => {
                   ))}
                   {isKibisisAvailable && (
                     <button
-                      className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-[red]"
-                      onClick={handleKibisisConnect}
+                      className="wltbtn py-3.5 px-6 bg-[var(--bg-secondary)] font-Roboto ex-small font-normal w-full flex justify-start items-center gap-5 border-solid border-2 border-transparent"
+                      disabled={connectingId === 'kibisis'}
+                      onClick={async () => {
+                        setConnectingId('kibisis')
+                        try { await withTimeout(handleKibisisConnect(), 30000, 'Kibisis connection') } finally { setConnectingId(null) }
+                      }}
                     >
                       <svg width="30" height="30" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <rect width="256" height="256" rx="48" fill="#6C3FC5"/>

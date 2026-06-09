@@ -1187,7 +1187,7 @@ const SwapMain = () => {
                 <p className="text-text_clr medium tracking-[0.48px]">Price</p>
                 <div className="flex items-center gap-[2px]">
                   <p className="text-[var(--text-primary)] medium tracking-[0.48px] font-medium">
-                    {chainId === 'voi-mainnet' ? 'Price data coming soon' : `1 ${selectedRewards?.code || ''} = ${priceRate} ${selectedAlgoRewards?.code || ''}`}
+                    {chainId === 'voi-mainnet' ? 'Price data coming soon' : (priceRate === '0' || priceRate === 'N/A') ? 'Enter amount to see rate' : `1 ${selectedRewards?.code || ''} = ${priceRate} ${selectedAlgoRewards?.code || ''}`}
                   </p>
                 </div>
               </div>
@@ -1307,7 +1307,7 @@ const SwapMain = () => {
                    {selectedRewards && selectedAlgoRewards
                      ? chainId === 'voi-mainnet'
                        ? `Pool data from Voi DEXes`
-                       : `Current Price: 1 ${selectedRewards.code} = ${priceRate} ${selectedAlgoRewards.code} (Vestige Labs)`
+                       : (priceRate === '0' || priceRate === 'N/A') ? 'Enter amount to see current price' : `Current Price: 1 ${selectedRewards.code} = ${priceRate} ${selectedAlgoRewards.code} (Vestige Labs)`
                      : 'Choose tokens to see price data'
                    }
                  </p>
@@ -1315,7 +1315,7 @@ const SwapMain = () => {
                    <div className="flex items-center gap-4 mt-2">
                      <div className="text-xs">
                        <span className="text-text_clr">Rate: </span>
-                       <span className="text-green font-medium">1 {selectedRewards.code} = {priceRate} {selectedAlgoRewards.code}</span>
+                       <span className="text-green font-medium">{(priceRate === '0' || priceRate === 'N/A') ? 'Enter amount to see rate' : `1 ${selectedRewards.code} = ${priceRate} ${selectedAlgoRewards.code}`}</span>
                      </div>
                    </div>
                  )}

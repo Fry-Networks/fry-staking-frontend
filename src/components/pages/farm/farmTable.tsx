@@ -11,6 +11,7 @@ import { useChain } from '../../../context/ChainContext';
 import { tokenServiceInstance as tokenService } from '../../../services/TokenService';
 import { getChainLpTokenUsdPrice, fetchChainPriceMap } from '../../../services/PriceService';
 
+import { formatUsdAbbreviated } from "../../../utils/formatNumber";
 
 // Helper function to validate image URL (outside component to avoid recreation)
 const isValidImageUrl = (url: string | undefined | null): boolean => {
@@ -35,6 +36,7 @@ const FarmTable: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabOption>('Live');
   const [userFarmedPoolIds, setUserFarmedPoolIds] = useState<Set<string>>(new Set());
+  const [userStakeAmounts, setUserStakeAmounts] = useState<{ [key: string]: number }>({});
 
   // Fetch token images from database
   const fetchTokenImages = async (): Promise<{ [key: string]: string }> => {
@@ -120,7 +122,7 @@ const FarmTable: React.FC = () => {
           const endsInDays = Math.ceil(endsIn / 86400);
 
           const poolData = farm.totalStaked || 0;
-          const lpHuman = poolData / 1_000_000_000;
+          const lpHuman = poolData / 1_000_000;
           const aId = Number(farm.lpToken?.tokenAId || farm.lpToken?.tokenA || 0);
           const bId = Number(farm.lpToken?.tokenBId || farm.lpToken?.tokenB || 0);
           const pairKey = [aId, bId].sort((a, b) => a - b).join('-');
@@ -136,7 +138,7 @@ const FarmTable: React.FC = () => {
             displayApr = rawApr * (rewardPrice / lpPrice);
           }
           const tvl = poolData > 0
-            ? (tvlUsd > 0 ? `$ ${tvlUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${lpHuman.toLocaleString()} LP`)
+            ? (tvlUsd > 0 ? formatUsdAbbreviated(tvlUsd) : `${lpHuman.toLocaleString()} LP`)
             : '0 LP';
 
           // Get token IDs for LP tokens and reward token
@@ -255,9 +257,18 @@ const FarmTable: React.FC = () => {
             ),
             tvl: tvl, // TVL value is displayed here
             apr: displayApr !== null ? `${displayApr.toFixed(2)}%` : 'N/A',
-            staked: tvlUsd > 0
-              ? `$ ${tvlUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              : `${lpHuman.toLocaleString()} LP`,
+            staked: (() => {
+              const userLp = userStakeAmounts[farm.appId] || 0;
+              if (userLp > 0) {
+                const userUsd = userLp * lpPrice;
+                return userUsd > 0
+                  ? `$ ${userUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : `${userLp.toLocaleString()} LP`;
+              }
+              return tvlUsd > 0
+                ? `$ ${tvlUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : `${lpHuman.toLocaleString()} LP`;
+            })(),
             reward: (
               <div>
                 {(farm.rewardTokenAmount / 1_000_000).toFixed(2)} {farm.rewardTokenSymbol || farm.rewardToken?.name || 'tokens'}
@@ -269,6 +280,7 @@ const FarmTable: React.FC = () => {
             rewardTokenId: Number(farm.rewardToken?.id || farm.rewardTokenId || 0),
             stakeTokenName: farm.lpPairName || `${farm.lpToken?.tokenA || 'Token A'} / ${farm.lpToken?.tokenB || 'Token B'}`,
             rewardTokenName: farm.rewardTokenSymbol || farm.rewardToken?.name || 'Token',
+            lpPrice,
           };
         });
 
@@ -288,7 +300,15 @@ const FarmTable: React.FC = () => {
       try {
         const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/stakingfarmingtoken/wallet/${walletAddress}`);
         const records = res.data?.data || [];
-        setUserFarmedPoolIds(new Set(records.map((r: any) => String(r.poolId))));
+        const ids = new Set<string>();
+        const amounts: { [key: string]: number } = {};
+        records.forEach((r: any) => {
+          const pid = String(r.poolId);
+          ids.add(pid);
+          amounts[pid] = (r.totalStaked || 0) / 1_000_000;
+        });
+        setUserFarmedPoolIds(ids);
+        setUserStakeAmounts(amounts);
       } catch {
         setUserFarmedPoolIds(new Set());
       }

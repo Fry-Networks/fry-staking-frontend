@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
 import { fetchChainPriceMap, getChainLpTokenUsdPrice } from '../../../services/PriceService'
+import { formatUsdAbbreviated } from "../../../utils/formatNumber"
 import { usePreferences } from '../../../contexts/PreferencesContext'
 import { useChain } from '../../../context/ChainContext'
 import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
@@ -155,8 +156,7 @@ const Farmbanner: React.FC<FarmBannerProps> = ({ wallet }) => {
     fetchStats()
   }, [wallet, chainId])
 
-  const fmt = (v: number) =>
-    `$ ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const fmt = (v: number) => formatUsdAbbreviated(v)
 
   return (
     <div className="w-full mt-[40px] mb-[47px]">

@@ -29,6 +29,8 @@ const PoolStats: React.FC = () => {
       fetchPoolStats(idFromUrl)
     } else {
       console.warn('No appId found in URL query parameters')
+      navigate('/staking', { replace: true })
+      return
     }
   }, [location.search])
 

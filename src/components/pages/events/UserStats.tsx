@@ -6,6 +6,7 @@ import { getChallengeConfig } from '../../../utils/challengeUtils'
 import type { FryEvent } from '../../../services/eventService'
 import OnChainVestingStatus from './OnChainVestingStatus'
 import VestingStatus from './VestingStatus'
+import { useChain } from '../../../context/ChainContext'
 
 interface UserStatsProps {
   eventId: string
@@ -14,6 +15,7 @@ interface UserStatsProps {
 }
 
 const UserStats: React.FC<UserStatsProps> = ({ eventId, wallet, vestingConfig }) => {
+  const { activeChain } = useChain()
   const [points, setPoints] = useState<UserPoints | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -90,7 +92,7 @@ const UserStats: React.FC<UserStatsProps> = ({ eventId, wallet, vestingConfig })
             </div>
             {points.airdropTxId && (
               <a
-                href={`https://allo.info/tx/${points.airdropTxId}`}
+                href={`${activeChain.explorerBaseUrl}/tx/${points.airdropTxId}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-text_clr underline mt-1 inline-block"

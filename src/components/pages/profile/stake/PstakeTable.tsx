@@ -173,7 +173,7 @@ const PstakeTable: React.FC = () => {
         // Use on-chain data when available, fall back to MongoDB
         const contractId = Number(pool.stakingContractId)
         const onChainData = onChainDataMap[contractId]
-        const userStakedMicro = onChainData?.stakedAmount ?? (stakedAmountMap[pool._id] || 0)
+        const userStakedMicro = onChainData?.stakedAmount ?? (stakedAmountMap[pool._id] || stakedAmountMap[String(pool.stakingContractId)] || 0)
 
         const usdPrice = priceMap[stakeTokenId] ?? 0
         const tvlUsd = (pool.totalAmountStaked || 0) * usdPrice

@@ -16,28 +16,23 @@ import Users from './adminDashboard/Users/users'
 import UserDetailTransactionHistory from './adminDashboard/Users/userTransactionHistory/userDetailTransactionHistory'
 import IntegrationTesting from "./Integration-testing"
 import AdminLogin from './pages/adminLogin'
-import Farm from './pages/farm'
+import LpFarm from './pages/lpFarm'
 import FarmPoolStats from './pages/farmPoolStats'
 import Profile from './pages/profile'
-import Stake from './pages/stake'
+import StakingPage from './pages/staking'
 import StakePoolStats from './pages/stakePoolStats'
 import Events from './pages/events'
 import EventDetail from './pages/eventDetail'
-import NftStake from './pages/nftStake'
 import NftPoolStats from './pages/nftPoolStats'
-import AlphaArcade from './pages/alphaArcade'
 import Swap from './pages/swap'
 import TransactionHistory from './pages/transactionHistory'
-import DeviceStake from './pages/deviceStake'
 import DevicePoolStats from './pages/devicePoolStats'
 import DeviceDashboard from './pages/deviceDashboard'
 import P2PSwap from './pages/p2pSwap'
 import P2PMarketDetail from './pages/p2pMarketDetail'
 import GenesisMint from './pages/genesisMint'
 import Launches from './pages/launches'
-import Drops from './pages/drops'
 import TokenDetailPage from './pages/tokenDetail'
-import DropDetailPage from './pages/dropDetail'
 
 const AppLayout = () => {
   return (
@@ -58,7 +53,7 @@ const appRouter = createBrowserRouter([
   },
   {
     path: '/nftStake',
-    element: <Navigate to="/nft-stake" replace />,
+    element: <Navigate to="/staking?tab=nft" replace />,
   },
   {
     path: '/transactionHistory',
@@ -70,7 +65,7 @@ const appRouter = createBrowserRouter([
   },
   {
     path: '/deviceStake',
-    element: <Navigate to="/depin-stake" replace />,
+    element: <Navigate to="/staking?tab=depin" replace />,
   },
   {
     path: '/stakePoolStats',
@@ -86,7 +81,7 @@ const appRouter = createBrowserRouter([
   },
   {
     path: '/alphaArcade',
-    element: <Navigate to="/prediction-lp" replace />,
+    element: <Navigate to="/lp-farm?tab=prediction" replace />,
   },
   {
     path: '/genesisMint',
@@ -102,19 +97,27 @@ const appRouter = createBrowserRouter([
   },
   {
     path: '/stake',
-    element: <Navigate to="/token-stake" replace />,
+    element: <Navigate to="/staking?tab=token" replace />,
+  },
+  {
+    path: '/staking',
+    element: <StakingPage />,
   },
   {
     path: '/token-stake',
-    element: <Stake />,
+    element: <Navigate to="/staking?tab=token" replace />,
+  },
+  {
+    path: '/lp-farm',
+    element: <LpFarm />,
   },
   {
     path: '/farm',
-    element: <Farm />,
+    element: <Navigate to="/lp-farm?tab=token" replace />,
   },
   {
     path: '/nft-stake',
-    element: <NftStake />,
+    element: <Navigate to="/staking?tab=nft" replace />,
   },
   {
     path: '/nft-pool-stats',
@@ -122,11 +125,11 @@ const appRouter = createBrowserRouter([
   },
   {
     path: '/depin-stake',
-    element: <DeviceStake />,
+    element: <Navigate to="/staking?tab=depin" replace />,
   },
   {
     path: '/device-stake',
-    element: <Navigate to="/depin-stake" replace />,
+    element: <Navigate to="/staking?tab=depin" replace />,
   },
   {
     path: '/device-pool-stats',
@@ -138,7 +141,7 @@ const appRouter = createBrowserRouter([
   },
   {
     path: '/prediction-lp',
-    element: <AlphaArcade />,
+    element: <Navigate to="/lp-farm?tab=prediction" replace />,
   },
   {
     path: '/events',
@@ -172,14 +175,7 @@ const appRouter = createBrowserRouter([
     path: '/launches/token/:asaId',
     element: <TokenDetailPage />,
   },
-  {
-    path: '/drops',
-    element: <Drops />,
-  },
-  {
-    path: '/drops/:dropId',
-    element: <DropDetailPage />,
-  },
+
   {
     path: '/genesis-mint',
     element: <GenesisMint />,

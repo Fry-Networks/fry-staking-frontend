@@ -1,10 +1,10 @@
 import React, { useState, useCallback } from 'react'
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 import algosdk from 'algosdk'
 import { toast } from 'react-toastify'
 import { useAuth } from '../../../hooks/useAuth'
-import { getAlgodClient } from '../../../farming_func'
+import { useChain } from '../../../context/ChainContext'
 import {
   buildCommunityFunding,
   confirmCommunityFunding,
@@ -22,8 +22,9 @@ interface FundingModalProps {
 type FundingStep = 'review' | 'signing' | 'submitting' | 'confirming' | 'success' | 'error'
 
 const FundingModal: React.FC<FundingModalProps> = ({ visible, event, onClose, onSuccess }) => {
-  const { activeAddress, signTransactions } = useWallet()
+  const { activeAddress, signTransactions } = useMultiChainWallet()
   const { ensureAuth } = useAuth()
+  const { activeChain, getAlgodClient } = useChain()
 
   const [step, setStep] = useState<FundingStep>('review')
   const [error, setError] = useState('')
@@ -206,7 +207,7 @@ const FundingModal: React.FC<FundingModalProps> = ({ visible, event, onClose, on
                 </p>
                 {txId && (
                   <a
-                    href={`https://allo.info/tx/${txId}`}
+                    href={`${activeChain.explorerBaseUrl}/tx/${txId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-500 text-sm mt-1 inline-flex items-center gap-1 hover:underline"

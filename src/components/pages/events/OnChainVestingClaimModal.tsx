@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 import { claimVesting } from '../../../vesting_func'
+import { useChain } from '../../../context/ChainContext'
 
 interface OnChainVestingClaimModalProps {
   appId: number
@@ -28,7 +29,8 @@ const OnChainVestingClaimModal: React.FC<OnChainVestingClaimModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { signer } = useWallet()
+  const { signer } = useMultiChainWallet()
+  const { activeChain } = useChain()
   const [step, setStep] = useState<ClaimStep>('confirm')
   const [error, setError] = useState('')
   const [txId, setTxId] = useState('')
@@ -43,7 +45,9 @@ const OnChainVestingClaimModal: React.FC<OnChainVestingClaimModalProps> = ({
     setStep('submitting')
     setError('')
     try {
-      const result = await claimVesting(appId, wallet, signer)
+      const conn = activeChain.connection as { algodServer: string; algodPort: number; algodToken: string }
+      const algodOverride = { server: conn.algodServer, port: conn.algodPort, token: conn.algodToken }
+      const result = await claimVesting(appId, wallet, signer, algodOverride)
       setTxId(result.txId)
       setClaimedAmount(Number(result.claimedAmount))
       setStep('success')
@@ -180,7 +184,7 @@ const OnChainVestingClaimModal: React.FC<OnChainVestingClaimModalProps> = ({
                 </p>
                 {txId && (
                   <a
-                    href={`https://allo.info/tx/${txId}`}
+                    href={`${activeChain.explorerBaseUrl}/tx/${txId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-green-500 text-sm mt-1 inline-flex items-center gap-1 hover:underline"

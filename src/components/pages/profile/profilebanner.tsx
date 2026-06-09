@@ -18,7 +18,7 @@ const Profilebanner: React.FC = () => {
   const [tokenBalance, setTokenBalance] = useState<number>(0)
   const [tokenSymbol, setTokenSymbol] = useState('FRY')
   const [userData, setUserData] = useState<any>(null)
-  const { clients } = useWallet()
+  const { providers } = useWallet()
   const { activeAddress } = useMultiChainWallet()
   const { chainId, getAlgodClient } = useChain()
   const dummyData = {
@@ -79,6 +79,11 @@ const Profilebanner: React.FC = () => {
   }
 
   useEffect(() => {
+    setTokenBalance(0)
+    setTokenSymbol(chainId === 'voi-mainnet' ? 'VOI' : 'FRY')
+  }, [chainId])
+
+  useEffect(() => {
     fetchUserData()
     fetchTokenBalance()
   }, [activeAddress, chainId])
@@ -100,7 +105,9 @@ const Profilebanner: React.FC = () => {
           <img src={userData?.banner || '../../assets/images/home/coverDP.png'} alt="Banner" className="w-full h-[500px] object-cover sm-s:h-[170px]" />
           <img src={userData?.profilePicture || '../../assets/images/home/mainDP.png'} alt="Profile" className="w-[142px] h-[142px] mt-[-70px]" />
           <div className="flex items-center justify-center mt-5 gap-[13px]">
-            <h3 className="font-apex text-[var(--text-primary)] leading-normal ">{userData?.name}</h3>
+            <h3 className="font-apex text-[var(--text-primary)] leading-normal ">
+              {userData?.name && userData.name !== 'test' ? userData.name : (activeAddress ? `${activeAddress.slice(0,6)}...${activeAddress.slice(-4)}` : 'Anonymous')}
+            </h3>
             <Icon
               icon="material-symbols:edit-sharp"
               width={28}
@@ -111,7 +118,7 @@ const Profilebanner: React.FC = () => {
             />
           </div>
 
-          {userData?.bio && (
+          {userData?.bio && userData.bio !== 'lorem ipsum' && (
             <p className="text-[var(--text-secondary)] text-sm mt-2 text-center max-w-[500px]">
               {userData.bio}
             </p>
@@ -131,6 +138,15 @@ const Profilebanner: React.FC = () => {
               <div className="bg-[#f7f7f7] text-xs text-[#666] px-4 py-2 rounded-[10px] break-all text-center">
                 Wallet: {activeAddress}
               </div>
+            )}
+
+            {activeAddress && providers && (
+              <button
+                onClick={() => { providers.forEach(p => p.disconnect()); window.location.reload(); }}
+                className="text-xs text-red-500 hover:text-red-700 underline cursor-pointer"
+              >
+                Disconnect Wallet
+              </button>
             )}
 
             {activeAddress && (

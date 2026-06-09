@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react'
 import { Spin } from 'antd'
 import { toast } from 'react-toastify'
 import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
+import { useChain } from '../../../context/ChainContext'
 import {
   getGenesisNftState,
   getUserUsdcBalance,
@@ -27,6 +28,8 @@ function formatUsdc(microAmount: number): string {
 
 const GenesisMintMain = () => {
   const { activeAddress, signer } = useMultiChainWallet()
+  const { chainId, switchChain } = useChain()
+  const isAlgorand = chainId === 'algorand-mainnet'
 
   // Contract state
   const [loading, setLoading] = useState(true)
@@ -206,7 +209,18 @@ const GenesisMintMain = () => {
 
   // ── Main mint view ─────────────────────────────────────────────────────────
   return (
-    <div className="flex-1 flex items-center justify-center px-4 py-12">
+    <div className="flex-1 flex flex-col items-center justify-center px-4 py-12">
+      {!isAlgorand && (
+        <div
+          className="max-w-4xl w-full mb-4 p-4 rounded-xl text-center text-sm"
+          style={{ backgroundColor: 'rgba(222, 3, 8, 0.1)', border: '1px solid rgba(222, 3, 8, 0.3)', color: 'var(--text-primary)' }}
+        >
+          <p className="font-semibold mb-1">Genesis NFTs are Algorand assets</p>
+          <p style={{ color: 'var(--text-secondary)' }}>
+            Switch to Algorand and connect a wallet (Pera, Defly, or Lute) to mint.
+          </p>
+        </div>
+      )}
       <div className="max-w-4xl w-full flex flex-col md:flex-row gap-8 items-center">
         {/* Preview image */}
         <div className="flex-shrink-0">
@@ -294,7 +308,14 @@ const GenesisMintMain = () => {
           )}
 
           {/* Action button */}
-          {!activeAddress ? (
+          {!isAlgorand ? (
+            <button
+              onClick={() => switchChain('algorand-mainnet')}
+              className="w-full py-3.5 rounded-lg font-bold font-apex text-lg uppercase tracking-wide transition-colors btn-primary"
+            >
+              Switch to Algorand
+            </button>
+          ) : !activeAddress ? (
             <button
               onClick={handleConnectWallet}
               className="w-full py-3.5 rounded-lg font-bold font-apex text-lg uppercase tracking-wide transition-colors btn-primary"
@@ -321,7 +342,7 @@ const GenesisMintMain = () => {
           )}
 
           {/* Helpful note */}
-          {activeAddress && !isSoldOut && !isPaused && (
+          {isAlgorand && activeAddress && !isSoldOut && !isPaused && (
             <p className="text-xs text-center mt-4" style={{ color: 'var(--text-secondary)' }}>
               Transaction requires USDC approval via your wallet
             </p>

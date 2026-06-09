@@ -252,7 +252,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       totalAmountStaked: item.totalAmountStaked,
       userAddress: item.creatorId,
       isCreator: item.creatorId?.toLowerCase() === activeAddress?.toLowerCase(),
-      hasUserStake: userStakedPoolIds.has(item._id),
+      hasUserStake: userStakedPoolIds.has(String(item.stakingContractId)),
       isGated: item.isGated || false,
       gateConfig: item.gateConfig || {},
       stakeTokenId: Number(stakeTokenId) ?? FRY_ASSET_ID,
@@ -314,7 +314,7 @@ const processPoolData = async (result: any[], images: { [key: string]: string } 
       const updated = originalData.map(item => ({
         ...item,
         isCreator: item.userAddress?.toLowerCase() === activeAddress?.toLowerCase(),
-        hasUserStake: userStakedPoolIds.has(item._id),
+        hasUserStake: userStakedPoolIds.has(String(item.stakingContractId)),
       }))
       setOriginalData(updated)
     }

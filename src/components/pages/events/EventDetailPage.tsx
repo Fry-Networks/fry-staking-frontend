@@ -1,5 +1,5 @@
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../../hooks/useAuth'
@@ -17,7 +17,7 @@ import UserStats from './UserStats'
 
 const EventDetailPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>()
-  const { activeAddress } = useWallet()
+  const { activeAddress } = useMultiChainWallet()
   const { isAdmin } = useAuth()
 
   const [event, setEvent] = useState<FryEvent | null>(null)

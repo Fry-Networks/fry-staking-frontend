@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { fetchVestingStatus } from '../../../services/eventService'
 import type { VestingStatus as VestingStatusData } from '../../../services/eventService'
 import VestingClaimModal from './VestingClaimModal'
+import { useChain } from '../../../context/ChainContext'
 
 interface VestingStatusProps {
   eventId: string
@@ -35,6 +36,7 @@ const Stat: React.FC<{ label: string; value: string; highlight?: boolean }> = ({
 )
 
 const VestingStatus: React.FC<VestingStatusProps> = ({ eventId, wallet }) => {
+  const { activeChain } = useChain()
   const [status, setStatus] = useState<VestingStatusData | null>(null)
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -142,7 +144,7 @@ const VestingStatus: React.FC<VestingStatusProps> = ({ eventId, wallet }) => {
             Last claimed{' '}
             {new Date(status.lastClaimAt).toLocaleDateString()} ·{' '}
             <a
-              href={`https://allo.info/tx/${status.lastClaimTxId}`}
+              href={`${activeChain.explorerBaseUrl}/tx/${status.lastClaimTxId}`}
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-green"

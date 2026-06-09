@@ -60,6 +60,7 @@ const Transact = ({ openModal, setModalState }: TransactInterface) => {
     setLoading(false)
   }
 
+  if (!openModal) return null
   return (
     <dialog id="transact_modal" className={`modal ${openModal ? 'modal-open' : ''} bg-slate-200`}>
       <form method="dialog" className="modal-box">

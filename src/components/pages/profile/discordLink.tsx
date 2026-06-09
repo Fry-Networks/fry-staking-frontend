@@ -86,7 +86,7 @@ const DiscordLink: React.FC<DiscordLinkProps> = ({ userData, onUpdate, walletId 
     try {
       setLoading(true)
       await ensureAuth()
-      await authAxios.post('/discord/unlink')
+      await authAxios.post('/discord/unlink', null, { timeout: 15000 })
       toast.success('Discord account unlinked')
       onUpdate()
     } catch (err: any) {

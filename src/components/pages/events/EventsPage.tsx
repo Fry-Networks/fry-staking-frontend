@@ -1,5 +1,5 @@
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 import { useEffect, useState } from 'react'
 import { toast } from 'react-toastify'
 import { useAuth } from '../../../hooks/useAuth'
@@ -38,7 +38,7 @@ function filterEvents(events: FryEvent[], tab: TabKey): FryEvent[] {
 }
 
 const EventsPage: React.FC = () => {
-  const { activeAddress } = useWallet()
+  const { activeAddress } = useMultiChainWallet()
   const { isAdmin, isAuthenticated, ensureAuth } = useAuth()
 
   // Scope tab

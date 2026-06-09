@@ -1,11 +1,11 @@
 import React, { useState, useCallback } from 'react'
 import { Icon } from '@iconify/react'
-import { useWallet } from '@txnlab/use-wallet'
+import { useMultiChainWallet } from '../../../hooks/useMultiChainWallet'
 import { Select, Switch } from 'antd'
 import { toast } from 'react-toastify'
 import algosdk from 'algosdk'
 import { useAuth } from '../../../hooks/useAuth'
-import { getAlgodClient } from '../../../farming_func'
+import { useChain } from '../../../context/ChainContext'
 import { getChallengeConfig } from '../../../utils/challengeUtils'
 import {
   createCommunityEvent,
@@ -41,8 +41,9 @@ interface ChallengeInput {
 }
 
 const CommunityEventFormModal: React.FC<CommunityEventFormModalProps> = ({ visible, onClose, onSuccess }) => {
-  const { activeAddress, signTransactions } = useWallet()
+  const { activeAddress, signTransactions } = useMultiChainWallet()
   const { ensureAuth } = useAuth()
+  const { activeChain, getAlgodClient } = useChain()
   const algod = getAlgodClient()
 
   // Form state
@@ -776,7 +777,7 @@ const CommunityEventFormModal: React.FC<CommunityEventFormModalProps> = ({ visib
                 </p>
                 {txId && (
                   <a
-                    href={`https://allo.info/tx/${txId}`}
+                    href={`${activeChain.explorerBaseUrl}/tx/${txId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-500 text-sm mt-1 inline-flex items-center gap-1 hover:underline"
